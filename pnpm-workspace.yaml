@@ -1,0 +1,17 @@
+packages:
+  - apps/*
+  - packages/*
+
+allowBuilds:
+  '@prisma/client': true
+  '@prisma/engines': true
+  # Scarf is analytics/telemetry — no build needed.
+  '@scarf/scarf': false
+  '@swc/core': true
+  '@tailwindcss/oxide': true
+  esbuild: true
+  # Native addon used by BullMQ's msgpackr.
+  msgpackr-extract: true
+  prisma: true
+  sharp: true
+  unrs-resolver: true

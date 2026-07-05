@@ -1,0 +1,20 @@
+{
+  "name": "@spectra/media-core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Media rendering ports (Sharp, SVG, HTML-to-image, FFmpeg, Remotion, subtitles, audio). Contracts only in Phase 1.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@spectra/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.3"
+  }
+}

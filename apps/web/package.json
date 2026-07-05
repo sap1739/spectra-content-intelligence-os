@@ -1,0 +1,33 @@
+{
+  "name": "@spectra/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Spectra web application — Next.js App Router shell.",
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev",
+    "start": "next start",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:e2e": "playwright test",
+    "clean": "rm -rf .next .turbo playwright-report test-results"
+  },
+  "dependencies": {
+    "@spectra/contracts": "workspace:*",
+    "@spectra/ui": "workspace:*",
+    "@tanstack/react-query": "^5.80.0",
+    "lucide-react": "^0.469.0",
+    "next": "^15.3.0",
+    "next-themes": "^0.4.6",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.52.0",
+    "@tailwindcss/postcss": "^4.1.0",
+    "@types/node": "^22.15.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "tailwindcss": "^4.1.0",
+    "typescript": "^5.8.3"
+  }
+}

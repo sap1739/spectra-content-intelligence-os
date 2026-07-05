@@ -1,0 +1,10 @@
+**/dist
+**/.next
+**/node_modules
+**/coverage
+**/.turbo
+pnpm-lock.yaml
+packages/database/src/generated
+**/playwright-report
+**/test-results
+CHANGELOG.md

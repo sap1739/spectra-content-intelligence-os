@@ -1,0 +1,28 @@
+{
+  "name": "@spectra/worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Spectra background worker \u2014 queue-backed job execution with heartbeat.",
+  "main": "./dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js",
+    "test": "vitest run",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@spectra/config": "workspace:*",
+    "@spectra/logging": "workspace:*",
+    "@spectra/observability": "workspace:*",
+    "@spectra/workflow-core": "workspace:*",
+    "ioredis": "5.10.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.0"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "@spectra/ai-core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Provider-neutral AI generation interfaces. Contracts only — no paid API is integrated in Phase 1.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@spectra/contracts": "workspace:*",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.3"
+  }
+}

@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Builds
+dist/
+.next/
+out/
+.turbo/
+
+# Environment — never commit real environment files
+.env
+.env.*
+!.env.example
+
+# Test artifacts
+coverage/
+playwright-report/
+test-results/
+*.lcov
+
+# Prisma generated client (generated into node_modules by default; guard custom output too)
+packages/database/src/generated/
+
+# OS / editor
+.DS_Store
+*.pem
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Local data
+infrastructure/docker/.data/
+*.tsbuildinfo

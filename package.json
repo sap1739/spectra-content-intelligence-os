@@ -1,0 +1,40 @@
+{
+  "name": "spectra-content-intelligence-os",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SpectraContent Intelligence OS — research-first content intelligence, creation, campaign, publishing and analytics platform.",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@11.5.2",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:integration": "turbo run test:integration",
+    "test:e2e": "turbo run test:e2e",
+    "db:generate": "pnpm --filter @spectra/database db:generate",
+    "db:migrate": "pnpm --filter @spectra/database db:migrate",
+    "db:deploy": "pnpm --filter @spectra/database db:deploy",
+    "db:seed": "pnpm --filter @spectra/database db:seed",
+    "db:studio": "pnpm --filter @spectra/database db:studio",
+    "docker:up": "docker compose -f infrastructure/docker/docker-compose.yml up -d --wait",
+    "docker:down": "docker compose -f infrastructure/docker/docker-compose.yml down",
+    "docker:reset": "docker compose -f infrastructure/docker/docker-compose.yml down -v",
+    "clean": "turbo run clean"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.28.0",
+    "eslint": "^9.28.0",
+    "prettier": "^3.5.3",
+    "turbo": "^2.5.4",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.33.0"
+  }
+}

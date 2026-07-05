@@ -1,0 +1,44 @@
+{
+  "name": "@spectra/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Spectra REST API \u2014 NestJS on Fastify.",
+  "main": "./dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js",
+    "test:integration": "vitest run",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@fastify/helmet": "^13.0.0",
+    "@fastify/rate-limit": "^10.0.0",
+    "@fastify/static": "^8.0.0",
+    "@nestjs/common": "^11.1.0",
+    "@nestjs/core": "^11.1.0",
+    "@nestjs/platform-fastify": "^11.1.0",
+    "@nestjs/swagger": "^11.2.0",
+    "@spectra/config": "workspace:*",
+    "@spectra/contracts": "workspace:*",
+    "@spectra/database": "workspace:*",
+    "@spectra/logging": "workspace:*",
+    "@spectra/observability": "workspace:*",
+    "@spectra/security": "workspace:*",
+    "fastify": "5.8.5",
+    "ioredis": "5.10.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "^11.1.0",
+    "@swc/core": "^1.11.0",
+    "@types/node": "^22.15.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.3",
+    "unplugin-swc": "^1.5.1",
+    "vitest": "^3.2.0"
+  }
+}

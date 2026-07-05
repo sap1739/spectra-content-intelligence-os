@@ -1,0 +1,22 @@
+{
+  "name": "@spectra/testing",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Deterministic test data factories for Spectra domain contracts.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@spectra/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.0"
+  }
+}

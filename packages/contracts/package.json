@@ -1,0 +1,21 @@
+{
+  "name": "@spectra/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Zod-first domain contracts for Spectra: research, trends, knowledge, strategy, media and social.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.0"
+  }
+}
