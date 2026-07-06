@@ -5,15 +5,17 @@
 Monorepo, contracts, schema, API/worker/web foundations, tenancy + security + observability
 standards, testing foundations, CI, documentation, ADRs. No external integrations.
 
-## Phase 2 — Identity & Research (next)
+## Phase 2 — Identity & Research (in progress)
 
 **Goal: a signed-in user runs a real research project end-to-end with free/first-party
 providers.**
 
-- Authentication (ADR-0007): Auth.js on web, session verification in API; org/workspace
-  switching; invitations; permission guards live on every route.
+- ✅ Authentication (ADR-0014): first-party sessions (scrypt + Redis), register/login/
+  logout/me, org/workspace switching, permission + tenant guards live on every route.
+  Remaining: invitations, per-identifier login throttling.
 - Tenant hardening: per-tenant rate limits; evaluate enabling Postgres RLS.
-- Vertical & brand management UI/API (CRUD against existing entities).
+- ✅ Vertical management UI + CRUD APIs for verticals, brands, workspaces and research
+  projects (tenant-isolated, audit-logged). Remaining: brand/project management screens.
 - Research pipeline v1 as worker jobs across the 22 stages with: RSS provider,
   content-extraction provider, internal-knowledge provider (pgvector adapter + embeddings
   port), dedup, clustering, claim extraction (structured generation port behind a feature

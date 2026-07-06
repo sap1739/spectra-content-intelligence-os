@@ -54,7 +54,17 @@ export const apiEnvSchema = z
     NODE_ENV: nodeEnvSchema,
     API_PORT: z.coerce.number().int().min(1).max(65535).default(4000),
     API_HOST: z.string().min(1).default('0.0.0.0'),
-    API_CORS_ORIGIN: z.string().url().default('http://localhost:3000'),
+    /** Comma-separated allow-list of browser origins (CORS + CSRF origin check). */
+    API_CORS_ORIGIN: z
+      .string()
+      .default('http://localhost:3000,http://localhost:3001')
+      .transform((value) =>
+        value
+          .split(',')
+          .map((origin) => origin.trim())
+          .filter(Boolean),
+      )
+      .pipe(z.array(z.string().url()).min(1)),
     LOG_LEVEL: logLevelSchema,
   })
   .merge(databaseEnvSchema)

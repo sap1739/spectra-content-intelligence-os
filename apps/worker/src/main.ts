@@ -1,4 +1,6 @@
+import { existsSync } from 'node:fs';
 import { hostname } from 'node:os';
+import { resolve } from 'node:path';
 
 import { loadEnv, workerEnvSchema } from '@spectra/config';
 import { createLogger, withCorrelation } from '@spectra/logging';
@@ -13,6 +15,13 @@ import {
 } from './heartbeat';
 
 const QUEUE_NAME = 'spectra-system';
+
+// Local-dev convenience: load the repo-root .env (real environment variables
+// always take precedence — production injects env via the platform).
+const rootEnvFile = resolve(__dirname, '../../../.env');
+if (existsSync(rootEnvFile)) {
+  process.loadEnvFile(rootEnvFile);
+}
 
 async function main(): Promise<void> {
   const env = loadEnv(workerEnvSchema);

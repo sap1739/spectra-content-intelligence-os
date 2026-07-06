@@ -8,3 +8,4 @@ export * from './knowledge';
 export * from './strategy';
 export * from './media';
 export * from './social';
+export * from './api';

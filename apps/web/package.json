@@ -12,6 +12,7 @@
     "clean": "rm -rf .next .turbo playwright-report test-results"
   },
   "dependencies": {
+    "@hookform/resolvers": "^5.4.0",
     "@spectra/contracts": "workspace:*",
     "@spectra/ui": "workspace:*",
     "@tanstack/react-query": "^5.80.0",
@@ -19,7 +20,9 @@
     "next": "^15.3.0",
     "next-themes": "^0.4.6",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "react-hook-form": "^7.81.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@playwright/test": "^1.52.0",

@@ -16,7 +16,12 @@ foundation; others are designed and land with their features.
 - Caches (Phase 2+) must namespace keys by tenant; audit logs are tenant-scoped rows.
 - Analytics queries always aggregate within a tenant scope.
 
-## 2. Authorization **[P1 design]**
+## 2. Authentication & authorization **[P2]**
+
+First-party session auth (ADR-0014): scrypt password hashing, opaque Redis sessions,
+httpOnly SameSite=Lax cookies, per-request principal rebuild (instant revocation),
+enumeration-safe login. Guard chain on every route: origin check → principal → tenant
+context → permissions.
 
 Permission-oriented: 30 permissions bundled into 13 roles (`ROLE_PERMISSIONS`), plus explicit
 per-membership grants. Checks test permissions only. Client Reviewer/Read Only bundles are
@@ -41,7 +46,7 @@ content, sensitive prompt content. Redaction is unit-tested.
 
 | Threat        | Control                                                                                                                                                                                              |
 | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CSRF          | Session cookies `SameSite=Lax` + double-submit token on state-changing routes (Phase 2, with auth)                                                                                                   |
+| CSRF          | `SameSite=Lax` session cookies + Origin allow-list check on all mutations **[P2]**; double-submit tokens tracked as further hardening                                                                |
 | XSS           | React escaping; no `dangerouslySetInnerHTML`; CSP on web app; API is JSON-only **[P1 partial]**                                                                                                      |
 | SQL injection | Prisma parameterized queries; no string-built SQL **[P1]**                                                                                                                                           |
 | SSRF          | Research fetchers (Phase 2): URL allow/deny evaluation, no private-IP ranges, no redirects to internal hosts; HTML-to-image renders only sandboxed templates, never arbitrary URLs **[P1 contract]** |

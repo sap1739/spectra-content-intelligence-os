@@ -50,9 +50,25 @@ model User {
   memberships      Membership[]
   createdResearch  ResearchProject[] @relation("ResearchProjectCreatedBy")
   auditLogs        AuditLog[]
+  credential       Credential?
 
   @@index([status])
   @@map("users")
+}
+
+/// Password credential, separated from User so future factors (passkeys,
+/// TOTP) become sibling tables instead of columns. The hash embeds its own
+/// scrypt parameters (see @spectra/security passwords.ts). NEVER logged.
+model Credential {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String   @unique @db.Uuid
+  passwordHash String
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("credentials")
 }
 
 enum OrganizationStatus {

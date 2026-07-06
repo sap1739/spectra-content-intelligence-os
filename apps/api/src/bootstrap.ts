@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 
+import cookie from '@fastify/cookie';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import { VersioningType } from '@nestjs/common';
@@ -40,6 +41,10 @@ export async function createApp(env: ApiEnv): Promise<NestFastifyApplication> {
     contentSecurityPolicy: false, // API serves JSON; CSP applies to the web app.
   });
 
+  // Session cookie parsing (values are opaque ids — no signing secret needed;
+  // integrity lives server-side in Redis).
+  await fastify.register(cookie);
+
   // Rate-limit integration point: per-IP defaults now, per-tenant keys later.
   await fastify.register(rateLimit, {
     max: 300,
@@ -59,9 +64,9 @@ export async function createApp(env: ApiEnv): Promise<NestFastifyApplication> {
   const openApiConfig = new DocumentBuilder()
     .setTitle('SpectraContent Intelligence OS API')
     .setDescription(
-      'Phase 1 foundation API. Domain endpoints (research, trends, content) arrive in Phase 2.',
+      'Phase 2 API: session authentication, tenancy, verticals, brands and research projects. Research pipeline endpoints arrive in the next increment.',
     )
-    .setVersion('0.1.0')
+    .setVersion('0.2.0')
     .build();
   const document = SwaggerModule.createDocument(app, openApiConfig);
   SwaggerModule.setup('docs', app, document);

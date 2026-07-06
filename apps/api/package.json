@@ -2,7 +2,7 @@
   "name": "@spectra/api",
   "version": "0.1.0",
   "private": true,
-  "description": "Spectra REST API \u2014 NestJS on Fastify.",
+  "description": "Spectra REST API — NestJS on Fastify.",
   "main": "./dist/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -13,6 +13,7 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
+    "@fastify/cookie": "^11.0.2",
     "@fastify/helmet": "^13.0.0",
     "@fastify/rate-limit": "^10.0.0",
     "@fastify/static": "^8.0.0",

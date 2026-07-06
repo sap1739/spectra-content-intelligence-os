@@ -1,41 +1,79 @@
-import { Badge, Button, Input } from '@spectra/ui';
-import { Bell, Building2, CircleHelp, FolderKanban, Plus, Search, UserRound } from 'lucide-react';
+'use client';
+
+import { Badge, Button, Input, cn } from '@spectra/ui';
+import { Bell, CircleHelp, LogOut, Plus, Search } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import * as React from 'react';
 
+import { useLogout, useWorkspace } from '@/lib/auth';
 import { ThemeToggle } from './theme-toggle';
 
 const DOCS_URL = 'https://github.com/sap1739/spectra-content-intelligence-os/tree/main/docs';
 
+const selectClass = cn(
+  'h-8 max-w-44 truncate rounded-md border border-input bg-background px-2 text-sm shadow-sm',
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+);
+
 /**
- * Top navigation. Selectors and actions that depend on authentication and
- * Phase 2 APIs are rendered disabled with explicit hints — nothing pretends
- * to work.
+ * Top navigation. Organization/workspace selectors and the user menu are live
+ * (Phase 2); actions that depend on later phases stay disabled with explicit
+ * hints — nothing pretends to work.
  */
 export function Topbar() {
+  const router = useRouter();
+  const { me, activeWorkspace, setActiveWorkspaceId } = useWorkspace();
+  const logout = useLogout();
+
+  const activeOrgId = activeWorkspace.organizationId;
+  const orgWorkspaces = me.workspaces.filter((ws) => ws.organizationId === activeOrgId);
+
+  const handleOrgChange = (organizationId: string) => {
+    const first = me.workspaces.find((ws) => ws.organizationId === organizationId);
+    if (first) setActiveWorkspaceId(first.id);
+  };
+
+  const handleLogout = async () => {
+    await logout.mutateAsync();
+    router.replace('/login');
+  };
+
   return (
     <header className="flex h-14 items-center gap-2 border-b border-border bg-background px-4">
       <div className="flex items-center gap-1.5">
-        <Button
-          variant="outline"
-          size="sm"
-          disabled
-          title="Organization switching arrives with authentication (Phase 2)"
+        <label htmlFor="org-select" className="sr-only">
+          Organization
+        </label>
+        <select
+          id="org-select"
+          className={selectClass}
+          value={activeOrgId}
+          onChange={(event) => handleOrgChange(event.target.value)}
         >
-          <Building2 aria-hidden="true" />
-          <span className="hidden sm:inline">Organization</span>
-        </Button>
+          {me.memberships.map((m) => (
+            <option key={m.organizationId} value={m.organizationId}>
+              {m.organizationName}
+            </option>
+          ))}
+        </select>
         <span aria-hidden="true" className="text-muted-foreground">
           /
         </span>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled
-          title="Workspace switching arrives with authentication (Phase 2)"
+        <label htmlFor="workspace-select" className="sr-only">
+          Workspace
+        </label>
+        <select
+          id="workspace-select"
+          className={selectClass}
+          value={activeWorkspace.id}
+          onChange={(event) => setActiveWorkspaceId(event.target.value)}
         >
-          <FolderKanban aria-hidden="true" />
-          <span className="hidden sm:inline">Workspace</span>
-        </Button>
+          {orgWorkspaces.map((ws) => (
+            <option key={ws.id} value={ws.id}>
+              {ws.name}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="relative ml-2 hidden max-w-md flex-1 md:block">
@@ -46,8 +84,8 @@ export function Topbar() {
         <Input
           type="search"
           disabled
-          aria-label="Global search (available in Phase 2)"
-          title="Global search arrives in Phase 2"
+          aria-label="Global search (available in a later increment)"
+          title="Global search arrives with the research pipeline"
           placeholder="Search research, trends, content…"
           className="pl-8"
         />
@@ -55,7 +93,7 @@ export function Topbar() {
 
       <div className="ml-auto flex items-center gap-1">
         <Badge variant="muted" className="hidden lg:inline-flex">
-          Phase 1 foundation
+          Phase 2 · Identity & Research
         </Badge>
         <Button size="sm" disabled title="Creation flows arrive in Phase 3">
           <Plus aria-hidden="true" />
@@ -66,7 +104,7 @@ export function Topbar() {
           size="icon"
           disabled
           aria-label="Notifications (none yet)"
-          title="No notifications — notification centre arrives in Phase 2"
+          title="No notifications — notification centre arrives later in Phase 2"
         >
           <Bell aria-hidden="true" />
         </Button>
@@ -82,15 +120,21 @@ export function Topbar() {
           </a>
         </Button>
         <ThemeToggle />
-        <Button
-          variant="ghost"
-          size="icon"
-          disabled
-          aria-label="User menu (available after authentication in Phase 2)"
-          title="Sign-in arrives in Phase 2"
-        >
-          <UserRound aria-hidden="true" />
-        </Button>
+        <div className="ml-1 flex items-center gap-2 border-l border-border pl-2">
+          <span className="hidden max-w-32 truncate text-xs text-muted-foreground sm:inline">
+            {me.user.email}
+          </span>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Sign out"
+            title="Sign out"
+            disabled={logout.isPending}
+            onClick={handleLogout}
+          >
+            <LogOut aria-hidden="true" />
+          </Button>
+        </div>
       </div>
     </header>
   );

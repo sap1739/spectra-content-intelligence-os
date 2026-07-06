@@ -11,3 +11,5 @@ export type { TenantContext, TenantOwned } from './tenant';
 export { decryptSecret, encryptSecret, generateEncryptionKey } from './crypto';
 export type { KeyRing } from './crypto';
 export { REDACTED_VALUE, deepRedact, isSensitiveKey } from './redaction';
+export { CURRENT_SCRYPT_PARAMS, hashPassword, needsRehash, verifyPassword } from './passwords';
+export type { ScryptParams } from './passwords';

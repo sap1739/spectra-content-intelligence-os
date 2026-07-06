@@ -6,7 +6,9 @@
     "types": ["node"],
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-    "strictPropertyInitialization": false
+    "strictPropertyInitialization": false,
+    "declaration": false,
+    "declarationMap": false
   },
   "include": ["src", "test", "vitest.config.ts"]
 }

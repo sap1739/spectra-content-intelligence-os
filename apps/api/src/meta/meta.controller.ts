@@ -1,9 +1,12 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 
-const API_VERSION = '0.1.0';
+import { Public } from '../auth/decorators';
+
+const API_VERSION = '0.2.0';
 
 @ApiTags('meta')
+@Public()
 @Controller({ path: 'meta', version: '1' })
 export class MetaController {
   @Get('version')

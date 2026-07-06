@@ -10,10 +10,11 @@ export class RedisService implements OnModuleDestroy {
 
   constructor() {
     this.client = new IORedis(getApiEnv().REDIS_URL, {
+      // Lazy connect keeps liveness independent of Redis; the offline queue
+      // holds the first commands briefly while the connection establishes.
       lazyConnect: true,
       maxRetriesPerRequest: 1,
       connectTimeout: 2000,
-      enableOfflineQueue: false,
     });
     // Prevent unhandled error events from crashing the process when Redis
     // is down; readiness reports the failure instead.

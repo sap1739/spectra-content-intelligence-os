@@ -1,29 +1,32 @@
 import { expect, test } from '@playwright/test';
 
-test.describe('application shell', () => {
-  test('renders the dashboard with honest empty states', async ({ page }) => {
+/**
+ * Shell smoke tests against the production build WITHOUT a running API:
+ * unauthenticated visitors must land on /login. Authenticated journeys are
+ * covered by API integration tests (and a full-stack e2e suite once the
+ * research pipeline lands).
+ */
+test.describe('unauthenticated shell', () => {
+  test('visiting the app redirects to the login page', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
-    // Dashboard areas exist and are explicit about having no data.
-    await expect(page.getByText('No trending topics yet')).toBeVisible();
-    await expect(page.getByText('No active research')).toBeVisible();
-    // No fabricated analytics anywhere.
-    await expect(page.getByText('Phase 1 foundation')).toBeVisible();
+    await page.waitForURL(/\/login$/);
+    await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+    await expect(page.getByLabel('Email')).toBeVisible();
+    await expect(page.getByLabel('Password')).toBeVisible();
   });
 
-  test('primary navigation reaches research and trends', async ({ page }) => {
-    await page.goto('/');
-    const nav = page.getByRole('navigation', { name: 'Primary' });
-    await expect(nav.getByRole('link', { name: 'Research' })).toBeVisible();
+  test('login validates input client-side before hitting the API', async ({ page }) => {
+    await page.goto('/login');
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await expect(page.getByText(/invalid email/i).first()).toBeVisible();
+  });
 
-    await nav.getByRole('link', { name: 'Research' }).click();
-    await expect(page).toHaveURL(/\/research$/);
-    await expect(page.getByRole('heading', { name: 'Research', exact: true })).toBeVisible();
-    await expect(page.getByText('No research projects yet')).toBeVisible();
-
-    await nav.getByRole('link', { name: 'Trends', exact: true }).click();
-    await expect(page).toHaveURL(/\/trends$/);
-    await expect(page.getByText('No trends detected yet')).toBeVisible();
+  test('register page is reachable and explains password policy', async ({ page }) => {
+    await page.goto('/login');
+    await page.getByRole('link', { name: 'Create an account' }).click();
+    await expect(page).toHaveURL(/\/register$/);
+    await expect(page.getByRole('heading', { name: 'Create your account' })).toBeVisible();
+    await expect(page.getByText('At least 12 characters.')).toBeVisible();
   });
 
   test('unknown routes show the not-found page', async ({ page }) => {
@@ -33,10 +36,12 @@ test.describe('application shell', () => {
     await expect(page.getByRole('link', { name: 'Back to Home' })).toBeVisible();
   });
 
-  test('navigation is keyboard accessible', async ({ page }) => {
-    await page.goto('/');
+  test('login form is keyboard accessible', async ({ page }) => {
+    await page.goto('/login');
+    await page.getByLabel('Email').focus();
+    await page.keyboard.type('user@example.test');
     await page.keyboard.press('Tab');
-    const focused = await page.evaluate(() => document.activeElement?.tagName);
-    expect(['A', 'BUTTON', 'INPUT']).toContain(focused ?? '');
+    const focused = await page.evaluate(() => document.activeElement?.id);
+    expect(focused).toBe('password');
   });
 });

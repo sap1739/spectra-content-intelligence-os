@@ -22,16 +22,16 @@ export function createPrismaClient(options: CreatePrismaClientOptions = {}) {
     log,
   });
 
-  if (!tenantGuard) {
-    return client;
-  }
-
+  // Always return the extended shape (single type) — the guard flag only
+  // toggles enforcement, keeping $transaction overloads intact for callers.
   return client.$extends({
     name: 'tenant-guard',
     query: {
       $allModels: {
         $allOperations({ model, operation, args, query }) {
-          assertTenantScopedArgs(model, operation, args);
+          if (tenantGuard) {
+            assertTenantScopedArgs(model, operation, args);
+          }
           return query(args);
         },
       },

@@ -7,9 +7,11 @@ import {
 } from '@nestjs/swagger';
 import type { FastifyReply } from 'fastify';
 
+import { Public } from '../auth/decorators';
 import { HealthService } from './health.service';
 
 @ApiTags('health')
+@Public()
 // Probes are infrastructure endpoints — exempt from URI versioning.
 @Controller({ path: 'health', version: VERSION_NEUTRAL })
 export class HealthController {
