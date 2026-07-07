@@ -1,8 +1,10 @@
 # Research Architecture
 
 Research is the core product capability: everything downstream (trends, strategy, content)
-consumes its output. Phase 1 ships the contracts, ports, pipeline model and persistence for
-projects/runs/sources/findings. **No external provider is integrated yet.**
+consumes its output. Phase 1 shipped the contracts, ports and pipeline model; **Phase 2
+Increment B made the pipeline real** with first-party RSS + extraction providers, queue-
+executed runs, snapshots, dedup and live trend scoring (see ADR-0015). Paid/web-search
+providers remain unintegrated.
 
 ## 1. Provider ports (`@spectra/research-core`)
 

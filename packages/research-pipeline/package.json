@@ -1,0 +1,31 @@
+{
+  "name": "@spectra/research-pipeline",
+  "version": "0.1.0",
+  "private": true,
+  "description": "First-party research pipeline v1: RSS discovery, snapshotting, extraction, dedup, topic tagging and explainable trend scoring.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run src",
+    "test:integration": "vitest run test",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@spectra/contracts": "workspace:*",
+    "@spectra/database": "workspace:*",
+    "@spectra/knowledge-core": "workspace:*",
+    "@spectra/logging": "workspace:*",
+    "@spectra/research-core": "workspace:*",
+    "@spectra/storage": "workspace:*",
+    "@spectra/trend-core": "workspace:*",
+    "fast-xml-parser": "^4.5.0"
+  },
+  "devDependencies": {
+    "@spectra/config": "workspace:*",
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.0"
+  }
+}

@@ -16,6 +16,7 @@
 | [0012](0012-trend-scoring.md)                 | Versioned, configurable, explainable trend scoring        | Accepted             |
 | [0013](0013-observability.md)                 | pino + correlation ids, OpenTelemetry-ready               | Accepted             |
 | [0014](0014-first-party-session-auth.md)      | First-party session authentication in the API             | Accepted             |
+| [0015](0015-research-pipeline-v1.md)          | Research pipeline v1: first-party RSS, staged executor    | Accepted             |
 
 New significant decisions require a new ADR (`NNNN-kebab-title.md`) using the
 Context / Decision / Rationale / Consequences structure.

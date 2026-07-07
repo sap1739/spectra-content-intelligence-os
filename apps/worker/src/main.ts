@@ -2,9 +2,18 @@ import { existsSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { resolve } from 'node:path';
 
-import { loadEnv, workerEnvSchema } from '@spectra/config';
+import { loadEnv, storageEnvSchema, workerEnvSchema } from '@spectra/config';
+import { createPrismaClient } from '@spectra/database';
 import { createLogger, withCorrelation } from '@spectra/logging';
-import { BullMqJobQueue, BullMqWorkerRuntime, createRedisConnection } from '@spectra/workflow-core';
+import { executeResearchRun } from '@spectra/research-pipeline';
+import { S3ObjectStorageProvider } from '@spectra/storage';
+import {
+  BullMqJobQueue,
+  BullMqWorkerRuntime,
+  JOB_NAMES,
+  SYSTEM_QUEUE,
+  createRedisConnection,
+} from '@spectra/workflow-core';
 import IORedis from 'ioredis';
 
 import {
@@ -14,7 +23,7 @@ import {
   buildHeartbeat,
 } from './heartbeat';
 
-const QUEUE_NAME = 'spectra-system';
+const QUEUE_NAME = SYSTEM_QUEUE;
 
 // Local-dev convenience: load the repo-root .env (real environment variables
 // always take precedence — production injects env via the platform).
@@ -57,6 +66,38 @@ async function main(): Promise<void> {
     { concurrency: 1, timeoutMs: 10_000 },
   );
 
+  // Research pipeline dependencies (Prisma + tenant-scoped object storage).
+  const prisma = createPrismaClient({ datasourceUrl: env.DATABASE_URL });
+  const storage = new S3ObjectStorageProvider(loadEnv(storageEnvSchema));
+  await storage.ensureBucket();
+
+  runtime.register<{ runId: string }, unknown>(
+    JOB_NAMES.researchRunExecute,
+    async (envelope, context) => {
+      const jobLogger = withCorrelation(logger, context.correlationId);
+      jobLogger.info(
+        { runId: envelope.payload.runId, attempt: context.attempt },
+        'Research run started',
+      );
+      const outcome = await executeResearchRun(
+        { prisma, storage, logger: jobLogger },
+        {
+          runId: envelope.payload.runId,
+          signal: context.signal,
+          onProgress: async (percent, note) => {
+            await context.reportProgress({ percent, ...(note ? { note } : {}) });
+          },
+        },
+      );
+      jobLogger.info(
+        { runId: envelope.payload.runId, ...outcome.stats, status: outcome.status },
+        'Research run finished',
+      );
+      return outcome;
+    },
+    { concurrency: 2, timeoutMs: 4 * 60_000 },
+  );
+
   await runtime.start();
   await queue.schedule(HEARTBEAT_JOB_NAME, {}, { everyMs: env.WORKER_HEARTBEAT_INTERVAL_MS });
 
@@ -84,6 +125,7 @@ async function main(): Promise<void> {
     try {
       await runtime.stop();
       await queue.close();
+      await prisma.$disconnect();
       stateRedis.disconnect();
       queueConnection.disconnect();
       workerConnection.disconnect();

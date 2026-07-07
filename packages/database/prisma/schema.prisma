@@ -440,13 +440,44 @@ model ResearchSource {
   duplicateOf  ResearchSource? @relation("SourceDuplicates", fields: [duplicateOfSourceId], references: [id], onDelete: SetNull)
   duplicates   ResearchSource[] @relation("SourceDuplicates")
 
-  findings ResearchFinding[]
+  findings  ResearchFinding[]
+  snapshots SourceSnapshot[]
 
   @@unique([workspaceId, urlHash])
   @@index([projectId, processingStatus])
   @@index([workspaceId, category])
   @@index([duplicateClusterKey])
   @@map("research_sources")
+}
+
+/// Immutable capture of a source at retrieval time. Raw bytes live in
+/// tenant-scoped object storage under `storageKey`; the row is the index.
+model SourceSnapshot {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @db.Uuid
+  workspaceId    String   @db.Uuid
+  sourceId       String   @db.Uuid
+  retrievedAt    DateTime @db.Timestamptz(6)
+  /// SHA-256 of the captured content.
+  contentHash    String
+  storageKey     String
+  mimeType       String
+  sizeBytes      Int
+  extractionStatus SnapshotExtractionStatus @default(PENDING)
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+
+  source   ResearchSource    @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  findings ResearchFinding[]
+
+  @@index([sourceId])
+  @@index([workspaceId, contentHash])
+  @@map("source_snapshots")
+}
+
+enum SnapshotExtractionStatus {
+  PENDING
+  EXTRACTED
+  FAILED
 }
 
 enum FindingStatus {
@@ -463,6 +494,7 @@ model ResearchFinding {
   projectId      String         @db.Uuid
   runId          String?        @db.Uuid
   sourceId       String         @db.Uuid
+  snapshotId     String?        @db.Uuid
   summary        String
   excerpt        String?
   /// { startOffset?, endOffset?, selector?, page? }
@@ -493,6 +525,7 @@ model ResearchFinding {
   project      ResearchProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
   run          ResearchRun?    @relation(fields: [runId], references: [id], onDelete: SetNull)
   source       ResearchSource  @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  snapshot     SourceSnapshot? @relation(fields: [snapshotId], references: [id], onDelete: SetNull)
 
   @@index([projectId, status])
   @@index([sourceId])
@@ -523,6 +556,8 @@ model TrendCandidate {
   workspaceId    String     @db.Uuid
   projectId      String?    @db.Uuid
   verticalId     String?    @db.Uuid
+  /// Stable identity for upserts within a project (e.g. normalized topic keyword).
+  topicKey       String?
   title          String
   summary        String?
   state          TrendState @default(UNVERIFIED)
@@ -549,7 +584,7 @@ model TrendCandidate {
   vertical     CustomVertical?  @relation(fields: [verticalId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId, state])
-  @@index([projectId])
+  @@index([projectId, topicKey])
   @@index([workspaceId, normalizedScore])
   @@map("trend_candidates")
 }

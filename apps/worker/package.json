@@ -2,7 +2,7 @@
   "name": "@spectra/worker",
   "version": "0.1.0",
   "private": true,
-  "description": "Spectra background worker \u2014 queue-backed job execution with heartbeat.",
+  "description": "Spectra background worker — queue-backed job execution with heartbeat.",
   "main": "./dist/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -14,8 +14,11 @@
   },
   "dependencies": {
     "@spectra/config": "workspace:*",
+    "@spectra/database": "workspace:*",
     "@spectra/logging": "workspace:*",
     "@spectra/observability": "workspace:*",
+    "@spectra/research-pipeline": "workspace:*",
+    "@spectra/storage": "workspace:*",
     "@spectra/workflow-core": "workspace:*",
     "ioredis": "5.10.1"
   },

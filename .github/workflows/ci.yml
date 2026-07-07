@@ -60,6 +60,20 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 12
+      minio:
+        image: bitnami/minio:latest
+        env:
+          MINIO_ROOT_USER: spectra-local
+          MINIO_ROOT_PASSWORD: spectra_local_dev
+        ports:
+          - 9000:9000
+    env:
+      STORAGE_ENDPOINT: http://localhost:9000
+      STORAGE_REGION: us-east-1
+      STORAGE_ACCESS_KEY: spectra-local
+      STORAGE_SECRET_KEY: spectra_local_dev
+      STORAGE_BUCKET: spectra-dev
+      STORAGE_FORCE_PATH_STYLE: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -71,6 +85,13 @@ jobs:
       - run: pnpm db:generate
       - run: pnpm db:deploy
       - run: pnpm db:seed
+      - name: Wait for MinIO
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:9000/minio/health/live && exit 0
+            sleep 2
+          done
+          echo "MinIO did not become healthy" && exit 1
       - run: pnpm test:integration
 
   e2e:

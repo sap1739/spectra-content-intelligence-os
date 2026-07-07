@@ -168,3 +168,22 @@ export const updateResearchProjectInputSchema = createResearchProjectInputSchema
   status: z.enum(['DRAFT', 'ACTIVE', 'PAUSED', 'COMPLETED', 'ARCHIVED']).optional(),
 });
 export type UpdateResearchProjectInput = z.infer<typeof updateResearchProjectInputSchema>;
+
+// ---------------------------------------------------------------------------
+// Research runs & review
+// ---------------------------------------------------------------------------
+
+/**
+ * Phase 2 research runs monitor RSS/Atom feeds (first-party provider).
+ * Feed URLs are user-supplied; the UI pre-fills URL-shaped entries from the
+ * vertical's preferred publications.
+ */
+export const startResearchRunInputSchema = z.object({
+  feedUrls: z.array(z.string().url()).min(1).max(25),
+});
+export type StartResearchRunInput = z.infer<typeof startResearchRunInputSchema>;
+
+export const reviewFindingInputSchema = z.object({
+  status: z.enum(['VALIDATED', 'REJECTED']),
+});
+export type ReviewFindingInput = z.infer<typeof reviewFindingInputSchema>;

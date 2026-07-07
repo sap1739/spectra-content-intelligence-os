@@ -6,6 +6,7 @@ import { HealthModule } from './health/health.module';
 import { InfraModule } from './infra/infra.module';
 import { MetaController } from './meta/meta.controller';
 import { ResearchProjectsModule } from './research-projects/research-projects.module';
+import { ResearchRunsModule } from './research-runs/research-runs.module';
 import { TenancyModule } from './tenancy/tenancy.module';
 import { VerticalsModule } from './verticals/verticals.module';
 
@@ -18,6 +19,7 @@ import { VerticalsModule } from './verticals/verticals.module';
     VerticalsModule,
     BrandsModule,
     ResearchProjectsModule,
+    ResearchRunsModule,
   ],
   controllers: [MetaController],
 })

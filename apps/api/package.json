@@ -27,6 +27,7 @@
     "@spectra/logging": "workspace:*",
     "@spectra/observability": "workspace:*",
     "@spectra/security": "workspace:*",
+    "@spectra/workflow-core": "workspace:*",
     "fastify": "5.8.5",
     "ioredis": "5.10.1",
     "reflect-metadata": "^0.2.2",

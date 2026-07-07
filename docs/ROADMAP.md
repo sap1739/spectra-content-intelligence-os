@@ -16,15 +16,18 @@ providers.**
 - Tenant hardening: per-tenant rate limits; evaluate enabling Postgres RLS.
 - ✅ Vertical management UI + CRUD APIs for verticals, brands, workspaces and research
   projects (tenant-isolated, audit-logged). Remaining: brand/project management screens.
-- Research pipeline v1 as worker jobs across the 22 stages with: RSS provider,
-  content-extraction provider, internal-knowledge provider (pgvector adapter + embeddings
-  port), dedup, clustering, claim extraction (structured generation port behind a feature
-  flag), credibility/freshness scoring.
-- New tables: research_questions, research_queries, source_snapshots, extracted_claims,
-  citations, evidence_packs, topic_clusters, documents/chunks.
-- Trend scoring in production: signal ingestion, scoring job, explainable trend UI,
-  watchlists + alerts.
-- Research/trends screens replace empty states with real data; review queues.
+- ✅ Research pipeline v1 (ADR-0015): first-party RSS + extraction providers with SSRF
+  containment, snapshots to object storage, injection quarantine, URL/content/title dedup,
+  keyword topic tagging, credibility/freshness scoring, queue-executed runs with live
+  stage/stats. Remaining: internal-knowledge provider (pgvector + embeddings), claim
+  extraction, scheduled/recurring runs.
+- New tables: ✅ source_snapshots. Remaining: research_questions/queries,
+  extracted_claims, citations, evidence_packs, topic_clusters, documents/chunks.
+- ✅ Trend scoring in production: real signals (freshness/velocity/diversity/credibility)
+  feed the versioned engine; explainable trend UI with per-component breakdown.
+  Remaining: watchlists + alerts, external trend-signal providers.
+- ✅ Research/trends screens show real data: project detail with live run progress,
+  findings review queue (validate/reject), scored trends.
 
 ## Phase 3 — Strategy, Generation & Media
 

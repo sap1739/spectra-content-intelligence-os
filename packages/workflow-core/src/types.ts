@@ -6,6 +6,15 @@
  * See docs/adr/0006-workflow-engine.md.
  */
 
+/** Single system queue shared by API (producer) and worker (consumer). */
+export const SYSTEM_QUEUE = 'spectra-system';
+
+/** Job names — the API/worker contract. Payloads documented at the handlers. */
+export const JOB_NAMES = {
+  heartbeat: 'system.heartbeat',
+  researchRunExecute: 'research.run.execute',
+} as const;
+
 export interface RetryPolicy {
   maxAttempts: number;
   backoff: {

@@ -71,6 +71,9 @@ importers:
       '@spectra/security':
         specifier: workspace:*
         version: link:../../packages/security
+      '@spectra/workflow-core':
+        specifier: workspace:*
+        version: link:../../packages/workflow-core
       fastify:
         specifier: 5.8.5
         version: 5.8.5
@@ -172,12 +175,21 @@ importers:
       '@spectra/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@spectra/database':
+        specifier: workspace:*
+        version: link:../../packages/database
       '@spectra/logging':
         specifier: workspace:*
         version: link:../../packages/logging
       '@spectra/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@spectra/research-pipeline':
+        specifier: workspace:*
+        version: link:../../packages/research-pipeline
+      '@spectra/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
       '@spectra/workflow-core':
         specifier: workspace:*
         version: link:../../packages/workflow-core
@@ -344,6 +356,46 @@ importers:
         specifier: workspace:*
         version: link:../contracts
     devDependencies:
+      '@types/node':
+        specifier: ^22.15.0
+        version: 22.20.0
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)
+
+  packages/research-pipeline:
+    dependencies:
+      '@spectra/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@spectra/database':
+        specifier: workspace:*
+        version: link:../database
+      '@spectra/knowledge-core':
+        specifier: workspace:*
+        version: link:../knowledge-core
+      '@spectra/logging':
+        specifier: workspace:*
+        version: link:../logging
+      '@spectra/research-core':
+        specifier: workspace:*
+        version: link:../research-core
+      '@spectra/storage':
+        specifier: workspace:*
+        version: link:../storage
+      '@spectra/trend-core':
+        specifier: workspace:*
+        version: link:../trend-core
+      fast-xml-parser:
+        specifier: ^4.5.0
+        version: 4.5.7
+    devDependencies:
+      '@spectra/config':
+        specifier: workspace:*
+        version: link:../config
       '@types/node':
         specifier: ^22.15.0
         version: 22.20.0
@@ -2078,6 +2130,10 @@ packages:
   fast-uri@3.1.3:
     resolution: {integrity: sha512-i70LwGWUduXqzicKXWshooq+sWL1K3WUU5rKZNG/0i3a1OSoX3HqhH5WbWwTmqWfor4urUakGPiRQcleRZTwOg==}
 
+  fast-xml-parser@4.5.7:
+    resolution: {integrity: sha512-a6Qh1RMCNbSrU1+sAyAAZH3rTe+OaWJbNZIq0S+ifZciUUOQtlVxBJwoTUE2bYhysmG/RYyI5WJFIKdBahJdrQ==}
+    hasBin: true
+
   fastify-plugin@5.1.0:
     resolution: {integrity: sha512-FAIDA8eovSt5qcDgcBvDuX/v0Cjz0ohGhENZ/wpc3y+oZCY2afZ9Baqql3g/lC+OHRnciQol4ww7tuthOb9idw==}
 
@@ -2712,6 +2768,9 @@ packages:
 
   strip-literal@3.1.0:
     resolution: {integrity: sha512-8r3mkIM/2+PpjHoOtiAW8Rg3jJLHaV7xPwG+YRGrv6FP0wwk/toTpATxWYOW0BKdWwl82VT2tFYi5DlROa0Mxg==}
+
+  strnum@1.1.2:
+    resolution: {integrity: sha512-vrN+B7DBIoTTZjnPNewwhx6cBA/H+IS7rfW68n7XxC1y7uoiGQBxaKzqucGUgavX15dJgiGztLJ8vxuEzwqBdA==}
 
   strtok3@10.3.5:
     resolution: {integrity: sha512-ki4hZQfh5rX0QDLLkOCj+h+CVNkqmp/CMf8v8kZpkNVK6jGQooMytqzLZYUVYIZcFZ6yDB70EfD8POcFXiF5oA==}
@@ -4394,6 +4453,10 @@ snapshots:
 
   fast-uri@3.1.3: {}
 
+  fast-xml-parser@4.5.7:
+    dependencies:
+      strnum: 1.1.2
+
   fastify-plugin@5.1.0: {}
 
   fastify-plugin@6.0.0: {}
@@ -5012,6 +5075,8 @@ snapshots:
   strip-literal@3.1.0:
     dependencies:
       js-tokens: 9.0.1
+
+  strnum@1.1.2: {}
 
   strtok3@10.3.5:
     dependencies:

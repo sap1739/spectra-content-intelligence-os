@@ -4,10 +4,11 @@ Research-first content intelligence, multimedia creation, campaign management, s
 publishing and analytics platform for B2B/B2C businesses, agencies, creators and regulated
 enterprises — built around **user-defined custom verticals** and **evidence-backed content**.
 
-> **Status: Phase 1 — architectural foundation.** The monorepo, domain contracts, database
-> schema, API/worker/web foundations, security and testing standards are in place. No research
-> provider, AI generation API or social platform is integrated yet, and the UI shows honest
-> empty states instead of fabricated data.
+> **Status: Phase 2 in progress.** On top of the Phase 1 foundation: session authentication
+> with permission/tenant guards, vertical/brand/project management, and a working first-party
+> research pipeline — RSS feeds in, snapshotted/deduplicated findings with provenance out,
+> plus explainable trend scores. No paid AI API or social platform is integrated yet; every
+> number in the UI comes from real ingested data.
 
 ## Product workflow (target)
 
@@ -33,6 +34,7 @@ packages/
   logging/        pino structured logging with mandatory secret redaction
   observability/  Correlation IDs (AsyncLocalStorage), health aggregation
   research-core/  11 provider-neutral research ports, registry, 22-stage pipeline model
+  research-pipeline/ First-party RSS pipeline v1: fetch, snapshot, dedup, score (ADR-0015)
   trend-core/     Versioned, explainable TrendScoringEngine + trend lifecycle
   knowledge-core/ Vector store port, chunking, prompt-injection scanner & isolation
   ai-core/        12 AI provider interfaces (contracts only — no paid APIs)

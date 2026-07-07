@@ -89,8 +89,11 @@ export interface FeedItem {
   url: string;
   title?: string;
   summary?: string;
+  /** Raw item HTML (content:encoded / description / atom content) when present. */
+  contentHtml?: string;
   publishedAt?: string;
   author?: string;
+  language?: string;
 }
 
 export interface RSSProvider extends ProviderIdentity {

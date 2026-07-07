@@ -77,7 +77,10 @@ export const workerEnvSchema = z
     WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(100).default(5),
     LOG_LEVEL: logLevelSchema,
   })
-  .merge(redisEnvSchema);
+  .merge(redisEnvSchema)
+  // Research pipeline: persistence + snapshot storage.
+  .merge(databaseEnvSchema)
+  .merge(storageEnvSchema);
 
 export const webEnvSchema = z.object({
   NODE_ENV: nodeEnvSchema,
