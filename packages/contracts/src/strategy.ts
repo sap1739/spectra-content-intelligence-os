@@ -131,6 +131,7 @@ export const campaignStatusSchema = z.enum([
   'COMPLETED',
   'ARCHIVED',
 ]);
+export type CampaignStatus = z.infer<typeof campaignStatusSchema>;
 
 export const campaignSchema = z
   .object({
@@ -187,6 +188,7 @@ export const contentTypeSchema = z.enum([
   'EMAIL',
   'OTHER',
 ]);
+export type ContentType = z.infer<typeof contentTypeSchema>;
 
 export const generationRecordSchema = z.object({
   jobId: z.string().nullish(),

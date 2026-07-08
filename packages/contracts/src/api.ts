@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { languageCodeSchema, slugSchema, uuidSchema } from './common';
+import { contentTypeSchema, funnelStageSchema } from './strategy';
 import { roleSchema } from './tenancy';
 import { customVerticalSchema } from './vertical';
 import { brandSchema } from './vertical';
@@ -216,3 +217,28 @@ export const createInvitationInputSchema = z.object({
   role: roleSchema.default('READ_ONLY'),
 });
 export type CreateInvitationInput = z.infer<typeof createInvitationInputSchema>;
+
+// ---------------------------------------------------------------------------
+// Content items & evidence-grounded drafts (Phase 3)
+// ---------------------------------------------------------------------------
+
+export const createContentItemInputSchema = z.object({
+  title: z.string().min(1).max(500),
+  contentType: contentTypeSchema.default('POST'),
+  objective: z.string().max(2000).optional(),
+  funnelStage: funnelStageSchema.optional(),
+  campaignId: uuidSchema.optional(),
+  brandId: uuidSchema.optional(),
+  verticalId: uuidSchema.optional(),
+  /** Optional evidence pack to ground drafts on (must be in the same tenant). */
+  evidencePackId: uuidSchema.optional(),
+});
+export type CreateContentItemInput = z.infer<typeof createContentItemInputSchema>;
+
+export const generateDraftInputSchema = z.object({
+  /** Extra trusted guidance appended to the prompt instructions. */
+  additionalGuidance: z.string().max(2000).optional(),
+  targetPlatform: z.string().max(100).optional(),
+  maxOutputTokens: z.number().int().min(256).max(8000).optional(),
+});
+export type GenerateDraftInput = z.infer<typeof generateDraftInputSchema>;

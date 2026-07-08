@@ -37,7 +37,9 @@ packages/
   research-pipeline/ First-party RSS pipeline v1: fetch, snapshot, dedup, score (ADR-0015)
   trend-core/     Versioned, explainable TrendScoringEngine + trend lifecycle
   knowledge-core/ Vector store port, chunking, prompt-injection scanner & isolation
-  ai-core/        12 AI provider interfaces (contracts only — no paid APIs)
+  ai-core/        12 provider-neutral AI interfaces (ports; vendors plug in behind them)
+  ai-anthropic/   Anthropic Claude adapter for the TextGenerationProvider port (env-gated; ADR-0017)
+  content-pipeline/ Evidence-grounded drafting: prompt isolation + cited draft generation (ADR-0017)
   media-core/     Rendering ports (Sharp/SVG/HTML-to-image/FFmpeg/Remotion/subtitles/audio)
   social-core/    SocialPublisher port + capability guards (no platform integrated)
   workflow-core/  Queue-neutral job ports; BullMQ + in-memory adapters
@@ -48,7 +50,7 @@ infrastructure/
   docker/         PostgreSQL (pgvector), Redis, MinIO via Docker Compose
   scripts/        bootstrap.sh, verify.sh
 docs/             Product, architecture, security and strategy documentation
-docs/adr/         13 Architecture Decision Records
+docs/adr/         17 Architecture Decision Records
 ```
 
 ## Quick start

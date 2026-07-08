@@ -47,10 +47,10 @@ model User {
   updatedAt DateTime  @updatedAt @db.Timestamptz(6)
   deletedAt DateTime? @db.Timestamptz(6)
 
-  memberships      Membership[]
-  createdResearch  ResearchProject[] @relation("ResearchProjectCreatedBy")
-  auditLogs        AuditLog[]
-  credential       Credential?
+  memberships     Membership[]
+  createdResearch ResearchProject[] @relation("ResearchProjectCreatedBy")
+  auditLogs       AuditLog[]
+  credential      Credential?
 
   @@index([status])
   @@map("users")
@@ -100,6 +100,9 @@ model Organization {
   auditLogs        AuditLog[]
   invitations      Invitation[]
   trendWatchlists  TrendWatchlist[]
+  campaigns        Campaign[]
+  contentItems     ContentItem[]
+  contentDrafts    ContentDraft[]
 
   @@map("organizations")
 }
@@ -127,16 +130,16 @@ enum MembershipStatus {
 }
 
 model Membership {
-  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String           @db.Uuid
-  userId         String           @db.Uuid
-  role           MembershipRole
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String           @db.Uuid
+  userId           String           @db.Uuid
+  role             MembershipRole
   /// Explicit permission grants beyond the role bundle (permission strings).
-  extraPermissions String[]       @default([])
+  extraPermissions String[]         @default([])
   /// Optional restriction to specific workspaces; empty = all in org.
-  workspaceIds   String[]         @default([]) @db.Uuid
-  status         MembershipStatus @default(ACTIVE)
-  invitedById    String?          @db.Uuid
+  workspaceIds     String[]         @default([]) @db.Uuid
+  status           MembershipStatus @default(ACTIVE)
+  invitedById      String?          @db.Uuid
 
   createdAt DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt DateTime  @updatedAt @db.Timestamptz(6)
@@ -199,6 +202,9 @@ model Workspace {
   researchFindings ResearchFinding[]
   trendCandidates  TrendCandidate[]
   trendWatchlists  TrendWatchlist[]
+  campaigns        Campaign[]
+  contentItems     ContentItem[]
+  contentDrafts    ContentDraft[]
 
   @@unique([organizationId, slug])
   @@index([organizationId, status])
@@ -237,6 +243,8 @@ model Brand {
   workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   researchProjects ResearchProject[]
+  campaigns        Campaign[]
+  contentItems     ContentItem[]
 
   @@unique([workspaceId, slug])
   @@index([organizationId])
@@ -254,38 +262,38 @@ enum VerticalStatus {
 /// no hard-coded industry list. Structured collections live in typed JSONB
 /// validated by @spectra/contracts customVerticalSchema at the API boundary.
 model CustomVertical {
-  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String         @db.Uuid
-  workspaceId    String         @db.Uuid
-  slug           String
-  name           String
-  description    String?
-  industry       String?
-  subIndustry    String?
-  businessModel  String?
-  products       String[]       @default([])
-  services       String[]       @default([])
+  id                       String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId           String         @db.Uuid
+  workspaceId              String         @db.Uuid
+  slug                     String
+  name                     String
+  description              String?
+  industry                 String?
+  subIndustry              String?
+  businessModel            String?
+  products                 String[]       @default([])
+  services                 String[]       @default([])
   /// [{ name, description?, roles[], seniority? }]
-  targetAudiences Json          @default("[]")
-  customerPainPoints String[]   @default([])
-  geographies    String[]       @default([])
-  languages      String[]       @default([])
+  targetAudiences          Json           @default("[]")
+  customerPainPoints       String[]       @default([])
+  geographies              String[]       @default([])
+  languages                String[]       @default([])
   /// [{ name, websiteUrl?, notes? }]
-  competitors    Json           @default("[]")
-  keywords       String[]       @default([])
-  excludedKeywords String[]     @default([])
-  trustedDomains String[]       @default([])
-  blockedDomains String[]       @default([])
-  preferredPublications String[] @default([])
-  regulatoryConsiderations String[] @default([])
+  competitors              Json           @default("[]")
+  keywords                 String[]       @default([])
+  excludedKeywords         String[]       @default([])
+  trustedDomains           String[]       @default([])
+  blockedDomains           String[]       @default([])
+  preferredPublications    String[]       @default([])
+  regulatoryConsiderations String[]       @default([])
   /// [{ name, startMonth?, endMonth?, notes? }]
-  seasonalEvents Json           @default("[]")
-  commercialObjectives String[] @default([])
-  contentObjectives String[]    @default([])
-  preferredPlatforms String[]   @default([])
+  seasonalEvents           Json           @default("[]")
+  commercialObjectives     String[]       @default([])
+  contentObjectives        String[]       @default([])
+  preferredPlatforms       String[]       @default([])
   /// [{ criterion, weight }] — brand-specific relevance criteria for scoring.
-  relevanceCriteria Json        @default("[]")
-  status         VerticalStatus @default(DRAFT)
+  relevanceCriteria        Json           @default("[]")
+  status                   VerticalStatus @default(DRAFT)
 
   createdAt DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt DateTime  @updatedAt @db.Timestamptz(6)
@@ -296,6 +304,8 @@ model CustomVertical {
 
   researchProjects ResearchProject[]
   trendCandidates  TrendCandidate[]
+  campaigns        Campaign[]
+  contentItems     ContentItem[]
 
   @@unique([workspaceId, slug])
   @@index([organizationId])
@@ -316,21 +326,21 @@ enum ResearchProjectStatus {
 }
 
 model ResearchProject {
-  id             String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String                @db.Uuid
-  workspaceId    String                @db.Uuid
-  verticalId     String?               @db.Uuid
-  brandId        String?               @db.Uuid
-  name           String
-  description    String?
+  id                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String                @db.Uuid
+  workspaceId          String                @db.Uuid
+  verticalId           String?               @db.Uuid
+  brandId              String?               @db.Uuid
+  name                 String
+  description          String?
   /// The user's research objective in their own words.
-  objective      String?
-  status         ResearchProjectStatus @default(DRAFT)
-  createdById    String?               @db.Uuid
+  objective            String?
+  status               ResearchProjectStatus @default(DRAFT)
+  createdById          String?               @db.Uuid
   /// Recurring-run cadence; null = manual runs only. The worker dispatcher
   /// reads these when the per-project scheduler fires.
   scheduleEveryMinutes Int?
-  scheduleFeedUrls     String[]        @default([])
+  scheduleFeedUrls     String[]              @default([])
 
   createdAt DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt DateTime  @updatedAt @db.Timestamptz(6)
@@ -429,45 +439,45 @@ enum SourceProcessingStatus {
 }
 
 model ResearchSource {
-  id             String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String                 @db.Uuid
-  workspaceId    String                 @db.Uuid
-  projectId      String                 @db.Uuid
-  runId          String?                @db.Uuid
-  url            String
-  canonicalUrl   String?
+  id                  String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId      String                 @db.Uuid
+  workspaceId         String                 @db.Uuid
+  projectId           String                 @db.Uuid
+  runId               String?                @db.Uuid
+  url                 String
+  canonicalUrl        String?
   /// SHA-256 of the normalized URL — exact-duplicate detection per workspace.
-  urlHash        String
-  title          String?
-  publisher      String?
-  author         String?
-  publishedAt    DateTime?              @db.Timestamptz(6)
-  retrievedAt    DateTime               @db.Timestamptz(6)
-  language       String?
-  geography      String?
-  category       SourceCategory         @default(WEB)
-  credibilityScore Float?
-  freshnessScore Float?
-  duplicateOfSourceId String?           @db.Uuid
+  urlHash             String
+  title               String?
+  publisher           String?
+  author              String?
+  publishedAt         DateTime?              @db.Timestamptz(6)
+  retrievedAt         DateTime               @db.Timestamptz(6)
+  language            String?
+  geography           String?
+  category            SourceCategory         @default(WEB)
+  credibilityScore    Float?
+  freshnessScore      Float?
+  duplicateOfSourceId String?                @db.Uuid
   duplicateClusterKey String?
   /// SHA-256 of extracted content — near-duplicate clustering input.
-  contentHash    String?
+  contentHash         String?
   /// { license?, rightsHolder?, attributionRequired?, usageNotes? }
-  copyright      Json?
+  copyright           Json?
   /// { providerId, providerKind, requestRef?, retrievedAt, pipelineVersion? }
-  provenance     Json
-  processingStatus SourceProcessingStatus @default(DISCOVERED)
-  metadata       Json                   @default("{}")
+  provenance          Json
+  processingStatus    SourceProcessingStatus @default(DISCOVERED)
+  metadata            Json                   @default("{}")
 
   createdAt DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt DateTime  @updatedAt @db.Timestamptz(6)
   deletedAt DateTime? @db.Timestamptz(6)
 
-  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  workspace    Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  project      ResearchProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  run          ResearchRun?    @relation(fields: [runId], references: [id], onDelete: SetNull)
-  duplicateOf  ResearchSource? @relation("SourceDuplicates", fields: [duplicateOfSourceId], references: [id], onDelete: SetNull)
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project      ResearchProject  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  run          ResearchRun?     @relation(fields: [runId], references: [id], onDelete: SetNull)
+  duplicateOf  ResearchSource?  @relation("SourceDuplicates", fields: [duplicateOfSourceId], references: [id], onDelete: SetNull)
   duplicates   ResearchSource[] @relation("SourceDuplicates")
 
   findings  ResearchFinding[]
@@ -483,18 +493,18 @@ model ResearchSource {
 /// Immutable capture of a source at retrieval time. Raw bytes live in
 /// tenant-scoped object storage under `storageKey`; the row is the index.
 model SourceSnapshot {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String   @db.Uuid
-  workspaceId    String   @db.Uuid
-  sourceId       String   @db.Uuid
-  retrievedAt    DateTime @db.Timestamptz(6)
+  id               String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String                   @db.Uuid
+  workspaceId      String                   @db.Uuid
+  sourceId         String                   @db.Uuid
+  retrievedAt      DateTime                 @db.Timestamptz(6)
   /// SHA-256 of the captured content.
-  contentHash    String
-  storageKey     String
-  mimeType       String
-  sizeBytes      Int
+  contentHash      String
+  storageKey       String
+  mimeType         String
+  sizeBytes        Int
   extractionStatus SnapshotExtractionStatus @default(PENDING)
-  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+  createdAt        DateTime                 @default(now()) @db.Timestamptz(6)
 
   source   ResearchSource    @relation(fields: [sourceId], references: [id], onDelete: Cascade)
   findings ResearchFinding[]
@@ -518,33 +528,33 @@ enum FindingStatus {
 }
 
 model ResearchFinding {
-  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String         @db.Uuid
-  workspaceId    String         @db.Uuid
-  projectId      String         @db.Uuid
-  runId          String?        @db.Uuid
-  sourceId       String         @db.Uuid
-  snapshotId     String?        @db.Uuid
-  summary        String
-  excerpt        String?
+  id                       String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId           String         @db.Uuid
+  workspaceId              String         @db.Uuid
+  projectId                String         @db.Uuid
+  runId                    String?        @db.Uuid
+  sourceId                 String         @db.Uuid
+  snapshotId               String?        @db.Uuid
+  summary                  String
+  excerpt                  String?
   /// { startOffset?, endOffset?, selector?, page? }
-  excerptLocation Json?
-  confidence     Float?
-  credibilityScore Float?
-  freshnessScore Float?
-  language       String?
-  geography      String?
-  duplicateClusterKey String?
-  sourceCategory SourceCategory @default(WEB)
-  topics         String[]       @default([])
-  entities       String[]       @default([])
-  corroboratedByFindingIds String[] @default([]) @db.Uuid
+  excerptLocation          Json?
+  confidence               Float?
+  credibilityScore         Float?
+  freshnessScore           Float?
+  language                 String?
+  geography                String?
+  duplicateClusterKey      String?
+  sourceCategory           SourceCategory @default(WEB)
+  topics                   String[]       @default([])
+  entities                 String[]       @default([])
+  corroboratedByFindingIds String[]       @default([]) @db.Uuid
   /// { license?, rightsHolder?, attributionRequired?, usageNotes? }
-  copyright      Json?
+  copyright                Json?
   /// { providerId, providerKind, requestRef?, retrievedAt, pipelineVersion? }
-  provenance     Json
-  status         FindingStatus  @default(PENDING_REVIEW)
-  processingStage String?
+  provenance               Json
+  status                   FindingStatus  @default(PENDING_REVIEW)
+  processingStage          String?
 
   createdAt DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt DateTime  @updatedAt @db.Timestamptz(6)
@@ -588,19 +598,19 @@ enum ClaimVerificationStatus {
 /// Heuristically extracted claims (ADR-0016). One row per normalized claim
 /// per project; corroboration = supported by ≥2 distinct sources.
 model ExtractedClaim {
-  id             String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String                  @db.Uuid
-  workspaceId    String                  @db.Uuid
-  projectId      String                  @db.Uuid
-  text           String
+  id                   String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String                  @db.Uuid
+  workspaceId          String                  @db.Uuid
+  projectId            String                  @db.Uuid
+  text                 String
   /// titleKey-normalized claim text — the per-project dedupe identity.
-  normalizedKey  String
-  claimType      ClaimType               @default(FACTUAL)
-  verificationStatus ClaimVerificationStatus @default(UNVERIFIED)
-  supportingFindingIds String[]          @default([]) @db.Uuid
+  normalizedKey        String
+  claimType            ClaimType               @default(FACTUAL)
+  verificationStatus   ClaimVerificationStatus @default(UNVERIFIED)
+  supportingFindingIds String[]                @default([]) @db.Uuid
   /// Distinct sources backing the claim (drives corroboration).
-  sourceCount    Int                     @default(1)
-  confidence     Float?
+  sourceCount          Int                     @default(1)
+  confidence           Float?
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
@@ -654,20 +664,20 @@ enum EvidencePackStatus {
 /// Curated bundle of findings/claims/citations per trend topic — the input
 /// contract for content generation (Phase 3).
 model EvidencePack {
-  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId   String             @db.Uuid
-  workspaceId      String             @db.Uuid
-  projectId        String             @db.Uuid
-  trendCandidateId String?            @db.Uuid
-  topicKey         String
-  title            String
-  summary          String?
-  status           EvidencePackStatus @default(DRAFT)
-  findingIds       String[]           @default([]) @db.Uuid
-  claimIds         String[]           @default([]) @db.Uuid
-  citationIds      String[]           @default([]) @db.Uuid
+  id                   String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String             @db.Uuid
+  workspaceId          String             @db.Uuid
+  projectId            String             @db.Uuid
+  trendCandidateId     String?            @db.Uuid
+  topicKey             String
+  title                String
+  summary              String?
+  status               EvidencePackStatus @default(DRAFT)
+  findingIds           String[]           @default([]) @db.Uuid
+  claimIds             String[]           @default([]) @db.Uuid
+  citationIds          String[]           @default([]) @db.Uuid
   /// Forward lineage: which generated content consumed this pack.
-  usedByContentItemIds String[]       @default([]) @db.Uuid
+  usedByContentItemIds String[]           @default([]) @db.Uuid
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
@@ -683,19 +693,19 @@ model EvidencePack {
 /// research findings (documentId = source id, metadata.kind marks it);
 /// uploaded documents join in Phase 3. Vector ops via PgVectorStore raw SQL.
 model DocumentChunk {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String   @db.Uuid
-  workspaceId    String   @db.Uuid
+  id                String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String                      @db.Uuid
+  workspaceId       String                      @db.Uuid
   /// Collection isolates embedding models — one model per collection.
-  collection     String
-  documentId     String   @db.Uuid
-  index          Int      @default(0)
-  text           String
-  metadata       Json     @default("{}")
+  collection        String
+  documentId        String                      @db.Uuid
+  index             Int                         @default(0)
+  text              String
+  metadata          Json                        @default("{}")
   embeddingProvider String
-  embeddingModel String
-  dimensions     Int
-  embedding      Unsupported("vector(256)")?
+  embeddingModel    String
+  dimensions        Int
+  embedding         Unsupported("vector(256)")?
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
@@ -767,28 +777,28 @@ enum TrendState {
 }
 
 model TrendCandidate {
-  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String     @db.Uuid
-  workspaceId    String     @db.Uuid
-  projectId      String?    @db.Uuid
-  verticalId     String?    @db.Uuid
+  id                   String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String     @db.Uuid
+  workspaceId          String     @db.Uuid
+  projectId            String?    @db.Uuid
+  verticalId           String?    @db.Uuid
   /// Stable identity for upserts within a project (e.g. normalized topic keyword).
-  topicKey       String?
-  title          String
-  summary        String?
-  state          TrendState @default(UNVERIFIED)
+  topicKey             String?
+  title                String
+  summary              String?
+  state                TrendState @default(UNVERIFIED)
   /// Normalized [0,1] score from the latest scoring run.
-  normalizedScore Float?
+  normalizedScore      Float?
   /// Full TrendScoreResult (components + explanation) — always explainable.
-  latestScore    Json?
-  scoringConfigId String?
+  latestScore          Json?
+  scoringConfigId      String?
   scoringConfigVersion String?
   /// Trend signals referenced by this candidate.
-  signals        Json       @default("[]")
-  sourceIds      String[]   @default([]) @db.Uuid
-  findingIds     String[]   @default([]) @db.Uuid
-  firstSeenAt    DateTime?  @db.Timestamptz(6)
-  lastSeenAt     DateTime?  @db.Timestamptz(6)
+  signals              Json       @default("[]")
+  sourceIds            String[]   @default([]) @db.Uuid
+  findingIds           String[]   @default([]) @db.Uuid
+  firstSeenAt          DateTime?  @db.Timestamptz(6)
+  lastSeenAt           DateTime?  @db.Timestamptz(6)
 
   createdAt DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt DateTime  @updatedAt @db.Timestamptz(6)
@@ -804,6 +814,176 @@ model TrendCandidate {
   @@index([projectId, topicKey])
   @@index([workspaceId, normalizedScore])
   @@map("trend_candidates")
+}
+
+// ---------------------------------------------------------------------------
+// Content strategy & generation (Phase 3)
+// ---------------------------------------------------------------------------
+
+enum CampaignStatus {
+  DRAFT
+  PLANNED
+  ACTIVE
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+
+enum FunnelStage {
+  AWARENESS
+  CONSIDERATION
+  CONVERSION
+  RETENTION
+  ADVOCACY
+}
+
+enum ContentType {
+  POST
+  ARTICLE
+  THREAD
+  VIDEO_SCRIPT
+  IMAGE
+  CAROUSEL
+  SHORT_VIDEO
+  LONG_VIDEO
+  AUDIO
+  EMAIL
+  OTHER
+}
+
+/// Mirrors CONTENT_LIFECYCLE_STATES in @spectra/contracts — never scattered strings.
+enum ContentLifecycleState {
+  IDEA
+  RESEARCHING
+  RESEARCH_READY
+  BRIEF
+  STRATEGY
+  DRAFT
+  GENERATED
+  EDITING
+  REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+  SCHEDULED
+  PUBLISHING
+  PUBLISHED
+  PARTIALLY_PUBLISHED
+  FAILED
+  ARCHIVED
+}
+
+model Campaign {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String         @db.Uuid
+  workspaceId    String         @db.Uuid
+  brandId        String?        @db.Uuid
+  verticalId     String?        @db.Uuid
+  name           String
+  description    String?
+  status         CampaignStatus @default(DRAFT)
+  /// Display timezone for planning; storage remains UTC.
+  timezone       String         @default("UTC")
+  startAt        DateTime?      @db.Timestamptz(6)
+  endAt          DateTime?      @db.Timestamptz(6)
+  createdById    String?        @db.Uuid
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  vertical     CustomVertical? @relation(fields: [verticalId], references: [id], onDelete: SetNull)
+  brand        Brand?          @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  contentItems ContentItem[]
+
+  @@index([workspaceId, status])
+  @@map("campaigns")
+}
+
+/// A durable content object. Every item can be traced to the evidence pack,
+/// citations and findings it was grounded on, plus each generation attempt.
+model ContentItem {
+  id                String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String                @db.Uuid
+  workspaceId       String                @db.Uuid
+  campaignId        String?               @db.Uuid
+  brandId           String?               @db.Uuid
+  verticalId        String?               @db.Uuid
+  title             String
+  contentType       ContentType           @default(POST)
+  lifecycleState    ContentLifecycleState @default(IDEA)
+  funnelStage       FunnelStage?
+  /// The operator's objective for this piece, in their own words (trusted).
+  objective         String?
+  /// Current best body (latest accepted draft, or human edit).
+  body              String?
+  /// Grounding lineage — which evidence this item draws on. Never fabricated.
+  evidencePackId    String?               @db.Uuid
+  researchProjectId String?               @db.Uuid
+  topicKey          String?
+  findingIds        String[]              @default([]) @db.Uuid
+  citationIds       String[]              @default([]) @db.Uuid
+  createdById       String?               @db.Uuid
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaign     Campaign?       @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  brand        Brand?          @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  vertical     CustomVertical? @relation(fields: [verticalId], references: [id], onDelete: SetNull)
+  drafts       ContentDraft[]
+
+  @@index([workspaceId, lifecycleState])
+  @@index([campaignId])
+  @@map("content_items")
+}
+
+enum ContentDraftStatus {
+  GENERATING
+  READY
+  FAILED
+}
+
+/// One AI generation attempt. Records the exact citations/findings supplied as
+/// grounding plus the model and prompt version — outputs are attributable and
+/// regressions bisectable. Citations here are the ones the draft was grounded
+/// on, never fabricated post-hoc.
+model ContentDraft {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String             @db.Uuid
+  workspaceId       String             @db.Uuid
+  contentItemId     String             @db.Uuid
+  status            ContentDraftStatus @default(GENERATING)
+  body              String?
+  /// Grounding actually supplied to the model for THIS draft.
+  evidencePackId    String?            @db.Uuid
+  citationIds       String[]           @default([]) @db.Uuid
+  findingIds        String[]           @default([]) @db.Uuid
+  /// Generation record — versioned for attribution (GenerationRecord contract).
+  modelProvider     String?
+  modelName         String?
+  modelVersion      String?
+  promptTemplateId  String?
+  promptVersion     String?
+  usageInputTokens  Int?
+  usageOutputTokens Int?
+  finishReason      String?
+  failureReason     String?
+  createdById       String?            @db.Uuid
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contentItem  ContentItem  @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+
+  @@index([contentItemId, createdAt])
+  @@map("content_drafts")
 }
 
 // ---------------------------------------------------------------------------

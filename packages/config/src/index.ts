@@ -1,5 +1,6 @@
 export {
   EnvValidationError,
+  aiEnvSchema,
   apiEnvSchema,
   databaseEnvSchema,
   loadEnv,

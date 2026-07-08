@@ -1,8 +1,12 @@
 # AI Provider Strategy
 
-**Phase 1 status: interfaces only. No AI API — paid or free — is called anywhere in this
-codebase.** `@spectra/ai-core` defines twelve ports so later phases plug vendors in without
-touching domain logic.
+**Status: text generation wired behind the port (Phase 3A). `@spectra/ai-core` defines twelve
+ports; `@spectra/ai-anthropic` is the first adapter, implementing `TextGenerationProvider` via
+Anthropic Claude.** It is env-gated on `ANTHROPIC_API_KEY` — with no key the provider is
+honestly unavailable (`isConfigured === false`; draft endpoints return 503) and no output is
+ever fabricated (ADR-0017). The remaining eleven ports (structured, embeddings, image, video,
+audio, music, moderation, translation, TTS, STT) are still interfaces only. Domain logic
+depends solely on the ports, so vendors remain swappable per tenant and per task.
 
 ## 1. Ports
 

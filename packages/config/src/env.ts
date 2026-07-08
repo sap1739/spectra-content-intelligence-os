@@ -49,6 +49,17 @@ export const storageEnvSchema = z.object({
     .transform((v) => v === 'true'),
 });
 
+/**
+ * AI provider config. Every field is OPTIONAL — the platform runs without a
+ * key and reports generation as honestly unavailable (no fabricated output).
+ * The key is a secret: `loadEnv` never echoes values, only key names.
+ */
+export const aiEnvSchema = z.object({
+  ANTHROPIC_API_KEY: z.string().min(1).optional(),
+  ANTHROPIC_MODEL: z.string().min(1).default('claude-opus-4-8'),
+  ANTHROPIC_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(256).max(64000).default(4096),
+});
+
 export const apiEnvSchema = z
   .object({
     NODE_ENV: nodeEnvSchema,
@@ -68,7 +79,8 @@ export const apiEnvSchema = z
     LOG_LEVEL: logLevelSchema,
   })
   .merge(databaseEnvSchema)
-  .merge(redisEnvSchema);
+  .merge(redisEnvSchema)
+  .merge(aiEnvSchema);
 
 export const workerEnvSchema = z
   .object({

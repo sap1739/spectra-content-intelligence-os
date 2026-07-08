@@ -67,8 +67,25 @@ Migration `..._init` enables the `vector` extension. Phase 2 adds embedding tabl
   membership, workspace, brand, one fully worked vertical and one DRAFT research project.
   **No fabricated findings, trends or analytics.**
 
-## 7. Future entities
+## 7. Phase 3 content-generation entities
 
-Contract-only entities (claims, citations, evidence packs, strategy/content, social accounts,
+| Table          | Purpose                                                       | Key constraints / indexes                             |
+| -------------- | ------------------------------------------------------------- | ----------------------------------------------------- |
+| campaigns      | Campaign container (brand, vertical, status, schedule window) | index(workspaceId, status)                            |
+| content_items  | Durable content object w/ lifecycle + grounding lineage       | index(workspaceId, lifecycleState); index(campaignId) |
+| content_drafts | One AI generation attempt w/ full provenance                  | index(contentItemId, createdAt)                       |
+
+`content_items` carry grounding lineage columns (`evidencePackId`, `researchProjectId`,
+`topicKey`, `findingIds[]`, `citationIds[]`) so every item traces back to the research it draws
+on; the lifecycle is the `ContentLifecycleState` enum (mirrors `@spectra/contracts`, never
+scattered strings). `content_drafts` record the exact grounded citation/finding id sets plus the
+model provider/name/version, versioned prompt template id + version, token usage and finish
+reason — outputs are attributable and regressions bisectable (ADR-0017). Citations shown to
+users come from the evidence pack, never from the model. Org/workspace cascade; `campaignId`,
+`brandId`, `verticalId` use `SET NULL`.
+
+## 8. Future entities
+
+Remaining contract-only entities (personas, pillars, angles, briefs, calendar, social accounts,
 knowledge documents) are documented in [DOMAIN_MODEL.md](DOMAIN_MODEL.md) §6 and materialize
 in later phases with their own migrations + doc updates.

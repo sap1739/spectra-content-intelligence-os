@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { AuthModule } from './auth/auth.module';
 import { BrandsModule } from './brands/brands.module';
+import { ContentModule } from './content/content.module';
 import { HealthModule } from './health/health.module';
 import { InfraModule } from './infra/infra.module';
 import { MetaController } from './meta/meta.controller';
@@ -22,6 +23,7 @@ import { VerticalsModule } from './verticals/verticals.module';
     ResearchProjectsModule,
     ResearchRunsModule,
     KnowledgeModule,
+    ContentModule,
   ],
   controllers: [MetaController],
 })

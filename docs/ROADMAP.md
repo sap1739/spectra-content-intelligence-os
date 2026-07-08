@@ -36,11 +36,18 @@ providers.**
 - ✅ Research/trends screens show real data: project detail with live run progress,
   findings review queue (validate/reject), scored trends.
 
-## Phase 3 — Strategy, Generation & Media
+## Phase 3 — Strategy, Generation & Media (in progress)
 
+- ✅ **Increment A — cited draft generation.** First paid AI adapter
+  (`@spectra/ai-anthropic`) behind the ai-core `TextGenerationProvider` port, env-gated with
+  an honest unavailable state (no key → 503, never fabricated text). `@spectra/content-pipeline`
+  grounds drafts in evidence packs (findings + citations), separating trusted instructions from
+  wrapped untrusted evidence; each `ContentDraft` records the exact grounded citation/finding
+  ids plus model + versioned prompt for full provenance. Content Studio UI with the honest
+  availability banner (ADR-0017). Schema: `Campaign`, `ContentItem`, `ContentDraft`.
 - Strategy entities (personas, pillars, angles, campaigns, briefs, calendar) + UI.
-- Text generation via ai-core adapters with evidence-pack grounding, citations rendered in
-  drafts, moderation gate; prompt template registry (versioned).
+- Citation-placement validation (flag `[n]` markers with no backing source), moderation gate
+  before publish, versioned prompt-template registry, async generation via worker + streaming.
 - Media pipeline: sharp image ops → ffmpeg audio/video → sandboxed HTML-to-image →
   (license-permitting) Remotion.
 - Full content lifecycle with review/approval flows and audit history.
