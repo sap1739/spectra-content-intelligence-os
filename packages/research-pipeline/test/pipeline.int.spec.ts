@@ -138,6 +138,15 @@ describe('research pipeline integration', () => {
         status: 'ACTIVE',
       },
     });
+    await prisma.trendWatchlist.create({
+      data: {
+        organizationId: orgId,
+        workspaceId: workspace.id,
+        name: 'IT watch',
+        keywords: ['AI testing'],
+        threshold: 0.3,
+      },
+    });
     const run = await prisma.researchRun.create({
       data: {
         organizationId: orgId,

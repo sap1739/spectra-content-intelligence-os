@@ -21,6 +21,7 @@ import * as React from 'react';
 import { PageHeader } from '@/components/page-header';
 import { useWorkspace } from '@/lib/auth';
 import { useClaims, useEvidencePacks, type ClaimRow } from '@/lib/knowledge';
+import { useClearSchedule, useSetSchedule } from '@/lib/team';
 import {
   isRunActive,
   useFindings,
@@ -176,6 +177,10 @@ export default function ResearchProjectPage() {
   const [tab, setTab] = React.useState<(typeof REVIEW_TABS)[number]['key']>('PENDING_REVIEW');
   const findings = useFindings(workspaceId, projectId, tab);
 
+  const setSchedule = useSetSchedule(workspaceId, projectId);
+  const clearSchedule = useClearSchedule(workspaceId, projectId);
+  const [cadence, setCadence] = React.useState('1440');
+
   const [feedsRaw, setFeedsRaw] = React.useState('');
   const feedUrls = parseFeedUrls(feedsRaw);
   const feedsValid = feedUrls.length > 0 && feedUrls.every((u) => /^https?:\/\/.+/i.test(u));
@@ -264,6 +269,63 @@ export default function ResearchProjectPage() {
                   <Play aria-hidden="true" />
                   {startRun.isPending ? 'Queueing…' : 'Run research'}
                 </Button>
+              </div>
+
+              <div className="mt-1 border-t border-border pt-3">
+                {project.data.scheduleEveryMinutes ? (
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground">Recurring:</span> every{' '}
+                      {project.data.scheduleEveryMinutes >= 60
+                        ? `${project.data.scheduleEveryMinutes / 60} hour(s)`
+                        : `${project.data.scheduleEveryMinutes} min`}{' '}
+                      over {project.data.scheduleFeedUrls.length} feed(s)
+                    </p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={clearSchedule.isPending}
+                      onClick={() => clearSchedule.mutate()}
+                    >
+                      Remove schedule
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="schedule-cadence">Run automatically</Label>
+                      <select
+                        id="schedule-cadence"
+                        value={cadence}
+                        onChange={(e) => setCadence(e.target.value)}
+                        className="h-8 rounded-md border border-input bg-background px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <option value="60">Every hour</option>
+                        <option value="360">Every 6 hours</option>
+                        <option value="1440">Daily</option>
+                      </select>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={!feedsValid || setSchedule.isPending}
+                      title={feedsValid ? undefined : 'Enter feed URLs above first'}
+                      onClick={() =>
+                        setSchedule.mutate({
+                          everyMinutes: Number(cadence),
+                          feedUrls: feedUrls.slice(0, 25),
+                        })
+                      }
+                    >
+                      {setSchedule.isPending ? 'Enabling…' : 'Enable recurring runs'}
+                    </Button>
+                  </div>
+                )}
+                {setSchedule.isError || clearSchedule.isError ? (
+                  <p role="alert" className="mt-2 text-xs text-destructive">
+                    {setSchedule.error?.message ?? clearSchedule.error?.message}
+                  </p>
+                ) : null}
               </div>
             </CardContent>
           </Card>

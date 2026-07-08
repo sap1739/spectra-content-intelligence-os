@@ -53,7 +53,7 @@ content, sensitive prompt content. Redaction is unit-tested.
 | Upload abuse  | MIME allow-lists + size caps per storage domain, filename sanitization, malware-scan port gating availability **[P1]**                                                                               |
 | Signed URLs   | Short-lived (15 min default), content-type-bound uploads **[P1]**                                                                                                                                    |
 | Webhooks      | Signature verification before parsing; idempotency keys; raw payloads quarantined to storage **[P1 contract]**                                                                                       |
-| Rate limiting | Global per-IP now; per-tenant with auth **[P1 partial]**                                                                                                                                             |
+| Rate limiting | Global per-IP + per-email+IP login throttle (429) **[P2]**; per-tenant keys at deployment                                                                                                            |
 
 ## 6. AI-specific risks
 

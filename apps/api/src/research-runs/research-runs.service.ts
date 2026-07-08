@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import type { StartResearchRunInput } from '@spectra/contracts';
-import { Prisma, type ResearchRun } from '@spectra/database';
+import type { ScheduleResearchInput, StartResearchRunInput } from '@spectra/contracts';
+import { Prisma, type ResearchProject, type ResearchRun } from '@spectra/database';
 import { TenantIsolationError } from '@spectra/security';
 import { JOB_NAMES } from '@spectra/workflow-core';
 
@@ -105,5 +105,66 @@ export class ResearchRunsService {
     });
 
     return run;
+  }
+
+  /** Enables a recurring run: cadence + feed set stored on the project. */
+  async setSchedule(
+    tenant: TenantContext,
+    principal: Principal,
+    projectId: string,
+    input: ScheduleResearchInput,
+  ): Promise<ResearchProject> {
+    await this.assertProject(tenant, projectId);
+    const project = await this.prisma.client.researchProject.update({
+      where: { id: projectId },
+      data: {
+        scheduleEveryMinutes: input.everyMinutes,
+        scheduleFeedUrls: input.feedUrls,
+      },
+    });
+    await this.queue.schedule(
+      JOB_NAMES.researchRunScheduled,
+      { projectId },
+      {
+        schedulerId: `research-schedule-${projectId}`,
+        everyMs: input.everyMinutes * 60_000,
+        tenant: {
+          organizationId: tenant.organizationId,
+          workspaceId: tenant.workspaceId as string,
+        },
+      },
+    );
+    await this.audit.record({
+      organizationId: tenant.organizationId,
+      workspaceId: tenant.workspaceId,
+      actorUserId: principal.userId,
+      action: 'research_schedule.set',
+      resourceType: 'ResearchProject',
+      resourceId: projectId,
+      changes: { everyMinutes: input.everyMinutes, feedUrls: input.feedUrls },
+    });
+    return project;
+  }
+
+  async clearSchedule(
+    tenant: TenantContext,
+    principal: Principal,
+    projectId: string,
+  ): Promise<ResearchProject> {
+    await this.assertProject(tenant, projectId);
+    const project = await this.prisma.client.researchProject.update({
+      where: { id: projectId },
+      data: { scheduleEveryMinutes: null, scheduleFeedUrls: [] },
+    });
+    await this.queue.unschedule(`research-schedule-${projectId}`);
+    await this.audit.record({
+      organizationId: tenant.organizationId,
+      workspaceId: tenant.workspaceId,
+      actorUserId: principal.userId,
+      action: 'research_schedule.cleared',
+      resourceType: 'ResearchProject',
+      resourceId: projectId,
+    });
+    return project;
   }
 }

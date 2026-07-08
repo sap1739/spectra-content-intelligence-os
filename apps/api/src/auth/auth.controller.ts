@@ -54,7 +54,7 @@ export class AuthController {
     @Res({ passthrough: true }) reply: FastifyReply,
   ) {
     const correlationId = request.headers['x-correlation-id'] as string | undefined;
-    const { sessionId, principal } = await this.auth.login(body, correlationId);
+    const { sessionId, principal } = await this.auth.login(body, correlationId, request.ip);
     reply.setCookie(SESSION_COOKIE, sessionId, sessionCookieOptions());
     return this.auth.me(principal);
   }

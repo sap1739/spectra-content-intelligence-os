@@ -84,12 +84,17 @@ export class BullMqJobQueue implements JobQueuePort {
       ...(options.tenant ? { tenant: options.tenant } : {}),
       enqueuedAt: new Date().toISOString(),
     };
+    const schedulerId = options.schedulerId ?? `scheduler-${name}`;
     const job = await this.queue.upsertJobScheduler(
-      `scheduler-${name}`,
+      schedulerId,
       options.cron ? { pattern: options.cron, tz: 'UTC' } : { every: options.everyMs ?? 60000 },
       { name, data },
     );
-    return job.id ?? `scheduler-${name}`;
+    return job.id ?? schedulerId;
+  }
+
+  async unschedule(schedulerId: string): Promise<boolean> {
+    return this.queue.removeJobScheduler(schedulerId);
   }
 
   async cancel(jobId: string): Promise<boolean> {

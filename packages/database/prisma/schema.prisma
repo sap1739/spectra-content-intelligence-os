@@ -98,6 +98,8 @@ model Organization {
   researchFindings ResearchFinding[]
   trendCandidates  TrendCandidate[]
   auditLogs        AuditLog[]
+  invitations      Invitation[]
+  trendWatchlists  TrendWatchlist[]
 
   @@map("organizations")
 }
@@ -148,6 +150,26 @@ model Membership {
   @@map("memberships")
 }
 
+/// Link-based invitation (no SMTP yet — the inviter shares the register
+/// link; registering with the invited email joins automatically).
+model Invitation {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String         @db.Uuid
+  email          String
+  role           MembershipRole @default(READ_ONLY)
+  token          String         @unique
+  invitedById    String?        @db.Uuid
+  expiresAt      DateTime       @db.Timestamptz(6)
+  acceptedAt     DateTime?      @db.Timestamptz(6)
+  createdAt      DateTime       @default(now()) @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, email])
+  @@index([email])
+  @@map("invitations")
+}
+
 enum WorkspaceStatus {
   ACTIVE
   ARCHIVED
@@ -176,6 +198,7 @@ model Workspace {
   researchSources  ResearchSource[]
   researchFindings ResearchFinding[]
   trendCandidates  TrendCandidate[]
+  trendWatchlists  TrendWatchlist[]
 
   @@unique([organizationId, slug])
   @@index([organizationId, status])
@@ -304,6 +327,10 @@ model ResearchProject {
   objective      String?
   status         ResearchProjectStatus @default(DRAFT)
   createdById    String?               @db.Uuid
+  /// Recurring-run cadence; null = manual runs only. The worker dispatcher
+  /// reads these when the per-project scheduler fires.
+  scheduleEveryMinutes Int?
+  scheduleFeedUrls     String[]        @default([])
 
   createdAt DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt DateTime  @updatedAt @db.Timestamptz(6)
@@ -676,6 +703,27 @@ model DocumentChunk {
   @@index([organizationId, workspaceId, collection])
   @@index([documentId])
   @@map("document_chunks")
+}
+
+/// Keyword watchlist: fires SCORE_THRESHOLD alerts when a watched topic's
+/// score first crosses the threshold in a run.
+model TrendWatchlist {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @db.Uuid
+  workspaceId    String   @db.Uuid
+  name           String
+  keywords       String[] @default([])
+  threshold      Float    @default(0.7)
+  createdById    String?  @db.Uuid
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("trend_watchlists")
 }
 
 enum TrendAlertType {

@@ -4,6 +4,7 @@ import {
   SYSTEM_QUEUE,
   createRedisConnection,
   type EnqueueOptions,
+  type ScheduleOptions,
 } from '@spectra/workflow-core';
 
 import { getApiEnv } from '../config/env';
@@ -16,6 +17,14 @@ export class QueueService implements OnModuleDestroy {
 
   enqueue<TPayload>(name: string, payload: TPayload, options?: EnqueueOptions): Promise<string> {
     return this.queue.enqueue(name, payload, options);
+  }
+
+  schedule<TPayload>(name: string, payload: TPayload, options: ScheduleOptions): Promise<string> {
+    return this.queue.schedule(name, payload, options);
+  }
+
+  unschedule(schedulerId: string): Promise<boolean> {
+    return this.queue.unschedule(schedulerId);
   }
 
   async onModuleDestroy(): Promise<void> {

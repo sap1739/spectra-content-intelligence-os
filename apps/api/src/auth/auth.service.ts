@@ -1,10 +1,16 @@
-import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  HttpException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import type { AuthMeResponse, LoginRequest, RegisterRequest } from '@spectra/contracts';
 import { hashPassword, verifyPassword } from '@spectra/security';
 
 import { slugify, uniqueSuffix } from '../common/slug';
 import { AuditService } from '../infra/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 import { PrincipalService } from './principal.service';
 import { SessionService } from './session.service';
 import type { Principal } from './types';
@@ -14,6 +20,10 @@ export interface AuthResult {
   principal: Principal;
 }
 
+/** Per email+IP failed-login throttle (ADR-0014 hardening item). */
+const LOGIN_FAIL_LIMIT = 5;
+const LOGIN_FAIL_WINDOW_SECONDS = 15 * 60;
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -21,7 +31,63 @@ export class AuthService {
     private readonly sessions: SessionService,
     private readonly principals: PrincipalService,
     private readonly audit: AuditService,
+    private readonly redis: RedisService,
   ) {}
+
+  private throttleKey(email: string, ip: string): string {
+    return `spectra:login-fail:${email}:${ip}`;
+  }
+
+  private async assertNotThrottled(email: string, ip: string): Promise<void> {
+    const count = await this.redis.client.get(this.throttleKey(email, ip));
+    if (count !== null && Number(count) >= LOGIN_FAIL_LIMIT) {
+      throw new HttpException('Too many failed sign-in attempts. Try again in a few minutes.', 429);
+    }
+  }
+
+  private async recordLoginFailure(email: string, ip: string): Promise<void> {
+    const key = this.throttleKey(email, ip);
+    const count = await this.redis.client.incr(key);
+    if (count === 1) {
+      await this.redis.client.expire(key, LOGIN_FAIL_WINDOW_SECONDS);
+    }
+  }
+
+  /** Pending invitations for this email become memberships on registration. */
+  private async acceptPendingInvitations(userId: string, email: string): Promise<void> {
+    const invitations = await this.prisma.client.invitation.findMany({
+      where: { email, acceptedAt: null, expiresAt: { gt: new Date() } },
+    });
+    for (const invitation of invitations) {
+      await this.prisma.client.membership.upsert({
+        where: {
+          organizationId_userId: {
+            organizationId: invitation.organizationId,
+            userId,
+          },
+        },
+        create: {
+          organizationId: invitation.organizationId,
+          userId,
+          role: invitation.role,
+          status: 'ACTIVE',
+          invitedById: invitation.invitedById,
+        },
+        update: {},
+      });
+      await this.prisma.client.invitation.update({
+        where: { id: invitation.id },
+        data: { acceptedAt: new Date() },
+      });
+      await this.audit.record({
+        organizationId: invitation.organizationId,
+        actorUserId: userId,
+        action: 'invitation.accepted',
+        resourceType: 'Invitation',
+        resourceId: invitation.id,
+      });
+    }
+  }
 
   /**
    * Registers a user and bootstraps their first organization (ORG_OWNER) with
@@ -67,6 +133,8 @@ export class AuthService {
       return { user: createdUser, organization: createdOrg };
     });
 
+    await this.acceptPendingInvitations(user.id, email);
+
     const principal = await this.principals.load(user.id);
     if (!principal) {
       throw new UnauthorizedException('Account creation failed');
@@ -85,8 +153,10 @@ export class AuthService {
     return { sessionId, principal };
   }
 
-  async login(input: LoginRequest, correlationId?: string): Promise<AuthResult> {
+  async login(input: LoginRequest, correlationId?: string, ip = 'unknown'): Promise<AuthResult> {
     const email = input.email.toLowerCase();
+    await this.assertNotThrottled(email, ip);
+
     const user = await this.prisma.client.user.findFirst({
       where: { email, deletedAt: null, status: 'ACTIVE' },
       include: { credential: true },
@@ -94,9 +164,16 @@ export class AuthService {
 
     // Identical failure for unknown email and wrong password — no enumeration.
     const invalid = new UnauthorizedException('Invalid email or password');
-    if (!user?.credential) throw invalid;
+    if (!user?.credential) {
+      await this.recordLoginFailure(email, ip);
+      throw invalid;
+    }
     const valid = await verifyPassword(input.password, user.credential.passwordHash);
-    if (!valid) throw invalid;
+    if (!valid) {
+      await this.recordLoginFailure(email, ip);
+      throw invalid;
+    }
+    await this.redis.client.del(this.throttleKey(email, ip));
 
     const principal = await this.principals.load(user.id);
     if (!principal) throw invalid;

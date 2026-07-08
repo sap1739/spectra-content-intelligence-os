@@ -453,6 +453,9 @@ export async function executeResearchRun(
     // ----- TREND_SCORING ---------------------------------------------------
     await setStage('TREND_SCORING', 75);
     if (keywords.length > 0) {
+      const watchlists = await deps.prisma.trendWatchlist.findMany({
+        where: { organizationId: tenant.organizationId, workspaceId: tenant.workspaceId },
+      });
       const windowStart = new Date(now().getTime() - TREND_WINDOW_DAYS * MS_PER_DAY);
       const recentStart = new Date(now().getTime() - TREND_RECENT_DAYS * MS_PER_DAY);
       const findings = await deps.prisma.researchFinding.findMany({
@@ -563,6 +566,30 @@ export async function executeResearchRun(
               message: `Trend "${keyword}" moved ${candidate.state} → ${nextState} (${distinctSources.size} distinct sources, score ${result.displayScore.toFixed(1)})`,
             },
           });
+        }
+
+        // Watchlists: alert when a watched topic FIRST crosses its threshold.
+        const previousScore = candidate.normalizedScore;
+        for (const watchlist of watchlists) {
+          const watched = watchlist.keywords.some(
+            (k) =>
+              k.toLowerCase() === keyword.toLowerCase() ||
+              titleKey(k).replace(/ /g, '-') === topicKey,
+          );
+          const crossed =
+            result.normalizedScore >= watchlist.threshold &&
+            (previousScore === null || previousScore < watchlist.threshold);
+          if (watched && crossed) {
+            await deps.prisma.trendAlert.create({
+              data: {
+                organizationId: tenant.organizationId,
+                workspaceId: tenant.workspaceId,
+                trendCandidateId: candidate.id,
+                alertType: 'SCORE_THRESHOLD',
+                message: `Watchlist "${watchlist.name}": "${keyword}" crossed ${(watchlist.threshold * 100).toFixed(0)} (score ${result.displayScore.toFixed(1)})`,
+              },
+            });
+          }
         }
 
         // EVIDENCE_PACK_GENERATION: one living pack per topic per project.

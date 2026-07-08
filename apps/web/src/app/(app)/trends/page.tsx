@@ -8,15 +8,122 @@ import {
   CardHeader,
   CardTitle,
   EmptyState,
+  Input,
+  Label,
   Skeleton,
 } from '@spectra/ui';
-import { TrendingUp } from 'lucide-react';
+import { Eye, TrendingUp, X } from 'lucide-react';
 import Link from 'next/link';
 import * as React from 'react';
 
 import { PageHeader } from '@/components/page-header';
 import { useWorkspace } from '@/lib/auth';
 import { useTrends, type TrendRow } from '@/lib/research';
+import { useCreateWatchlist, useDeleteWatchlist, useWatchlists } from '@/lib/team';
+
+function WatchlistsPanel({ workspaceId }: { workspaceId: string }) {
+  const watchlists = useWatchlists(workspaceId);
+  const create = useCreateWatchlist(workspaceId);
+  const remove = useDeleteWatchlist(workspaceId);
+  const [name, setName] = React.useState('');
+  const [keywords, setKeywords] = React.useState('');
+  const [threshold, setThreshold] = React.useState('70');
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const parsedKeywords = keywords
+      .split(',')
+      .map((k) => k.trim())
+      .filter(Boolean);
+    if (!name.trim() || parsedKeywords.length === 0) return;
+    await create.mutateAsync({
+      name: name.trim(),
+      keywords: parsedKeywords,
+      threshold: Math.min(1, Math.max(0.1, Number(threshold) / 100)),
+    });
+    setName('');
+    setKeywords('');
+  };
+
+  return (
+    <Card className="mb-6">
+      <CardHeader className="flex-row items-center gap-2 space-y-0">
+        <Eye aria-hidden="true" className="size-4 text-muted-foreground" />
+        <CardTitle>Watchlists</CardTitle>
+        <p className="ml-2 text-xs text-muted-foreground">
+          Get an alert when a watched topic first crosses its score threshold.
+        </p>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <form onSubmit={submit} className="grid gap-3 sm:grid-cols-[1fr_1.5fr_6rem_auto]">
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="wl-name">Name</Label>
+            <Input
+              id="wl-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Competitive AI"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="wl-keywords">Keywords (comma-separated)</Label>
+            <Input
+              id="wl-keywords"
+              value={keywords}
+              onChange={(e) => setKeywords(e.target.value)}
+              placeholder="AI, security"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="wl-threshold">Threshold</Label>
+            <Input
+              id="wl-threshold"
+              type="number"
+              min={10}
+              max={100}
+              value={threshold}
+              onChange={(e) => setThreshold(e.target.value)}
+            />
+          </div>
+          <div className="flex items-end">
+            <Button type="submit" disabled={create.isPending}>
+              {create.isPending ? 'Saving…' : 'Watch'}
+            </Button>
+          </div>
+        </form>
+        {create.isError ? (
+          <p role="alert" className="text-xs text-destructive">
+            {create.error.message}
+          </p>
+        ) : null}
+        {(watchlists.data ?? []).length > 0 ? (
+          <ul className="flex flex-wrap gap-2">
+            {(watchlists.data ?? []).map((wl) => (
+              <li
+                key={wl.id}
+                className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-xs"
+              >
+                <span className="font-medium">{wl.name}</span>
+                <span className="text-muted-foreground">
+                  {wl.keywords.join(', ')} ≥ {(wl.threshold * 100).toFixed(0)}
+                </span>
+                <button
+                  type="button"
+                  aria-label={`Delete watchlist ${wl.name}`}
+                  className="text-muted-foreground hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full"
+                  disabled={remove.isPending}
+                  onClick={() => remove.mutate(wl.id)}
+                >
+                  <X aria-hidden="true" className="size-3.5" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
 
 const STATE_VARIANT: Record<string, 'success' | 'secondary' | 'warning' | 'muted' | 'destructive'> =
   {
@@ -129,6 +236,8 @@ export default function TrendsPage() {
         title="Trends"
         description="Trend candidates detected from your research, scored with a versioned formula — every score is explainable."
       />
+
+      <WatchlistsPanel workspaceId={activeWorkspace.id} />
 
       {trends.isPending ? (
         <div className="grid gap-4 md:grid-cols-2">

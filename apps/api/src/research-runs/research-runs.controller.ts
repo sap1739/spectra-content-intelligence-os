@@ -1,6 +1,21 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Put,
+  Req,
+} from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { startResearchRunInputSchema, type StartResearchRunInput } from '@spectra/contracts';
+import {
+  scheduleResearchInputSchema,
+  startResearchRunInputSchema,
+  type ScheduleResearchInput,
+  type StartResearchRunInput,
+} from '@spectra/contracts';
 import type { FastifyRequest } from 'fastify';
 
 import { CurrentPrincipal, CurrentTenant, RequirePermissions } from '../auth/decorators';
@@ -35,6 +50,29 @@ export class ResearchRunsController {
   ) {
     const correlationId = request.headers['x-correlation-id'] as string | undefined;
     return this.runs.start(tenant, principal, projectId, body, correlationId);
+  }
+
+  @Put('schedule')
+  @RequirePermissions('research:run')
+  @ApiOperation({ summary: 'Enable/update a recurring run (every N minutes over fixed feeds)' })
+  setSchedule(
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @Body(new ZodValidationPipe(scheduleResearchInputSchema)) body: ScheduleResearchInput,
+    @CurrentTenant() tenant: TenantContext,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    return this.runs.setSchedule(tenant, principal, projectId, body);
+  }
+
+  @Delete('schedule')
+  @RequirePermissions('research:run')
+  @ApiOperation({ summary: 'Disable the recurring run for a project' })
+  clearSchedule(
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @CurrentTenant() tenant: TenantContext,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    return this.runs.clearSchedule(tenant, principal, projectId);
   }
 
   @Get(':runId')

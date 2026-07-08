@@ -62,13 +62,22 @@ export class InMemoryJobQueue implements JobQueuePort {
     return id;
   }
 
+  private readonly schedulers = new Set<string>();
+
   async schedule<TPayload>(
     name: string,
     payload: TPayload,
-    _options: ScheduleOptions,
+    options: ScheduleOptions,
   ): Promise<string> {
     // Scheduling in-memory registers a single immediate occurrence.
-    return this.enqueue(name, payload, {});
+    const schedulerId = options.schedulerId ?? `scheduler-${name}`;
+    this.schedulers.add(schedulerId);
+    await this.enqueue(name, payload, {});
+    return schedulerId;
+  }
+
+  async unschedule(schedulerId: string): Promise<boolean> {
+    return this.schedulers.delete(schedulerId);
   }
 
   async cancel(jobId: string): Promise<boolean> {

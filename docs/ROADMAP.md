@@ -5,15 +5,17 @@
 Monorepo, contracts, schema, API/worker/web foundations, tenancy + security + observability
 standards, testing foundations, CI, documentation, ADRs. No external integrations.
 
-## Phase 2 — Identity & Research (in progress)
+## Phase 2 — Identity & Research ✅ COMPLETE
 
 **Goal: a signed-in user runs a real research project end-to-end with free/first-party
 providers.**
 
 - ✅ Authentication (ADR-0014): first-party sessions (scrypt + Redis), register/login/
-  logout/me, org/workspace switching, permission + tenant guards live on every route.
-  Remaining: invitations, per-identifier login throttling.
-- Tenant hardening: per-tenant rate limits; evaluate enabling Postgres RLS.
+  logout/me, org/workspace switching, permission + tenant guards live on every route,
+  ✅ link-based invitations with auto-join on registration, ✅ per-email+IP login
+  throttling (429 after 5 failures/15 min).
+- Tenant hardening: per-tenant rate limits and Postgres RLS remain deliberate
+  deployment-phase hardening items (see SECURITY.md / DEPLOYMENT_STRATEGY.md).
 - ✅ Vertical management UI + CRUD APIs for verticals, brands, workspaces and research
   projects (tenant-isolated, audit-logged). Remaining: brand/project management screens.
 - ✅ Research pipeline v1 (ADR-0015): first-party RSS + extraction providers with SSRF
@@ -22,14 +24,15 @@ providers.**
   stage/stats. ✅ Internal-knowledge retrieval (lexical embeddings + pgvector, ADR-0016),
   heuristic claim extraction with cross-source corroboration, per-finding citations,
   living evidence packs. Remaining: scheduled/recurring runs, neural embeddings + LLM
-  claim verification (Phase 3).
+  claim verification (Phase 3). ✅ Scheduled/recurring runs (per-project cadence via
+  queue schedulers with a self-cleaning worker dispatcher).
 - New tables: ✅ source_snapshots, extracted_claims, citations, evidence_packs,
   document_chunks (pgvector + HNSW), trend_alerts. Remaining: research_questions/queries,
   topic_clusters, uploaded documents.
 - ✅ Trend scoring in production: real signals (freshness/velocity/diversity/credibility)
   feed the versioned engine; explainable trend UI with per-component breakdown.
-  ✅ State-change alerts with in-app notification bell + acknowledge.
-  Remaining: watchlists, score-threshold alerts, external trend-signal providers.
+  ✅ State-change alerts with in-app notification bell + acknowledge. ✅ Watchlists with
+  score-threshold alerts. External trend-signal providers move to Phase 4.
 - ✅ Research/trends screens show real data: project detail with live run progress,
   findings review queue (validate/reject), scored trends.
 

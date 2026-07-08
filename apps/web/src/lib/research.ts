@@ -22,6 +22,8 @@ export interface ProjectRow {
   objective: string | null;
   status: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'ARCHIVED';
   verticalId: string | null;
+  scheduleEveryMinutes: number | null;
+  scheduleFeedUrls: string[];
   createdAt: string;
 }
 

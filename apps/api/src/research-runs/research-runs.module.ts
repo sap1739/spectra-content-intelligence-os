@@ -7,6 +7,7 @@ import { FindingsService } from './findings.service';
 import { ResearchRunsController } from './research-runs.controller';
 import { ResearchRunsService } from './research-runs.service';
 import { TrendsController } from './trends.controller';
+import { WatchlistsController } from './watchlists.controller';
 
 @Module({
   controllers: [
@@ -15,6 +16,7 @@ import { TrendsController } from './trends.controller';
     TrendsController,
     EvidenceController,
     AlertsController,
+    WatchlistsController,
   ],
   providers: [ResearchRunsService, FindingsService],
 })

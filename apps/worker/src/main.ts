@@ -98,6 +98,50 @@ async function main(): Promise<void> {
     { concurrency: 2, timeoutMs: 4 * 60_000 },
   );
 
+  // Recurring research: per-project schedulers fire this dispatcher, which
+  // creates a run row and executes it. Stale schedulers self-remove when the
+  // project is gone or its schedule was cleared.
+  runtime.register<{ projectId: string }, unknown>(
+    JOB_NAMES.researchRunScheduled,
+    async (envelope, context) => {
+      const jobLogger = withCorrelation(logger, context.correlationId);
+      const { projectId } = envelope.payload;
+      const project = await prisma.researchProject.findUnique({ where: { id: projectId } });
+      if (
+        !project ||
+        project.deletedAt !== null ||
+        !project.scheduleEveryMinutes ||
+        project.scheduleFeedUrls.length === 0
+      ) {
+        await queue.unschedule(`research-schedule-${projectId}`);
+        jobLogger.info({ projectId }, 'Removed stale research schedule');
+        return { skipped: true };
+      }
+      const run = await prisma.researchRun.create({
+        data: {
+          organizationId: project.organizationId,
+          workspaceId: project.workspaceId,
+          projectId: project.id,
+          status: 'QUEUED',
+          trigger: 'SCHEDULED',
+          queryPlan: { feedUrls: project.scheduleFeedUrls },
+        },
+      });
+      jobLogger.info({ projectId, runId: run.id }, 'Scheduled research run created');
+      return executeResearchRun(
+        { prisma, storage, logger: jobLogger },
+        {
+          runId: run.id,
+          signal: context.signal,
+          onProgress: async (percent, note) => {
+            await context.reportProgress({ percent, ...(note ? { note } : {}) });
+          },
+        },
+      );
+    },
+    { concurrency: 1, timeoutMs: 4 * 60_000 },
+  );
+
   await runtime.start();
   await queue.schedule(HEARTBEAT_JOB_NAME, {}, { everyMs: env.WORKER_HEARTBEAT_INTERVAL_MS });
 

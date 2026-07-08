@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { languageCodeSchema, slugSchema, uuidSchema } from './common';
+import { roleSchema } from './tenancy';
 import { customVerticalSchema } from './vertical';
 import { brandSchema } from './vertical';
 import { researchProjectSchema } from './research';
@@ -187,3 +188,31 @@ export const reviewFindingInputSchema = z.object({
   status: z.enum(['VALIDATED', 'REJECTED']),
 });
 export type ReviewFindingInput = z.infer<typeof reviewFindingInputSchema>;
+
+/** Recurring research: every N minutes over a fixed feed set. */
+export const scheduleResearchInputSchema = z.object({
+  everyMinutes: z.number().int().min(15).max(10080),
+  feedUrls: z.array(z.string().url()).min(1).max(25),
+});
+export type ScheduleResearchInput = z.infer<typeof scheduleResearchInputSchema>;
+
+// ---------------------------------------------------------------------------
+// Trend watchlists
+// ---------------------------------------------------------------------------
+
+export const createWatchlistInputSchema = z.object({
+  name: z.string().min(1).max(200),
+  keywords: z.array(z.string().min(1).max(200)).min(1).max(20),
+  threshold: z.number().min(0.1).max(1).default(0.7),
+});
+export type CreateWatchlistInput = z.infer<typeof createWatchlistInputSchema>;
+
+// ---------------------------------------------------------------------------
+// Team invitations
+// ---------------------------------------------------------------------------
+
+export const createInvitationInputSchema = z.object({
+  email: z.string().email().max(320),
+  role: roleSchema.default('READ_ONLY'),
+});
+export type CreateInvitationInput = z.infer<typeof createInvitationInputSchema>;

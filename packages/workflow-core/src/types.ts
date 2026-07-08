@@ -13,6 +13,7 @@ export const SYSTEM_QUEUE = 'spectra-system';
 export const JOB_NAMES = {
   heartbeat: 'system.heartbeat',
   researchRunExecute: 'research.run.execute',
+  researchRunScheduled: 'research.run.scheduled',
 } as const;
 
 export interface RetryPolicy {
@@ -74,6 +75,12 @@ export interface ScheduleOptions {
   everyMs?: number;
   /** Standard 5-field cron expression evaluated in UTC. */
   cron?: string;
+  /**
+   * Stable scheduler identity. Re-scheduling with the same id replaces the
+   * previous cadence; required when multiple schedules share one job name
+   * (e.g. one recurring research run per project). Defaults to the job name.
+   */
+  schedulerId?: string;
   tenant?: { organizationId: string; workspaceId?: string };
 }
 
@@ -81,6 +88,8 @@ export interface JobQueuePort {
   enqueue<TPayload>(name: string, payload: TPayload, options?: EnqueueOptions): Promise<string>;
   /** Registers a recurring job (heartbeats, scheduled research runs). */
   schedule<TPayload>(name: string, payload: TPayload, options: ScheduleOptions): Promise<string>;
+  /** Removes a recurring schedule; true when one existed. */
+  unschedule(schedulerId: string): Promise<boolean>;
   cancel(jobId: string): Promise<boolean>;
   close(): Promise<void>;
 }
