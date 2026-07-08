@@ -17,6 +17,7 @@
 | [0013](0013-observability.md)                 | pino + correlation ids, OpenTelemetry-ready               | Accepted             |
 | [0014](0014-first-party-session-auth.md)      | First-party session authentication in the API             | Accepted             |
 | [0015](0015-research-pipeline-v1.md)          | Research pipeline v1: first-party RSS, staged executor    | Accepted             |
+| [0016](0016-evidence-layer-v1.md)             | Evidence layer v1: lexical embeddings, heuristic claims   | Accepted             |
 
 New significant decisions require a new ADR (`NNNN-kebab-title.md`) using the
 Context / Decision / Rationale / Consequences structure.

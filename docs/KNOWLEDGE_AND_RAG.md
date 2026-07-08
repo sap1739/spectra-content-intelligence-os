@@ -27,6 +27,11 @@ scope and supports:
 
 `InMemoryVectorStore` (real cosine math, tenant-filtered) exists for tests/offline dev only.
 
+**Status (ADR-0016):** `PgVectorStore` is live — research findings are embedded with the
+first-party lexical hashing provider into collection `lexical-hash-256-v1` and served via
+`GET /v1/workspaces/:id/knowledge/search`. Neural embeddings arrive in Phase 3 as a new
+collection behind the same ports.
+
 ## 3. Tenant isolation
 
 - Every chunk/document/vector row carries `organizationId` + `workspaceId`.

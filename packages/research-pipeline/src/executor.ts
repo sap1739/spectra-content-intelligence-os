@@ -1,7 +1,15 @@
+import type { EmbeddingProvider } from '@spectra/ai-core';
 import type { ResearchRunStats } from '@spectra/contracts';
-import { type Prisma, type SpectraPrismaClient } from '@spectra/database';
+import { PgVectorStore, type Prisma, type SpectraPrismaClient } from '@spectra/database';
+import {
+  HashingEmbeddingProvider,
+  LEXICAL_EMBEDDING_COLLECTION,
+  type VectorStoreProvider,
+} from '@spectra/knowledge-core';
 import type { Logger } from '@spectra/logging';
 import { buildObjectKey, type ObjectStorageProvider } from '@spectra/storage';
+
+import { extractClaims } from './claims';
 import {
   DEFAULT_TREND_SCORING_CONFIG,
   WeightedTrendScoringEngine,
@@ -32,6 +40,10 @@ export interface PipelineDeps {
   logger: Logger;
   fetchOptions?: SafeFetchOptions;
   scoringConfig?: typeof DEFAULT_TREND_SCORING_CONFIG;
+  /** Defaults to the first-party lexical hashing embedder (ADR-0016). */
+  embedder?: EmbeddingProvider;
+  /** Defaults to the pgvector store bound to `prisma`. */
+  vectorStore?: VectorStoreProvider;
   now?: () => Date;
 }
 
@@ -82,6 +94,8 @@ export async function executeResearchRun(
   const rss = new FirstPartyRssProvider(deps.fetchOptions);
   const extraction = new HtmlExtractionProvider();
   const engine = new WeightedTrendScoringEngine(deps.scoringConfig ?? DEFAULT_TREND_SCORING_CONFIG);
+  const embedder = deps.embedder ?? new HashingEmbeddingProvider();
+  const vectorStore = deps.vectorStore ?? new PgVectorStore(deps.prisma);
 
   const run = await deps.prisma.researchRun.findUnique({
     where: { id: input.runId },
@@ -279,7 +293,7 @@ export async function executeResearchRun(
           }
 
           const topics = matchKeywords(fullText, keywords);
-          await deps.prisma.researchFinding.create({
+          const finding = await deps.prisma.researchFinding.create({
             data: {
               organizationId: tenant.organizationId,
               workspaceId: tenant.workspaceId,
@@ -311,6 +325,116 @@ export async function executeResearchRun(
             data: { processingStatus: 'ANALYZED' },
           });
           stats.findingsExtracted += 1;
+
+          // CLAIM_EXTRACTION: heuristic claims, corroborated across sources.
+          const heuristicClaims = extractClaims(`${item.title ?? ''}. ${text}`);
+          let firstClaimId: string | null = null;
+          for (const heuristic of heuristicClaims) {
+            const existingClaim = await deps.prisma.extractedClaim.findFirst({
+              where: {
+                organizationId: tenant.organizationId,
+                projectId: run.projectId,
+                normalizedKey: heuristic.normalizedKey,
+              },
+            });
+            if (!existingClaim) {
+              const created = await deps.prisma.extractedClaim.create({
+                data: {
+                  organizationId: tenant.organizationId,
+                  workspaceId: tenant.workspaceId,
+                  projectId: run.projectId,
+                  text: heuristic.text,
+                  normalizedKey: heuristic.normalizedKey,
+                  claimType: heuristic.claimType,
+                  verificationStatus: 'UNVERIFIED',
+                  supportingFindingIds: [finding.id],
+                  sourceCount: 1,
+                },
+              });
+              firstClaimId ??= created.id;
+              stats.claimsExtracted += 1;
+            } else {
+              const supportingIds = [
+                ...new Set([...existingClaim.supportingFindingIds, finding.id]),
+              ];
+              const supporters = await deps.prisma.researchFinding.findMany({
+                where: { organizationId: tenant.organizationId, id: { in: supportingIds } },
+                select: { sourceId: true },
+              });
+              const distinctSources = new Set(supporters.map((s) => s.sourceId)).size;
+              await deps.prisma.extractedClaim.update({
+                where: { id: existingClaim.id },
+                data: {
+                  supportingFindingIds: supportingIds,
+                  sourceCount: distinctSources,
+                  verificationStatus:
+                    existingClaim.verificationStatus === 'UNVERIFIED' && distinctSources >= 2
+                      ? 'CORROBORATED'
+                      : existingClaim.verificationStatus,
+                },
+              });
+              firstClaimId ??= existingClaim.id;
+            }
+          }
+
+          // CITATION_CAPTURE: the audit anchor for this finding.
+          const excerptLength = Math.min(text.length, 300);
+          await deps.prisma.citation.create({
+            data: {
+              organizationId: tenant.organizationId,
+              workspaceId: tenant.workspaceId,
+              projectId: run.projectId,
+              findingId: finding.id,
+              sourceId: source.id,
+              snapshotId: snapshot.id,
+              claimId: firstClaimId,
+              url: item.url,
+              title: item.title ?? null,
+              publisher: feedTitle ?? domain,
+              publishedAt,
+              retrievedAt: now(),
+              excerpt: text.slice(0, excerptLength) || null,
+              startOffset: 0,
+              endOffset: excerptLength,
+            },
+          });
+
+          // KNOWLEDGE_BASE_STORAGE: lexical embedding → pgvector.
+          const embedText = `${item.title ?? ''}\n${text.slice(0, 1500)}`.trim();
+          if (embedText.length > 0) {
+            const [vector] = await embedder.embed([embedText], tenant);
+            await vectorStore.upsertChunks({
+              tenant,
+              collection: LEXICAL_EMBEDDING_COLLECTION,
+              chunks: [
+                {
+                  chunk: {
+                    id: finding.id,
+                    organizationId: tenant.organizationId,
+                    workspaceId: tenant.workspaceId,
+                    documentId: source.id,
+                    index: 0,
+                    text: `${item.title ?? ''} — ${text.slice(0, 500)}`.trim(),
+                    headingPath: [],
+                    metadata: {
+                      kind: 'RESEARCH_FINDING',
+                      findingId: finding.id,
+                      projectId: run.projectId,
+                      sourceUrl: item.url,
+                      title: item.title ?? null,
+                    },
+                    embedding: {
+                      provider: embedder.modelRef.provider,
+                      model: embedder.modelRef.model,
+                      dimensions: embedder.dimensions,
+                      vectorId: finding.id,
+                    },
+                  },
+                  vector: vector as number[],
+                },
+              ],
+            });
+          }
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -427,7 +551,65 @@ export async function executeResearchRun(
             lastSeenAt: now(),
           },
         });
+
+        // Alert on lifecycle transitions so reviewers notice new signal.
+        if (nextState !== candidate.state) {
+          await deps.prisma.trendAlert.create({
+            data: {
+              organizationId: tenant.organizationId,
+              workspaceId: tenant.workspaceId,
+              trendCandidateId: candidate.id,
+              alertType: 'STATE_CHANGE',
+              message: `Trend "${keyword}" moved ${candidate.state} → ${nextState} (${distinctSources.size} distinct sources, score ${result.displayScore.toFixed(1)})`,
+            },
+          });
+        }
+
+        // EVIDENCE_PACK_GENERATION: one living pack per topic per project.
+        const topicFindingIds = topicFindings.map((f) => f.id);
+        const packClaims = await deps.prisma.extractedClaim.findMany({
+          where: {
+            organizationId: tenant.organizationId,
+            projectId: run.projectId,
+            supportingFindingIds: { hasSome: topicFindingIds },
+          },
+          select: { id: true },
+        });
+        const packCitations = await deps.prisma.citation.findMany({
+          where: {
+            organizationId: tenant.organizationId,
+            projectId: run.projectId,
+            findingId: { in: topicFindingIds },
+          },
+          select: { id: true },
+        });
+        await deps.prisma.evidencePack.upsert({
+          where: { projectId_topicKey: { projectId: run.projectId, topicKey } },
+          create: {
+            organizationId: tenant.organizationId,
+            workspaceId: tenant.workspaceId,
+            projectId: run.projectId,
+            trendCandidateId: candidate.id,
+            topicKey,
+            title: `Evidence — ${keyword}`,
+            summary: `${topicFindingIds.length} finding(s), ${packClaims.length} claim(s), ${packCitations.length} citation(s)`,
+            status: 'READY',
+            findingIds: topicFindingIds.slice(0, 100),
+            claimIds: packClaims.map((c) => c.id).slice(0, 100),
+            citationIds: packCitations.map((c) => c.id).slice(0, 100),
+          },
+          update: {
+            trendCandidateId: candidate.id,
+            title: `Evidence — ${keyword}`,
+            summary: `${topicFindingIds.length} finding(s), ${packClaims.length} claim(s), ${packCitations.length} citation(s)`,
+            status: 'READY',
+            findingIds: topicFindingIds.slice(0, 100),
+            claimIds: packClaims.map((c) => c.id).slice(0, 100),
+            citationIds: packCitations.map((c) => c.id).slice(0, 100),
+          },
+        });
       }
+      await setStage('EVIDENCE_PACK_GENERATION', 88);
     }
 
     // ----- Finalize ---------------------------------------------------------

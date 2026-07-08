@@ -62,6 +62,9 @@ importers:
       '@spectra/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@spectra/knowledge-core':
+        specifier: workspace:*
+        version: link:../../packages/knowledge-core
       '@spectra/logging':
         specifier: workspace:*
         version: link:../../packages/logging
@@ -276,6 +279,12 @@ importers:
       '@prisma/client':
         specifier: ^6.9.0
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
+      '@spectra/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@spectra/knowledge-core':
+        specifier: workspace:*
+        version: link:../knowledge-core
     devDependencies:
       '@types/node':
         specifier: ^22.15.0
@@ -295,6 +304,9 @@ importers:
 
   packages/knowledge-core:
     dependencies:
+      '@spectra/ai-core':
+        specifier: workspace:*
+        version: link:../ai-core
       '@spectra/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -368,6 +380,9 @@ importers:
 
   packages/research-pipeline:
     dependencies:
+      '@spectra/ai-core':
+        specifier: workspace:*
+        version: link:../ai-core
       '@spectra/contracts':
         specifier: workspace:*
         version: link:../contracts

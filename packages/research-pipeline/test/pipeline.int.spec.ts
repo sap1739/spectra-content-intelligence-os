@@ -59,13 +59,13 @@ describe('research pipeline integration', () => {
             {
               title: 'AI testing adoption accelerates in India',
               url: 'https://news.example.com/ai-testing-india?utm_source=feed',
-              body: '<p>Enterprises adopt <b>AI testing</b> for regression suites.</p>',
+              body: '<p>Enterprises adopt <b>AI testing</b> for regression suites. Adoption of AI testing grew 40% in 2026 across large enterprises in India.</p>',
               pubDate: 'Mon, 06 Jul 2026 09:00:00 GMT',
             },
             {
               title: 'LLM test generation benchmark released',
               url: 'https://research.example.org/llm-benchmark',
-              body: '<p>A new benchmark evaluates AI testing quality across models.</p>',
+              body: '<p>A new benchmark evaluates AI testing quality across models. The benchmark shows 25% higher accuracy for agentic evaluation runs.</p>',
               pubDate: 'Sun, 05 Jul 2026 12:00:00 GMT',
             },
             {
@@ -86,8 +86,15 @@ describe('research pipeline integration', () => {
               // Same canonical URL as feed-a item 1 (different tracking param).
               title: 'AI testing adoption accelerates in India',
               url: 'https://news.example.com/ai-testing-india?utm_source=other',
-              body: '<p>Enterprises adopt <b>AI testing</b> for regression suites.</p>',
+              body: '<p>Enterprises adopt <b>AI testing</b> for regression suites. Adoption of AI testing grew 40% in 2026 across large enterprises in India.</p>',
               pubDate: 'Mon, 06 Jul 2026 09:00:00 GMT',
+            },
+            {
+              // Distinct source repeating the SAME statistic → corroboration.
+              title: 'Analysts confirm enterprise AI testing surge',
+              url: 'https://another.example.net/analyst-note',
+              body: '<p>Independent analysts weigh in. Adoption of AI testing grew 40% in 2026 across large enterprises in India.</p>',
+              pubDate: 'Mon, 06 Jul 2026 11:00:00 GMT',
             },
           ]),
         );
@@ -149,6 +156,10 @@ describe('research pipeline integration', () => {
   afterAll(async () => {
     await new Promise<void>((resolve) => server.close(() => resolve()));
     if (orgId) {
+      // Chunks are FK-free by design (raw vector table) — clean explicitly.
+      await prisma.$executeRaw`DELETE FROM "document_chunks" WHERE "organizationId" = ${orgId}::uuid`.catch(
+        () => undefined,
+      );
       await prisma.organization.delete({ where: { id: orgId } }).catch(() => undefined);
     }
     await prisma.$disconnect();
@@ -176,10 +187,12 @@ describe('research pipeline integration', () => {
     expect(outcome.status).toBe('PARTIALLY_SUCCEEDED');
     expect(outcome.stats.queriesPlanned).toBe(3);
     expect(outcome.stats.queriesExecuted).toBe(2);
-    expect(outcome.stats.sourcesDiscovered).toBe(4);
+    expect(outcome.stats.sourcesDiscovered).toBe(5);
     expect(outcome.stats.duplicatesRemoved).toBe(1); // cross-feed URL dup
-    expect(outcome.stats.findingsExtracted).toBe(2); // injection item quarantined
+    expect(outcome.stats.findingsExtracted).toBe(3); // injection item quarantined
+    expect(outcome.stats.claimsExtracted).toBeGreaterThanOrEqual(2);
     expect(progress).toContain('TREND_SCORING');
+    expect(progress).toContain('EVIDENCE_PACK_GENERATION');
 
     const run = await prisma.researchRun.findUnique({ where: { id: runId } });
     expect(run?.status).toBe('PARTIALLY_SUCCEEDED');
@@ -191,7 +204,7 @@ describe('research pipeline integration', () => {
       where: { organizationId: orgId, workspaceId },
       include: { source: true, snapshot: true },
     });
-    expect(findings).toHaveLength(2);
+    expect(findings).toHaveLength(3);
     for (const finding of findings) {
       expect(finding.status).toBe('PENDING_REVIEW');
       expect(finding.snapshotId).toBeTruthy();
@@ -235,6 +248,74 @@ describe('research pipeline integration', () => {
     expect(score.configId).toBe('spectra-default');
     expect(score.explanation.topContributors.length).toBeGreaterThan(0);
     expect(score.components.map((c) => c.key)).toContain('velocity');
+
+    // --- Evidence layer (Increment C) -----------------------------------
+
+    // Citations: one per finding, anchored to source + snapshot.
+    const citations = await prisma.citation.findMany({
+      where: { organizationId: orgId, workspaceId },
+    });
+    expect(citations).toHaveLength(3);
+    for (const citation of citations) {
+      expect(citation.url).toMatch(/^https?:/);
+      expect(citation.snapshotId).toBeTruthy();
+      expect(citation.retrievedAt).toBeTruthy();
+    }
+
+    // Claims: the repeated 40% statistic is CORROBORATED across 2 sources.
+    const claims = await prisma.extractedClaim.findMany({
+      where: { organizationId: orgId, workspaceId },
+    });
+    expect(claims.length).toBeGreaterThanOrEqual(2);
+    const corroborated = claims.find((c) => c.normalizedKey.includes('grew 40'));
+    expect(corroborated).toBeTruthy();
+    expect(corroborated?.claimType).toBe('STATISTIC');
+    expect(corroborated?.verificationStatus).toBe('CORROBORATED');
+    expect(corroborated?.sourceCount).toBe(2);
+
+    // Knowledge chunks embedded to pgvector; lexical search finds them.
+    const chunkCount = await prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT count(*) AS count FROM "document_chunks"
+      WHERE "organizationId" = ${orgId}::uuid AND "workspaceId" = ${workspaceId}::uuid
+    `;
+    expect(Number(chunkCount[0]?.count)).toBe(3);
+
+    const { PgVectorStore } = await import('@spectra/database');
+    const { lexicalEmbed, LEXICAL_EMBEDDING_COLLECTION } = await import('@spectra/knowledge-core');
+    const vectorStore = new PgVectorStore(prisma);
+    const hits = await vectorStore.search({
+      organizationId: orgId,
+      workspaceId,
+      collection: LEXICAL_EMBEDDING_COLLECTION,
+      queryText: 'benchmark',
+      queryVector: lexicalEmbed('AI testing benchmark accuracy'),
+      keywordWeight: 0.3,
+      semanticWeight: 0.7,
+      filters: {},
+      topK: 3,
+    });
+    expect(hits.length).toBeGreaterThan(0);
+    expect((hits[0]?.text ?? '').toLowerCase()).toContain('benchmark');
+    expect((hits[0]?.metadata as { kind?: string }).kind).toBe('RESEARCH_FINDING');
+
+    // Evidence pack per topic, wired to the trend candidate.
+    const pack = await prisma.evidencePack.findFirst({
+      where: { organizationId: orgId, workspaceId, topicKey: 'ai-testing' },
+    });
+    expect(pack).toBeTruthy();
+    expect(pack?.status).toBe('READY');
+    expect(pack?.findingIds.length).toBeGreaterThanOrEqual(2);
+    expect(pack?.citationIds.length).toBeGreaterThanOrEqual(2);
+    expect(pack?.claimIds.length).toBeGreaterThanOrEqual(1);
+    expect(pack?.trendCandidateId).toBe(aiTesting?.id);
+
+    // State-change alert fired for the EMERGING transition.
+    const alerts = await prisma.trendAlert.findMany({
+      where: { organizationId: orgId, workspaceId },
+    });
+    expect(
+      alerts.some((a) => a.alertType === 'STATE_CHANGE' && a.message.includes('EMERGING')),
+    ).toBe(true);
 
     // Idempotency: re-running ingests nothing new (all URLs deduped).
     const rerun = await executeResearchRun(

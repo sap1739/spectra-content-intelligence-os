@@ -13,6 +13,7 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
+    "@spectra/ai-core": "workspace:*",
     "@spectra/contracts": "workspace:*",
     "@spectra/database": "workspace:*",
     "@spectra/knowledge-core": "workspace:*",

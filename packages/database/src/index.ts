@@ -21,3 +21,4 @@ export {
   TenantScopeViolationError,
   assertTenantScopedArgs,
 } from './tenant-guard';
+export { PgVectorStore } from './vector-store';

@@ -11,5 +11,7 @@ export {
   sourceDiversityScore,
   velocityScore,
 } from './signals';
+export { extractClaims, splitSentences } from './claims';
+export type { HeuristicClaim, HeuristicClaimType } from './claims';
 export { PIPELINE_VERSION, executeResearchRun } from './executor';
 export type { ExecuteRunInput, PipelineDeps, RunOutcome } from './executor';

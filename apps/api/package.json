@@ -24,6 +24,7 @@
     "@spectra/config": "workspace:*",
     "@spectra/contracts": "workspace:*",
     "@spectra/database": "workspace:*",
+    "@spectra/knowledge-core": "workspace:*",
     "@spectra/logging": "workspace:*",
     "@spectra/observability": "workspace:*",
     "@spectra/security": "workspace:*",

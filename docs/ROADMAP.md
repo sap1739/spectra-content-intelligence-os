@@ -19,13 +19,17 @@ providers.**
 - ✅ Research pipeline v1 (ADR-0015): first-party RSS + extraction providers with SSRF
   containment, snapshots to object storage, injection quarantine, URL/content/title dedup,
   keyword topic tagging, credibility/freshness scoring, queue-executed runs with live
-  stage/stats. Remaining: internal-knowledge provider (pgvector + embeddings), claim
-  extraction, scheduled/recurring runs.
-- New tables: ✅ source_snapshots. Remaining: research_questions/queries,
-  extracted_claims, citations, evidence_packs, topic_clusters, documents/chunks.
+  stage/stats. ✅ Internal-knowledge retrieval (lexical embeddings + pgvector, ADR-0016),
+  heuristic claim extraction with cross-source corroboration, per-finding citations,
+  living evidence packs. Remaining: scheduled/recurring runs, neural embeddings + LLM
+  claim verification (Phase 3).
+- New tables: ✅ source_snapshots, extracted_claims, citations, evidence_packs,
+  document_chunks (pgvector + HNSW), trend_alerts. Remaining: research_questions/queries,
+  topic_clusters, uploaded documents.
 - ✅ Trend scoring in production: real signals (freshness/velocity/diversity/credibility)
   feed the versioned engine; explainable trend UI with per-component breakdown.
-  Remaining: watchlists + alerts, external trend-signal providers.
+  ✅ State-change alerts with in-app notification bell + acknowledge.
+  Remaining: watchlists, score-threshold alerts, external trend-signal providers.
 - ✅ Research/trends screens show real data: project detail with live run progress,
   findings review queue (validate/reject), scored trends.
 

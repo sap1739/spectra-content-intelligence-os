@@ -20,6 +20,7 @@ import * as React from 'react';
 
 import { PageHeader } from '@/components/page-header';
 import { useWorkspace } from '@/lib/auth';
+import { useClaims, useEvidencePacks, type ClaimRow } from '@/lib/knowledge';
 import {
   isRunActive,
   useFindings,
@@ -30,6 +31,106 @@ import {
   type FindingRow,
   type RunRow,
 } from '@/lib/research';
+
+const CLAIM_BADGE: Record<string, 'success' | 'secondary' | 'muted' | 'warning'> = {
+  CORROBORATED: 'success',
+  VERIFIED: 'success',
+  UNVERIFIED: 'muted',
+  DISPUTED: 'warning',
+};
+
+function EvidencePacksSection({
+  workspaceId,
+  projectId,
+}: {
+  workspaceId: string;
+  projectId: string;
+}) {
+  const packs = useEvidencePacks(workspaceId, projectId);
+  const claims = useClaims(workspaceId, projectId);
+  const [openPackId, setOpenPackId] = React.useState<string | null>(null);
+  const claimById = new Map((claims.data ?? []).map((c) => [c.id, c]));
+
+  return (
+    <Card className="mt-6">
+      <CardHeader>
+        <CardTitle>Evidence packs</CardTitle>
+        <p className="text-xs text-muted-foreground">
+          One living bundle per trend topic — findings, extracted claims and citations, ready for
+          content generation in Phase 3.
+        </p>
+      </CardHeader>
+      <CardContent>
+        {packs.isPending ? (
+          <Skeleton className="h-16 w-full" />
+        ) : (packs.data ?? []).length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No evidence packs yet — they are generated when research runs detect topics from your
+            vertical keywords.
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-3">
+            {(packs.data ?? []).map((pack) => {
+              const open = openPackId === pack.id;
+              const packClaims = pack.claimIds
+                .map((id) => claimById.get(id))
+                .filter((c): c is ClaimRow => Boolean(c));
+              return (
+                <li key={pack.id} className="rounded-md border border-border p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium">{pack.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {pack.findingIds.length} findings · {pack.claimIds.length} claims ·{' '}
+                        {pack.citationIds.length} citations · updated{' '}
+                        {new Date(pack.updatedAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={pack.status === 'READY' ? 'success' : 'muted'}>
+                        {pack.status}
+                      </Badge>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-expanded={open}
+                        onClick={() => setOpenPackId(open ? null : pack.id)}
+                      >
+                        {open ? 'Hide claims' : 'View claims'}
+                      </Button>
+                    </div>
+                  </div>
+                  {open ? (
+                    packClaims.length === 0 ? (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        No extracted claims in this pack yet.
+                      </p>
+                    ) : (
+                      <ul className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
+                        {packClaims.map((claim) => (
+                          <li key={claim.id} className="flex items-start justify-between gap-2">
+                            <p className="text-xs leading-snug">{claim.text}</p>
+                            <span className="flex shrink-0 gap-1">
+                              <Badge variant="outline">{claim.claimType}</Badge>
+                              <Badge variant={CLAIM_BADGE[claim.verificationStatus] ?? 'muted'}>
+                                {claim.verificationStatus}
+                                {claim.sourceCount > 1 ? ` ×${claim.sourceCount}` : ''}
+                              </Badge>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 const RUN_BADGE: Record<
   RunRow['status'],
@@ -319,6 +420,8 @@ export default function ResearchProjectPage() {
           </CardContent>
         </Card>
       </div>
+
+      <EvidencePacksSection workspaceId={workspaceId} projectId={projectId} />
     </>
   );
 }

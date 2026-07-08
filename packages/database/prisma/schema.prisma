@@ -315,10 +315,13 @@ model ResearchProject {
   brand        Brand?          @relation(fields: [brandId], references: [id], onDelete: SetNull)
   createdBy    User?           @relation("ResearchProjectCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
-  runs     ResearchRun[]
-  sources  ResearchSource[]
-  findings ResearchFinding[]
-  trends   TrendCandidate[]
+  runs          ResearchRun[]
+  sources       ResearchSource[]
+  findings      ResearchFinding[]
+  trends        TrendCandidate[]
+  claims        ExtractedClaim[]
+  citations     Citation[]
+  evidencePacks EvidencePack[]
 
   @@index([workspaceId, status])
   @@index([organizationId])
@@ -526,12 +529,177 @@ model ResearchFinding {
   run          ResearchRun?    @relation(fields: [runId], references: [id], onDelete: SetNull)
   source       ResearchSource  @relation(fields: [sourceId], references: [id], onDelete: Cascade)
   snapshot     SourceSnapshot? @relation(fields: [snapshotId], references: [id], onDelete: SetNull)
+  citations    Citation[]
 
   @@index([projectId, status])
   @@index([sourceId])
   @@index([workspaceId, status])
   @@index([duplicateClusterKey])
   @@map("research_findings")
+}
+
+// ---------------------------------------------------------------------------
+// Evidence layer: claims, citations, evidence packs, knowledge chunks
+// ---------------------------------------------------------------------------
+
+enum ClaimType {
+  FACTUAL
+  STATISTIC
+  PREDICTION
+  OPINION
+  QUOTE
+}
+
+enum ClaimVerificationStatus {
+  UNVERIFIED
+  CORROBORATED
+  DISPUTED
+  VERIFIED
+  REJECTED
+}
+
+/// Heuristically extracted claims (ADR-0016). One row per normalized claim
+/// per project; corroboration = supported by ≥2 distinct sources.
+model ExtractedClaim {
+  id             String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String                  @db.Uuid
+  workspaceId    String                  @db.Uuid
+  projectId      String                  @db.Uuid
+  text           String
+  /// titleKey-normalized claim text — the per-project dedupe identity.
+  normalizedKey  String
+  claimType      ClaimType               @default(FACTUAL)
+  verificationStatus ClaimVerificationStatus @default(UNVERIFIED)
+  supportingFindingIds String[]          @default([]) @db.Uuid
+  /// Distinct sources backing the claim (drives corroboration).
+  sourceCount    Int                     @default(1)
+  confidence     Float?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  project   ResearchProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  citations Citation[]
+
+  @@unique([projectId, normalizedKey])
+  @@index([workspaceId, verificationStatus])
+  @@map("extracted_claims")
+}
+
+/// First-class citation: finding ↔ source (+snapshot) with a byte locator.
+/// The audit anchor behind every statement (ADR-0011).
+model Citation {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @db.Uuid
+  workspaceId    String    @db.Uuid
+  projectId      String    @db.Uuid
+  findingId      String    @db.Uuid
+  sourceId       String    @db.Uuid
+  snapshotId     String?   @db.Uuid
+  claimId        String?   @db.Uuid
+  url            String
+  title          String?
+  publisher      String?
+  publishedAt    DateTime? @db.Timestamptz(6)
+  retrievedAt    DateTime  @db.Timestamptz(6)
+  excerpt        String?
+  startOffset    Int?
+  endOffset      Int?
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6)
+
+  project ResearchProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  finding ResearchFinding @relation(fields: [findingId], references: [id], onDelete: Cascade)
+  claim   ExtractedClaim? @relation(fields: [claimId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([findingId])
+  @@index([claimId])
+  @@map("citations")
+}
+
+enum EvidencePackStatus {
+  DRAFT
+  READY
+  STALE
+  ARCHIVED
+}
+
+/// Curated bundle of findings/claims/citations per trend topic — the input
+/// contract for content generation (Phase 3).
+model EvidencePack {
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String             @db.Uuid
+  workspaceId      String             @db.Uuid
+  projectId        String             @db.Uuid
+  trendCandidateId String?            @db.Uuid
+  topicKey         String
+  title            String
+  summary          String?
+  status           EvidencePackStatus @default(DRAFT)
+  findingIds       String[]           @default([]) @db.Uuid
+  claimIds         String[]           @default([]) @db.Uuid
+  citationIds      String[]           @default([]) @db.Uuid
+  /// Forward lineage: which generated content consumed this pack.
+  usedByContentItemIds String[]       @default([]) @db.Uuid
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  project ResearchProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, topicKey])
+  @@index([workspaceId, status])
+  @@map("evidence_packs")
+}
+
+/// Embedded knowledge chunks (pgvector, ADR-0005/0016). Phase 2 embeds
+/// research findings (documentId = source id, metadata.kind marks it);
+/// uploaded documents join in Phase 3. Vector ops via PgVectorStore raw SQL.
+model DocumentChunk {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @db.Uuid
+  workspaceId    String   @db.Uuid
+  /// Collection isolates embedding models — one model per collection.
+  collection     String
+  documentId     String   @db.Uuid
+  index          Int      @default(0)
+  text           String
+  metadata       Json     @default("{}")
+  embeddingProvider String
+  embeddingModel String
+  dimensions     Int
+  embedding      Unsupported("vector(256)")?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([organizationId, workspaceId, collection])
+  @@index([documentId])
+  @@map("document_chunks")
+}
+
+enum TrendAlertType {
+  STATE_CHANGE
+  SCORE_THRESHOLD
+  NEW_EVIDENCE
+  RISK_FLAG
+}
+
+model TrendAlert {
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String         @db.Uuid
+  workspaceId      String         @db.Uuid
+  trendCandidateId String         @db.Uuid
+  alertType        TrendAlertType
+  message          String
+  triggeredAt      DateTime       @default(now()) @db.Timestamptz(6)
+  acknowledgedAt   DateTime?      @db.Timestamptz(6)
+  acknowledgedById String?        @db.Uuid
+
+  trendCandidate TrendCandidate @relation(fields: [trendCandidateId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, acknowledgedAt])
+  @@map("trend_alerts")
 }
 
 // ---------------------------------------------------------------------------
@@ -582,6 +750,7 @@ model TrendCandidate {
   workspace    Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   project      ResearchProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
   vertical     CustomVertical?  @relation(fields: [verticalId], references: [id], onDelete: SetNull)
+  alerts       TrendAlert[]
 
   @@index([workspaceId, state])
   @@index([projectId, topicKey])

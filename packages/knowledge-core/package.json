@@ -12,7 +12,8 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@spectra/contracts": "workspace:*"
+    "@spectra/contracts": "workspace:*",
+    "@spectra/ai-core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",

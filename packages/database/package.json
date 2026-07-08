@@ -20,7 +20,9 @@
     "seed": "tsx src/seed.ts"
   },
   "dependencies": {
-    "@prisma/client": "^6.9.0"
+    "@prisma/client": "^6.9.0",
+    "@spectra/contracts": "workspace:*",
+    "@spectra/knowledge-core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
