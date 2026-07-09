@@ -45,12 +45,18 @@ providers.**
   wrapped untrusted evidence; each `ContentDraft` records the exact grounded citation/finding
   ids plus model + versioned prompt for full provenance. Content Studio UI with the honest
   availability banner (ADR-0017). Schema: `Campaign`, `ContentItem`, `ContentDraft`.
-- Strategy entities (personas, pillars, angles, campaigns, briefs, calendar) + UI.
-- Citation-placement validation (flag `[n]` markers with no backing source), moderation gate
-  before publish, versioned prompt-template registry, async generation via worker + streaming.
+- ✅ **Increment B — generation hardening.** Citation-placement validation flags `[n]`
+  markers with no backing source (dangling / fabricated refs surfaced, not trusted);
+  generation moved to an async worker executor (honest 503 guards stay synchronous), with
+  the Studio polling live and rendering a citation-verification badge.
+- ✅ **Increment C — strategy entities.** Campaigns + briefs, audience personas, content
+  pillars and topic ideas (traceable to research) — schema + tenant-scoped CRUD API +
+  Campaigns and Strategy UIs.
+- Remaining: content-angle entities; versioned prompt-template registry; streaming generation.
+- Citation-placement validation ✅. Moderation gate before publish (Increment D).
 - Media pipeline: sharp image ops → ffmpeg audio/video → sandboxed HTML-to-image →
   (license-permitting) Remotion.
-- Full content lifecycle with review/approval flows and audit history.
+- Full content lifecycle with review/approval flows and audit history (Increment D).
 - Data export + retention jobs.
 
 ## Phase 4 — Publishing & Analytics

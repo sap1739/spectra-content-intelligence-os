@@ -69,20 +69,27 @@ Migration `..._init` enables the `vector` extension. Phase 2 adds embedding tabl
 
 ## 7. Phase 3 content-generation entities
 
-| Table          | Purpose                                                       | Key constraints / indexes                             |
-| -------------- | ------------------------------------------------------------- | ----------------------------------------------------- |
-| campaigns      | Campaign container (brand, vertical, status, schedule window) | index(workspaceId, status)                            |
-| content_items  | Durable content object w/ lifecycle + grounding lineage       | index(workspaceId, lifecycleState); index(campaignId) |
-| content_drafts | One AI generation attempt w/ full provenance                  | index(contentItemId, createdAt)                       |
+| Table             | Purpose                                                       | Key constraints / indexes                             |
+| ----------------- | ------------------------------------------------------------- | ----------------------------------------------------- |
+| campaigns         | Campaign container (brand, vertical, status, schedule window) | index(workspaceId, status)                            |
+| content_items     | Durable content object w/ lifecycle + grounding lineage       | index(workspaceId, lifecycleState); index(campaignId) |
+| content_drafts    | One AI generation attempt w/ full provenance                  | index(contentItemId, createdAt)                       |
+| campaign_briefs   | Background/objectives/mandatories/do-nots (one per campaign)  | unique(campaignId); index(workspaceId)                |
+| audience_personas | Who the content targets (roles, pain points, goals)           | index(workspaceId)                                    |
+| content_pillars   | Themes the brand owns (name, keywords)                        | index(workspaceId)                                    |
+| topic_ideas       | Candidate topics, optionally traced to research               | index(workspaceId, status)                            |
 
 `content_items` carry grounding lineage columns (`evidencePackId`, `researchProjectId`,
 `topicKey`, `findingIds[]`, `citationIds[]`) so every item traces back to the research it draws
 on; the lifecycle is the `ContentLifecycleState` enum (mirrors `@spectra/contracts`, never
 scattered strings). `content_drafts` record the exact grounded citation/finding id sets plus the
-model provider/name/version, versioned prompt template id + version, token usage and finish
-reason — outputs are attributable and regressions bisectable (ADR-0017). Citations shown to
-users come from the evidence pack, never from the model. Org/workspace cascade; `campaignId`,
-`brandId`, `verticalId` use `SET NULL`.
+model provider/name/version, versioned prompt template id + version, token usage, finish
+reason and the citation-marker validation (`citationValidation`) — outputs are attributable and
+regressions bisectable (ADR-0017). Citations shown to users come from the evidence pack, never
+from the model. Strategy entities (`campaign_briefs`, `audience_personas`, `content_pillars`,
+`topic_ideas`) are workspace-scoped and soft-deleted; `topic_ideas` carry research lineage
+(`evidencePackId`, `findingIds[]`, `trendCandidateIds[]`, `citationIds[]`). Org/workspace
+cascade; `campaignId`, `brandId`, `verticalId` use `SET NULL`.
 
 ## 8. Future entities
 

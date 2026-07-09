@@ -50,7 +50,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Creation',
     items: [
-      { label: 'Create', href: '/create', icon: Search, phase: 3 },
+      { label: 'Strategy', href: '/create', icon: Search, phase: 3 },
       { label: 'Campaigns', href: '/campaigns', icon: Megaphone, phase: 3 },
       { label: 'Content', href: '/content', icon: FileText, phase: 3 },
       { label: 'Calendar', href: '/calendar', icon: Calendar, phase: 3 },

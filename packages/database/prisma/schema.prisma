@@ -103,6 +103,10 @@ model Organization {
   campaigns        Campaign[]
   contentItems     ContentItem[]
   contentDrafts    ContentDraft[]
+  audiencePersonas AudiencePersona[]
+  contentPillars   ContentPillar[]
+  topicIdeas       TopicIdea[]
+  campaignBriefs   CampaignBrief[]
 
   @@map("organizations")
 }
@@ -205,6 +209,10 @@ model Workspace {
   campaigns        Campaign[]
   contentItems     ContentItem[]
   contentDrafts    ContentDraft[]
+  audiencePersonas AudiencePersona[]
+  contentPillars   ContentPillar[]
+  topicIdeas       TopicIdea[]
+  campaignBriefs   CampaignBrief[]
 
   @@unique([organizationId, slug])
   @@index([organizationId, status])
@@ -896,6 +904,7 @@ model Campaign {
   vertical     CustomVertical? @relation(fields: [verticalId], references: [id], onDelete: SetNull)
   brand        Brand?          @relation(fields: [brandId], references: [id], onDelete: SetNull)
   contentItems ContentItem[]
+  brief        CampaignBrief?
 
   @@index([workspaceId, status])
   @@map("campaigns")
@@ -986,6 +995,118 @@ model ContentDraft {
 
   @@index([contentItemId, createdAt])
   @@map("content_drafts")
+}
+
+// ---------------------------------------------------------------------------
+// Strategy entities (Phase 3C)
+// ---------------------------------------------------------------------------
+
+model AudiencePersona {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String   @db.Uuid
+  workspaceId        String   @db.Uuid
+  name               String
+  description        String?
+  roles              String[] @default([])
+  seniority          String?
+  industries         String[] @default([])
+  painPoints         String[] @default([])
+  goals              String[] @default([])
+  preferredPlatforms String[] @default([])
+  languages          String[] @default([])
+  createdById        String?  @db.Uuid
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("audience_personas")
+}
+
+model ContentPillar {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @db.Uuid
+  workspaceId    String   @db.Uuid
+  /// Optional brand association (plain column — no FK, mirrors ContentItem lineage).
+  brandId        String?  @db.Uuid
+  name           String
+  description    String?
+  keywords       String[] @default([])
+  createdById    String?  @db.Uuid
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("content_pillars")
+}
+
+enum TopicIdeaStatus {
+  PROPOSED
+  SHORTLISTED
+  IN_USE
+  DISCARDED
+}
+
+/// A candidate topic, optionally traceable to the research it came from.
+model TopicIdea {
+  id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String          @db.Uuid
+  workspaceId       String          @db.Uuid
+  title             String
+  description       String?
+  pillarId          String?         @db.Uuid
+  verticalId        String?         @db.Uuid
+  status            TopicIdeaStatus @default(PROPOSED)
+  /// Research lineage (plain columns) — where the idea is grounded.
+  evidencePackId    String?         @db.Uuid
+  findingIds        String[]        @default([]) @db.Uuid
+  trendCandidateIds String[]        @default([]) @db.Uuid
+  citationIds       String[]        @default([]) @db.Uuid
+  createdById       String?         @db.Uuid
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@map("topic_ideas")
+}
+
+/// One brief per campaign — background, objectives, mandatories and do-nots.
+model CampaignBrief {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @db.Uuid
+  workspaceId    String   @db.Uuid
+  campaignId     String   @unique @db.Uuid
+  background     String?
+  objectives     String[] @default([])
+  keyMessages    String[] @default([])
+  mandatories    String[] @default([])
+  doNots         String[] @default([])
+  tone           String?
+  createdById    String?  @db.Uuid
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaign     Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("campaign_briefs")
 }
 
 // ---------------------------------------------------------------------------

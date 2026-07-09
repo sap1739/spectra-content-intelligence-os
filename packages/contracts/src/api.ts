@@ -242,3 +242,71 @@ export const generateDraftInputSchema = z.object({
   maxOutputTokens: z.number().int().min(256).max(8000).optional(),
 });
 export type GenerateDraftInput = z.infer<typeof generateDraftInputSchema>;
+
+// ---------------------------------------------------------------------------
+// Strategy entities (Phase 3C)
+// ---------------------------------------------------------------------------
+
+const strList = (max = 500) => z.array(z.string().min(1).max(max)).max(50).default([]);
+
+export const createPersonaInputSchema = z.object({
+  name: z.string().min(1).max(300),
+  description: z.string().max(5000).optional(),
+  roles: strList(200),
+  seniority: z.string().max(200).optional(),
+  industries: strList(200),
+  painPoints: strList(500),
+  goals: strList(500),
+  preferredPlatforms: strList(100),
+  languages: z.array(languageCodeSchema).max(50).default([]),
+});
+export type CreatePersonaInput = z.infer<typeof createPersonaInputSchema>;
+
+export const createPillarInputSchema = z.object({
+  name: z.string().min(1).max(300),
+  description: z.string().max(2000).optional(),
+  keywords: strList(200),
+  brandId: uuidSchema.optional(),
+});
+export type CreatePillarInput = z.infer<typeof createPillarInputSchema>;
+
+export const createTopicIdeaInputSchema = z.object({
+  title: z.string().min(1).max(500),
+  description: z.string().max(5000).optional(),
+  pillarId: uuidSchema.optional(),
+  verticalId: uuidSchema.optional(),
+  evidencePackId: uuidSchema.optional(),
+  findingIds: z.array(uuidSchema).max(100).default([]),
+  trendCandidateIds: z.array(uuidSchema).max(100).default([]),
+  citationIds: z.array(uuidSchema).max(100).default([]),
+});
+export type CreateTopicIdeaInput = z.infer<typeof createTopicIdeaInputSchema>;
+
+export const updateTopicIdeaStatusInputSchema = z.object({
+  status: z.enum(['PROPOSED', 'SHORTLISTED', 'IN_USE', 'DISCARDED']),
+});
+export type UpdateTopicIdeaStatusInput = z.infer<typeof updateTopicIdeaStatusInputSchema>;
+
+export const createCampaignInputSchema = z.object({
+  name: z.string().min(1).max(300),
+  description: z.string().max(5000).optional(),
+  brandId: uuidSchema.optional(),
+  verticalId: uuidSchema.optional(),
+  status: z
+    .enum(['DRAFT', 'PLANNED', 'ACTIVE', 'PAUSED', 'COMPLETED', 'ARCHIVED'])
+    .default('DRAFT'),
+  timezone: z.string().min(1).max(100).default('UTC'),
+  startAt: z.string().datetime().optional(),
+  endAt: z.string().datetime().optional(),
+});
+export type CreateCampaignInput = z.infer<typeof createCampaignInputSchema>;
+
+export const upsertCampaignBriefInputSchema = z.object({
+  background: z.string().max(20000).optional(),
+  objectives: strList(1000),
+  keyMessages: strList(1000),
+  mandatories: strList(1000),
+  doNots: strList(1000),
+  tone: z.string().max(1000).optional(),
+});
+export type UpsertCampaignBriefInput = z.infer<typeof upsertCampaignBriefInputSchema>;

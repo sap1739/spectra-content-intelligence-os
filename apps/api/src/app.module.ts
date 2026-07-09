@@ -9,6 +9,7 @@ import { MetaController } from './meta/meta.controller';
 import { KnowledgeModule } from './knowledge/knowledge.module';
 import { ResearchProjectsModule } from './research-projects/research-projects.module';
 import { ResearchRunsModule } from './research-runs/research-runs.module';
+import { StrategyModule } from './strategy/strategy.module';
 import { TenancyModule } from './tenancy/tenancy.module';
 import { VerticalsModule } from './verticals/verticals.module';
 
@@ -24,6 +25,7 @@ import { VerticalsModule } from './verticals/verticals.module';
     ResearchRunsModule,
     KnowledgeModule,
     ContentModule,
+    StrategyModule,
   ],
   controllers: [MetaController],
 })
