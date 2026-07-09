@@ -359,6 +359,9 @@ importers:
       '@spectra/knowledge-core':
         specifier: workspace:*
         version: link:../knowledge-core
+      '@spectra/security':
+        specifier: workspace:*
+        version: link:../security
     devDependencies:
       '@types/node':
         specifier: ^22.15.0

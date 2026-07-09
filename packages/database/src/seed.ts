@@ -5,7 +5,17 @@
  *
  * Run with: pnpm db:seed (idempotent — safe to re-run).
  */
+import { hashPassword } from '@spectra/security';
 import { PrismaClient } from '@prisma/client';
+
+/**
+ * Demo admin credentials — LOCAL DEVELOPMENT ONLY. Never created when
+ * NODE_ENV=production, so a default admin password can't reach a real deploy.
+ */
+export const DEMO_LOGIN = {
+  email: 'demo@spectra.local',
+  password: 'spectra-demo-2026',
+} as const;
 
 export const SEED_IDS = {
   user: '00000000-0000-4000-8000-000000000001',
@@ -23,13 +33,22 @@ export async function seed(prisma: PrismaClient): Promise<void> {
     update: {},
     create: {
       id: SEED_IDS.user,
-      email: 'demo@spectra.local',
+      email: DEMO_LOGIN.email,
       name: 'Demo User',
       timezone: 'Asia/Kolkata',
       locale: 'en',
       status: 'ACTIVE',
     },
   });
+
+  // Password credential so the demo admin can actually log in (dev only).
+  if (process.env.NODE_ENV !== 'production') {
+    await prisma.credential.upsert({
+      where: { userId: user.id },
+      update: {},
+      create: { userId: user.id, passwordHash: await hashPassword(DEMO_LOGIN.password) },
+    });
+  }
 
   const organization = await prisma.organization.upsert({
     where: { id: SEED_IDS.organization },

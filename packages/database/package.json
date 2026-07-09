@@ -22,7 +22,8 @@
   "dependencies": {
     "@prisma/client": "^6.9.0",
     "@spectra/contracts": "workspace:*",
-    "@spectra/knowledge-core": "workspace:*"
+    "@spectra/knowledge-core": "workspace:*",
+    "@spectra/security": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
