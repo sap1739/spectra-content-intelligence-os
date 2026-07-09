@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "dev": "tsx watch src/main.ts",
+    "dev": "node --watch --enable-source-maps -r @swc-node/register src/main.ts",
     "start": "node dist/main.js",
     "test:integration": "vitest run",
     "clean": "rm -rf dist .turbo"
@@ -43,6 +43,7 @@
   },
   "devDependencies": {
     "@nestjs/testing": "^11.1.0",
+    "@swc-node/register": "^1.11.1",
     "@swc/core": "^1.11.0",
     "@types/node": "^22.15.0",
     "tsx": "^4.20.0",
