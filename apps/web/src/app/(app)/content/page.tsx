@@ -60,13 +60,32 @@ function DraftCard({ draft }: { draft: ContentDraftRow }) {
         </span>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
-        {draft.status === 'FAILED' ? (
+        {draft.status === 'GENERATING' ? (
+          <p className="text-sm text-muted-foreground">Generating a grounded draft…</p>
+        ) : draft.status === 'FAILED' ? (
           <p role="alert" className="text-sm text-destructive">
             {draft.failureReason ?? 'Generation failed.'}
           </p>
         ) : (
           <p className="whitespace-pre-wrap text-sm leading-relaxed">{draft.body}</p>
         )}
+
+        {draft.citationValidation ? (
+          <div className="flex flex-wrap items-center gap-2 text-[11px]">
+            <Badge variant={draft.citationValidation.allCitedSupported ? 'success' : 'destructive'}>
+              {draft.citationValidation.supportedMarkers.length}/
+              {draft.citationValidation.markersFound} citation markers verified
+            </Badge>
+            {draft.citationValidation.unsupportedMarkers.length > 0 ? (
+              <span className="text-destructive">
+                {draft.citationValidation.unsupportedMarkers.length} unsupported marker(s):{' '}
+                {draft.citationValidation.unsupportedMarkers.map((n) => `[${n}]`).join(' ')} — not
+                backed by a supplied source.
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-2 text-[11px] text-muted-foreground">
           <span>
             Grounded on {draft.citationIds.length} citation(s) · {draft.findingIds.length}{' '}

@@ -14,7 +14,9 @@
   "dependencies": {
     "@spectra/ai-core": "workspace:*",
     "@spectra/contracts": "workspace:*",
-    "@spectra/knowledge-core": "workspace:*"
+    "@spectra/database": "workspace:*",
+    "@spectra/knowledge-core": "workspace:*",
+    "@spectra/logging": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",

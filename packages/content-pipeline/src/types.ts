@@ -57,4 +57,6 @@ export interface DraftGenerationResult {
   groundedCitationIds: string[];
   /** Exactly the finding ids supplied to the model as grounding. */
   groundedFindingIds: string[];
+  /** 1-indexed source order the `[n]` markers map to (findings then citations). */
+  groundedSourceOrder: string[];
 }

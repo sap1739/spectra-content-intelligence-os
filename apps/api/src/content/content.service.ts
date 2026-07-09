@@ -1,17 +1,12 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import type { CreateContentItemInput, GenerateDraftInput } from '@spectra/contracts';
-import { AiProviderUnavailableError } from '@spectra/ai-anthropic';
-import {
-  type DraftEvidence,
-  type GroundingCitation,
-  type GroundingFinding,
-  generateDraft,
-} from '@spectra/content-pipeline';
+import { TenantIsolationError } from '@spectra/security';
+import { JOB_NAMES } from '@spectra/workflow-core';
 
 import { AiTextService } from '../infra/ai.service';
 import { AuditService } from '../infra/audit.service';
+import { QueueService } from '../infra/queue.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { TenantIsolationError } from '@spectra/security';
 import type { Principal, TenantContext } from '../auth/types';
 
 @Injectable()
@@ -20,6 +15,7 @@ export class ContentService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly ai: AiTextService,
+    private readonly queue: QueueService,
   ) {}
 
   list(tenant: TenantContext) {
@@ -183,83 +179,19 @@ export class ContentService {
     });
   }
 
-  /** Assembles grounding evidence for an item from its evidence pack. */
-  private async loadEvidence(tenant: TenantContext, packId: string): Promise<DraftEvidence> {
-    const pack = await this.loadPack(tenant, packId);
-
-    const findingRows = pack.findingIds.length
-      ? await this.prisma.client.researchFinding.findMany({
-          where: {
-            id: { in: pack.findingIds },
-            organizationId: tenant.organizationId,
-            workspaceId: tenant.workspaceId as string,
-          },
-          select: {
-            id: true,
-            summary: true,
-            excerpt: true,
-            source: { select: { url: true, title: true, publisher: true } },
-          },
-          take: 12,
-        })
-      : [];
-
-    const citationRows = pack.citationIds.length
-      ? await this.prisma.client.citation.findMany({
-          where: {
-            id: { in: pack.citationIds },
-            organizationId: tenant.organizationId,
-            workspaceId: tenant.workspaceId as string,
-          },
-          select: {
-            id: true,
-            excerpt: true,
-            url: true,
-            title: true,
-            publisher: true,
-            findingId: true,
-          },
-          take: 12,
-        })
-      : [];
-
-    const findings: GroundingFinding[] = findingRows.map((f) => ({
-      id: f.id,
-      summary: f.summary,
-      excerpt: f.excerpt,
-      sourceTitle: f.source.title ?? f.source.publisher,
-      sourceUrl: f.source.url,
-    }));
-
-    const citations: GroundingCitation[] = citationRows
-      .filter((c) => c.excerpt)
-      .map((c) => ({
-        id: c.id,
-        quote: c.excerpt as string,
-        sourceTitle: c.title ?? c.publisher,
-        sourceUrl: c.url,
-        findingId: c.findingId,
-      }));
-
-    return {
-      packId: pack.id,
-      packTitle: pack.title,
-      packSummary: pack.summary,
-      findings,
-      citations,
-    };
-  }
-
   /**
-   * Generates an evidence-grounded draft. Requires the item to be grounded on
-   * an evidence pack (no pack => nothing to ground on => 422-style guard). If
-   * the AI provider is unconfigured, returns 503 — never fabricated output.
+   * Queues an evidence-grounded draft. The honesty guards run synchronously so
+   * the caller gets an immediate, truthful answer:
+   * - no configured provider  → 503 (never fabricated text), no draft row;
+   * - item not grounded        → 503, nothing to cite.
+   * Otherwise a GENERATING draft is created and a job enqueued; the worker
+   * generates, validates citations, and flips it to READY/FAILED.
    */
   async generate(
     tenant: TenantContext,
     principal: Principal,
     contentItemId: string,
-    input: GenerateDraftInput,
+    _input: GenerateDraftInput,
   ) {
     const item = await this.get(tenant, contentItemId);
 
@@ -274,9 +206,6 @@ export class ContentService {
       );
     }
 
-    const evidence = await this.loadEvidence(tenant, item.evidencePackId);
-
-    // Record the attempt up-front so failures are auditable, not silent.
     const draft = await this.prisma.client.contentDraft.create({
       data: {
         organizationId: tenant.organizationId,
@@ -288,84 +217,26 @@ export class ContentService {
       },
     });
 
-    try {
-      const result = await generateDraft(this.ai.provider, {
+    await this.queue.enqueue(
+      JOB_NAMES.contentDraftGenerate,
+      { draftId: draft.id },
+      {
         tenant: {
           organizationId: tenant.organizationId,
           workspaceId: tenant.workspaceId as string,
         },
-        contentType: item.contentType,
-        title: item.title,
-        objective: item.objective,
-        funnelStage: item.funnelStage,
-        ...(input.targetPlatform ? { targetPlatform: input.targetPlatform } : {}),
-        ...(input.additionalGuidance ? { additionalGuidance: input.additionalGuidance } : {}),
-        evidence,
-        ...(input.maxOutputTokens ? { maxOutputTokens: input.maxOutputTokens } : {}),
-      });
+      },
+    );
 
-      const updated = await this.prisma.client.contentDraft.update({
-        where: { id: draft.id },
-        data: {
-          status: result.finishReason === 'content_filter' ? 'FAILED' : 'READY',
-          body: result.body,
-          citationIds: result.groundedCitationIds,
-          findingIds: result.groundedFindingIds,
-          modelProvider: result.modelRef.provider,
-          modelName: result.modelRef.model,
-          modelVersion: result.modelRef.version ?? null,
-          promptTemplateId: result.promptTemplateId,
-          promptVersion: result.promptVersion,
-          usageInputTokens: result.usage?.inputTokens ?? null,
-          usageOutputTokens: result.usage?.outputTokens ?? null,
-          finishReason: result.finishReason,
-          ...(result.finishReason === 'content_filter'
-            ? { failureReason: 'The model declined to generate this content.' }
-            : {}),
-        },
-      });
+    await this.audit.record({
+      organizationId: tenant.organizationId,
+      workspaceId: tenant.workspaceId,
+      actorUserId: principal.userId,
+      action: 'content_draft.queued',
+      resourceType: 'ContentDraft',
+      resourceId: draft.id,
+    });
 
-      if (updated.status === 'READY') {
-        await this.prisma.client.contentItem.update({
-          where: { id: item.id },
-          data: { body: result.body, lifecycleState: 'GENERATED' },
-        });
-        // Forward lineage on the evidence pack.
-        await this.prisma.client.evidencePack.update({
-          where: { id: item.evidencePackId },
-          data: { usedByContentItemIds: { push: item.id } },
-        });
-      }
-
-      await this.audit.record({
-        organizationId: tenant.organizationId,
-        workspaceId: tenant.workspaceId,
-        actorUserId: principal.userId,
-        action: 'content_draft.generated',
-        resourceType: 'ContentDraft',
-        resourceId: draft.id,
-        changes: {
-          model: `${result.modelRef.provider}/${result.modelRef.model}`,
-          promptVersion: result.promptVersion,
-          citations: result.groundedCitationIds.length,
-          finishReason: result.finishReason,
-        },
-      });
-
-      return updated;
-    } catch (error) {
-      const failureReason =
-        error instanceof AiProviderUnavailableError
-          ? 'AI provider unavailable'
-          : 'Generation failed';
-      await this.prisma.client.contentDraft.update({
-        where: { id: draft.id },
-        data: { status: 'FAILED', failureReason },
-      });
-      if (error instanceof AiProviderUnavailableError) {
-        throw new ServiceUnavailableException(error.message);
-      }
-      throw error;
-    }
+    return draft;
   }
 }

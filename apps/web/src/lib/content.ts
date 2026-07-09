@@ -15,6 +15,17 @@ export interface AiStatus {
   model: string;
 }
 
+export interface CitationValidation {
+  markersFound: number;
+  distinctMarkers: number[];
+  sourceCount: number;
+  supportedMarkers: number[];
+  unsupportedMarkers: number[];
+  citedSourceIds: string[];
+  allCitedSupported: boolean;
+  uncitedSourceIds: string[];
+}
+
 export interface ContentDraftRow {
   id: string;
   status: 'GENERATING' | 'READY' | 'FAILED';
@@ -29,6 +40,7 @@ export interface ContentDraftRow {
   usageOutputTokens: number | null;
   finishReason: string | null;
   failureReason: string | null;
+  citationValidation: CitationValidation | null;
   createdAt: string;
 }
 
@@ -102,6 +114,9 @@ export function useContentItem(workspaceId: string, contentItemId: string | null
     queryFn: () =>
       api.get<ContentItemRow>(`/v1/workspaces/${workspaceId}/content-items/${contentItemId}`),
     enabled: Boolean(contentItemId),
+    // Poll while a draft is generating so the worker's result appears live.
+    refetchInterval: (query) =>
+      (query.state.data?.drafts ?? []).some((d) => d.status === 'GENERATING') ? 2500 : false,
   });
 }
 

@@ -184,9 +184,15 @@ importers:
 
   apps/worker:
     dependencies:
+      '@spectra/ai-anthropic':
+        specifier: workspace:*
+        version: link:../../packages/ai-anthropic
       '@spectra/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@spectra/content-pipeline':
+        specifier: workspace:*
+        version: link:../../packages/content-pipeline
       '@spectra/database':
         specifier: workspace:*
         version: link:../../packages/database
@@ -300,9 +306,15 @@ importers:
       '@spectra/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@spectra/database':
+        specifier: workspace:*
+        version: link:../database
       '@spectra/knowledge-core':
         specifier: workspace:*
         version: link:../knowledge-core
+      '@spectra/logging':
+        specifier: workspace:*
+        version: link:../logging
     devDependencies:
       '@types/node':
         specifier: ^22.15.0

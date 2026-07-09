@@ -33,5 +33,10 @@ export async function generateDraft(
     promptVersion: PROMPT_VERSION,
     groundedCitationIds: input.evidence.citations.map((c) => c.id),
     groundedFindingIds: input.evidence.findings.map((f) => f.id),
+    // Matches buildDraftPrompt's numbering: findings first, then citations.
+    groundedSourceOrder: [
+      ...input.evidence.findings.map((f) => f.id),
+      ...input.evidence.citations.map((c) => c.id),
+    ],
   };
 }

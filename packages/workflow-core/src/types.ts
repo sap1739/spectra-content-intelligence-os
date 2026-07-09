@@ -14,6 +14,7 @@ export const JOB_NAMES = {
   heartbeat: 'system.heartbeat',
   researchRunExecute: 'research.run.execute',
   researchRunScheduled: 'research.run.scheduled',
+  contentDraftGenerate: 'content.draft.generate',
 } as const;
 
 export interface RetryPolicy {

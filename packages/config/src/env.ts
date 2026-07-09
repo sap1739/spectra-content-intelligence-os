@@ -92,7 +92,9 @@ export const workerEnvSchema = z
   .merge(redisEnvSchema)
   // Research pipeline: persistence + snapshot storage.
   .merge(databaseEnvSchema)
-  .merge(storageEnvSchema);
+  .merge(storageEnvSchema)
+  // Content generation (Phase 3): optional AI provider for the draft worker.
+  .merge(aiEnvSchema);
 
 export const webEnvSchema = z.object({
   NODE_ENV: nodeEnvSchema,

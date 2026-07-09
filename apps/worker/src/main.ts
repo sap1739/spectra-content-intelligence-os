@@ -2,7 +2,9 @@ import { existsSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { resolve } from 'node:path';
 
+import { AnthropicTextGenerationProvider } from '@spectra/ai-anthropic';
 import { loadEnv, storageEnvSchema, workerEnvSchema } from '@spectra/config';
+import { executeContentDraft } from '@spectra/content-pipeline';
 import { createPrismaClient } from '@spectra/database';
 import { createLogger, withCorrelation } from '@spectra/logging';
 import { executeResearchRun } from '@spectra/research-pipeline';
@@ -140,6 +142,27 @@ async function main(): Promise<void> {
       );
     },
     { concurrency: 1, timeoutMs: 4 * 60_000 },
+  );
+
+  // Evidence-grounded content drafting. The provider is env-gated — with no
+  // ANTHROPIC_API_KEY the executor records the draft as FAILED (honest), never
+  // fabricated text. The API's synchronous guard means unconfigured requests
+  // 503 before a job is ever enqueued, so this path only runs when configured.
+  const textProvider = new AnthropicTextGenerationProvider({
+    apiKey: env.ANTHROPIC_API_KEY,
+    model: env.ANTHROPIC_MODEL,
+    maxOutputTokens: env.ANTHROPIC_MAX_OUTPUT_TOKENS,
+  });
+  runtime.register<{ draftId: string }, unknown>(
+    JOB_NAMES.contentDraftGenerate,
+    async (envelope, context) => {
+      const jobLogger = withCorrelation(logger, context.correlationId);
+      return executeContentDraft(
+        { prisma, provider: textProvider, logger: jobLogger },
+        { draftId: envelope.payload.draftId },
+      );
+    },
+    { concurrency: 2, timeoutMs: 5 * 60_000 },
   );
 
   await runtime.start();

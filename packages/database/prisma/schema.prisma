@@ -953,27 +953,29 @@ enum ContentDraftStatus {
 /// regressions bisectable. Citations here are the ones the draft was grounded
 /// on, never fabricated post-hoc.
 model ContentDraft {
-  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId    String             @db.Uuid
-  workspaceId       String             @db.Uuid
-  contentItemId     String             @db.Uuid
-  status            ContentDraftStatus @default(GENERATING)
-  body              String?
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String             @db.Uuid
+  workspaceId        String             @db.Uuid
+  contentItemId      String             @db.Uuid
+  status             ContentDraftStatus @default(GENERATING)
+  body               String?
   /// Grounding actually supplied to the model for THIS draft.
-  evidencePackId    String?            @db.Uuid
-  citationIds       String[]           @default([]) @db.Uuid
-  findingIds        String[]           @default([]) @db.Uuid
+  evidencePackId     String?            @db.Uuid
+  citationIds        String[]           @default([]) @db.Uuid
+  findingIds         String[]           @default([]) @db.Uuid
   /// Generation record — versioned for attribution (GenerationRecord contract).
-  modelProvider     String?
-  modelName         String?
-  modelVersion      String?
-  promptTemplateId  String?
-  promptVersion     String?
-  usageInputTokens  Int?
-  usageOutputTokens Int?
-  finishReason      String?
-  failureReason     String?
-  createdById       String?            @db.Uuid
+  modelProvider      String?
+  modelName          String?
+  modelVersion       String?
+  promptTemplateId   String?
+  promptVersion      String?
+  usageInputTokens   Int?
+  usageOutputTokens  Int?
+  finishReason       String?
+  failureReason      String?
+  /// CitationValidation — which [n] markers map to supplied sources vs dangling.
+  citationValidation Json?
+  createdById        String?            @db.Uuid
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
