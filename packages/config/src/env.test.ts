@@ -5,6 +5,11 @@ import { EnvValidationError, apiEnvSchema, loadEnv, workerEnvSchema } from './en
 const validApiEnv = {
   DATABASE_URL: 'postgresql://spectra:secret@localhost:5432/spectra',
   REDIS_URL: 'redis://localhost:6379',
+  // Object storage is required on the API since Phase 3F (media rendering).
+  STORAGE_ENDPOINT: 'http://localhost:9000',
+  STORAGE_ACCESS_KEY: 'spectra-local',
+  STORAGE_SECRET_KEY: 'spectra_local_dev',
+  STORAGE_BUCKET: 'spectra-dev',
 };
 
 describe('loadEnv', () => {

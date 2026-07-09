@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { languageCodeSchema, slugSchema, uuidSchema } from './common';
+import { imageOperationSchema } from './media';
 import { socialPlatformSchema } from './social';
 import { contentTypeSchema, funnelStageSchema } from './strategy';
 import { roleSchema } from './tenancy';
@@ -265,6 +266,19 @@ export const scheduleEntryInputSchema = z.object({
   note: z.string().max(2000).optional(),
 });
 export type ScheduleEntryInput = z.infer<typeof scheduleEntryInputSchema>;
+
+// ---------------------------------------------------------------------------
+// Media rendering (Phase 3F)
+// ---------------------------------------------------------------------------
+
+/** Process an uploaded image through a sharp operation pipeline. */
+export const processImageInputSchema = z.object({
+  /** Base64-encoded source image (no data: prefix). Max ~10MB decoded. */
+  imageBase64: z.string().min(1).max(15_000_000),
+  operations: z.array(imageOperationSchema).min(1).max(10),
+  outputFormat: z.enum(['jpeg', 'png', 'webp', 'avif']).default('webp'),
+});
+export type ProcessImageInput = z.infer<typeof processImageInputSchema>;
 
 // ---------------------------------------------------------------------------
 // Strategy entities (Phase 3C)

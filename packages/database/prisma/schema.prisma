@@ -108,6 +108,7 @@ model Organization {
   topicIdeas       TopicIdea[]
   campaignBriefs   CampaignBrief[]
   scheduleEntries  ContentScheduleEntry[]
+  mediaAssets      MediaAsset[]
 
   @@map("organizations")
 }
@@ -215,6 +216,7 @@ model Workspace {
   topicIdeas       TopicIdea[]
   campaignBriefs   CampaignBrief[]
   scheduleEntries  ContentScheduleEntry[]
+  mediaAssets      MediaAsset[]
 
   @@unique([organizationId, slug])
   @@index([organizationId, status])
@@ -1153,6 +1155,48 @@ model ContentScheduleEntry {
   @@index([workspaceId, scheduledAt])
   @@index([contentItemId])
   @@map("content_schedule_entries")
+}
+
+// ---------------------------------------------------------------------------
+// Media assets (Phase 3F)
+// ---------------------------------------------------------------------------
+
+enum MediaKind {
+  IMAGE
+  VIDEO
+  AUDIO
+  DOCUMENT
+  OTHER
+}
+
+/// A media asset in tenant-rooted object storage. Phase 3F wires real image
+/// rendering (sharp); video/audio remain honestly unavailable until ffmpeg.
+model MediaAsset {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @db.Uuid
+  workspaceId    String    @db.Uuid
+  kind           MediaKind @default(IMAGE)
+  /// Tenant-rooted object storage key (org/<id>/ws/<id>/renders|media/…).
+  storageKey     String
+  mimeType       String
+  sizeBytes      Int
+  widthPx        Int?
+  heightPx       Int?
+  durationMs     Int?
+  checksum       String?
+  /// The asset this was derived from (e.g. the uploaded source image).
+  sourceAssetId  String?   @db.Uuid
+  /// Rendering engine that produced it (e.g. "sharp").
+  engine         String?
+  createdById    String?   @db.Uuid
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@map("media_assets")
 }
 
 // ---------------------------------------------------------------------------

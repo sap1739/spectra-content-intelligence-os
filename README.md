@@ -4,11 +4,13 @@ Research-first content intelligence, multimedia creation, campaign management, s
 publishing and analytics platform for B2B/B2C businesses, agencies, creators and regulated
 enterprises — built around **user-defined custom verticals** and **evidence-backed content**.
 
-> **Status: Phase 2 in progress.** On top of the Phase 1 foundation: session authentication
-> with permission/tenant guards, vertical/brand/project management, and a working first-party
-> research pipeline — RSS feeds in, snapshotted/deduplicated findings with provenance out,
-> plus explainable trend scores. No paid AI API or social platform is integrated yet; every
-> number in the UI comes from real ingested data.
+> **Status: Phase 3 in progress (Phase 2 complete).** On top of the identity + research
+> foundation: evidence-grounded content generation behind the ai-core port
+> (`@spectra/ai-anthropic`, env-gated — no key means honestly unavailable, never fabricated),
+> with citation validation, a full content lifecycle (human edits, review/approval, AI
+> moderation gate), strategy entities (campaigns, briefs, personas, pillars, topic ideas), a
+> content calendar, and real image rendering (`@spectra/media-sharp`). No social platform is
+> integrated yet; every number in the UI comes from real data.
 
 ## Product workflow (target)
 
@@ -41,6 +43,7 @@ packages/
   ai-anthropic/   Anthropic Claude adapter for the TextGenerationProvider port (env-gated; ADR-0017)
   content-pipeline/ Evidence-grounded drafting: prompt isolation + cited draft generation (ADR-0017)
   media-core/     Rendering ports (Sharp/SVG/HTML-to-image/FFmpeg/Remotion/subtitles/audio)
+  media-sharp/    Real sharp ImageRenderer adapter (resize/crop/rotate/overlay/format; ADR-0018)
   social-core/    SocialPublisher port + capability guards (no platform integrated)
   workflow-core/  Queue-neutral job ports; BullMQ + in-memory adapters
   storage/        Object storage port + S3/MinIO impl, tenant-scoped keys, upload validation
@@ -50,7 +53,7 @@ infrastructure/
   docker/         PostgreSQL (pgvector), Redis, MinIO via Docker Compose
   scripts/        bootstrap.sh, verify.sh
 docs/             Product, architecture, security and strategy documentation
-docs/adr/         17 Architecture Decision Records
+docs/adr/         18 Architecture Decision Records
 ```
 
 ## Quick start

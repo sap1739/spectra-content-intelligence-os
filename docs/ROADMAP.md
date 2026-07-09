@@ -60,9 +60,13 @@ providers.**
 - ✅ **Increment E — content calendar.** Schedule approved content onto a per-platform
   calendar at UTC instants (first scheduling moves APPROVED → SCHEDULED; scheduling a
   non-approved item → 422); calendar list + cancel; timezone-aware Calendar UI.
-- Remaining: content-angle entities; versioned prompt-template registry; streaming generation.
-- Media pipeline: sharp image ops → ffmpeg audio/video → sandboxed HTML-to-image →
-  (license-permitting) Remotion.
+- ✅ **Increment F — media pipeline v1.** Real image rendering via `@spectra/media-sharp`
+  behind the media-core `ImageRenderer` port (resize/crop/rotate/overlay/format), storing
+  tenant-rooted derived assets and streaming bytes back through the API; honest capability
+  status (image real; video/audio/HTML-to-image reported unavailable until their engines are
+  wired). Media UI with upload → resize/convert and an asset library (ADR-0018).
+- Remaining in Phase 3: content-angle entities; versioned prompt-template registry; streaming
+  generation; ffmpeg audio/video, sandboxed HTML-to-image and (license-permitting) Remotion.
 - Data export + retention jobs.
 
 ## Phase 4 — Publishing & Analytics

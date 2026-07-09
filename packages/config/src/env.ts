@@ -80,7 +80,9 @@ export const apiEnvSchema = z
   })
   .merge(databaseEnvSchema)
   .merge(redisEnvSchema)
-  .merge(aiEnvSchema);
+  .merge(aiEnvSchema)
+  // Media rendering (Phase 3F) reads/writes tenant-rooted object storage.
+  .merge(storageEnvSchema);
 
 export const workerEnvSchema = z
   .object({
