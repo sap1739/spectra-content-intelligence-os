@@ -57,6 +57,9 @@ providers.**
   submit → review → approve/request-changes/reject flow with approval records, and a real AI
   moderation gate on approval (FLAGGED blocks approval; honestly recorded as SKIPPED when no
   provider is configured — never a fake pass). Studio workflow controls.
+- ✅ **Increment E — content calendar.** Schedule approved content onto a per-platform
+  calendar at UTC instants (first scheduling moves APPROVED → SCHEDULED; scheduling a
+  non-approved item → 422); calendar list + cancel; timezone-aware Calendar UI.
 - Remaining: content-angle entities; versioned prompt-template registry; streaming generation.
 - Media pipeline: sharp image ops → ffmpeg audio/video → sandboxed HTML-to-image →
   (license-permitting) Remotion.

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { languageCodeSchema, slugSchema, uuidSchema } from './common';
+import { socialPlatformSchema } from './social';
 import { contentTypeSchema, funnelStageSchema } from './strategy';
 import { roleSchema } from './tenancy';
 import { customVerticalSchema } from './vertical';
@@ -255,6 +256,15 @@ export const reviewNoteInputSchema = z.object({
   note: z.string().max(2000).optional(),
 });
 export type ReviewNoteInput = z.infer<typeof reviewNoteInputSchema>;
+
+/** Schedule a content item onto the calendar for a platform at a UTC instant. */
+export const scheduleEntryInputSchema = z.object({
+  contentItemId: uuidSchema,
+  platform: socialPlatformSchema,
+  scheduledAt: z.string().datetime(),
+  note: z.string().max(2000).optional(),
+});
+export type ScheduleEntryInput = z.infer<typeof scheduleEntryInputSchema>;
 
 // ---------------------------------------------------------------------------
 // Strategy entities (Phase 3C)

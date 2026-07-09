@@ -268,4 +268,63 @@ describe('API integration: content items, evidence grounding, honest AI unavaila
     });
     expect(approve.statusCode).toBe(422);
   });
+
+  it('schedules an approved item onto the calendar, then cancels the entry', async () => {
+    const item = await prisma.client.contentItem.create({
+      data: {
+        organizationId: orgId,
+        workspaceId,
+        title: 'Approved item',
+        contentType: 'POST',
+        lifecycleState: 'APPROVED',
+        body: 'Ready to schedule.',
+      },
+    });
+
+    const scheduled = await inject().inject({
+      method: 'POST',
+      url: `/v1/workspaces/${workspaceId}/calendar`,
+      headers: { cookie },
+      payload: {
+        contentItemId: item.id,
+        platform: 'LINKEDIN',
+        scheduledAt: '2026-08-01T09:00:00.000Z',
+      },
+    });
+    expect(scheduled.statusCode).toBe(201);
+    const entryId = (scheduled.json() as { id: string }).id;
+
+    // Scheduling moved the item APPROVED → SCHEDULED.
+    const after = await inject().inject({
+      method: 'GET',
+      url: `/v1/workspaces/${workspaceId}/content-items/${item.id}`,
+      headers: { cookie },
+    });
+    expect((after.json() as { lifecycleState: string }).lifecycleState).toBe('SCHEDULED');
+
+    const list = await inject().inject({
+      method: 'GET',
+      url: `/v1/workspaces/${workspaceId}/calendar`,
+      headers: { cookie },
+    });
+    expect((list.json() as unknown[]).length).toBe(1);
+
+    const cancel = await inject().inject({
+      method: 'DELETE',
+      url: `/v1/workspaces/${workspaceId}/calendar/${entryId}`,
+      headers: { cookie },
+    });
+    expect((cancel.json() as { status: string }).status).toBe('CANCELLED');
+  });
+
+  it('refuses to schedule content that is not approved (422)', async () => {
+    const id = await seedGenerated();
+    const res = await inject().inject({
+      method: 'POST',
+      url: `/v1/workspaces/${workspaceId}/calendar`,
+      headers: { cookie },
+      payload: { contentItemId: id, platform: 'X', scheduledAt: '2026-08-01T09:00:00.000Z' },
+    });
+    expect(res.statusCode).toBe(422);
+  });
 });
