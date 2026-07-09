@@ -20,12 +20,18 @@ import { PageHeader } from '@/components/page-header';
 import { useWorkspace } from '@/lib/auth';
 import {
   useAiStatus,
+  useApproveContent,
   useContentItem,
   useContentItems,
   useCreateContentItem,
+  useEditContent,
   useGenerateDraft,
+  useRejectContent,
+  useRequestChanges,
+  useSubmitContent,
   useWorkspaceEvidencePacks,
   type ContentDraftRow,
+  type ContentItemRow,
 } from '@/lib/content';
 
 const CONTENT_TYPES = [
@@ -108,6 +114,127 @@ function DraftCard({ draft }: { draft: ContentDraftRow }) {
   );
 }
 
+const EDITABLE_STATES = new Set(['DRAFT', 'GENERATED', 'EDITING', 'CHANGES_REQUESTED']);
+const SUBMITTABLE_STATES = new Set(['GENERATED', 'EDITING']);
+
+function WorkflowSection({ item, workspaceId }: { item: ContentItemRow; workspaceId: string }) {
+  const edit = useEditContent(workspaceId, item.id);
+  const submit = useSubmitContent(workspaceId, item.id);
+  const approve = useApproveContent(workspaceId, item.id);
+  const requestChanges = useRequestChanges(workspaceId, item.id);
+  const reject = useRejectContent(workspaceId, item.id);
+
+  const [editing, setEditing] = React.useState(false);
+  const [body, setBody] = React.useState(item.body ?? '');
+
+  const error = edit.error ?? submit.error ?? approve.error ?? requestChanges.error ?? reject.error;
+  const inReview = item.lifecycleState === 'REVIEW';
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Workflow</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        {editing ? (
+          <div className="flex flex-col gap-2">
+            <textarea
+              aria-label="Edit content body"
+              className={cn(fieldClass, 'min-h-40 resize-y font-mono text-xs')}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+            />
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                disabled={edit.isPending || !body.trim()}
+                onClick={async () => {
+                  await edit.mutateAsync({ body });
+                  setEditing(false);
+                }}
+              >
+                {edit.isPending ? 'Saving…' : 'Save edit'}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {EDITABLE_STATES.has(item.lifecycleState) ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setBody(item.body ?? '');
+                  setEditing(true);
+                }}
+              >
+                Edit body
+              </Button>
+            ) : null}
+            {SUBMITTABLE_STATES.has(item.lifecycleState) ? (
+              <Button size="sm" disabled={submit.isPending} onClick={() => submit.mutate({})}>
+                Submit for review
+              </Button>
+            ) : null}
+            {inReview ? (
+              <>
+                <Button size="sm" disabled={approve.isPending} onClick={() => approve.mutate({})}>
+                  {approve.isPending ? 'Moderating…' : 'Approve'}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={requestChanges.isPending}
+                  onClick={() => requestChanges.mutate({})}
+                >
+                  Request changes
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={reject.isPending}
+                  onClick={() => reject.mutate({})}
+                >
+                  Reject
+                </Button>
+              </>
+            ) : null}
+          </div>
+        )}
+
+        {error ? (
+          <p role="alert" className="text-xs text-destructive">
+            {error.message}
+          </p>
+        ) : null}
+
+        {item.moderation ? (
+          <p className="text-xs text-muted-foreground">
+            Moderation: <span className="font-medium">{item.moderation.status}</span>
+            {item.moderation.categories && item.moderation.categories.length > 0
+              ? ` · ${item.moderation.categories.join(', ')}`
+              : ''}
+          </p>
+        ) : null}
+
+        {item.approvals.length > 0 ? (
+          <ul className="flex flex-col gap-1 border-t border-border pt-2 text-[11px] text-muted-foreground">
+            {item.approvals.map((a, i) => (
+              <li key={i}>
+                {a.decision} · {new Date(a.decidedAt).toLocaleString()}
+                {a.note ? ` — ${a.note}` : ''}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
 function ItemDetail({ workspaceId, itemId }: { workspaceId: string; itemId: string }) {
   const item = useContentItem(workspaceId, itemId);
   const generate = useGenerateDraft(workspaceId, itemId);
@@ -179,6 +306,8 @@ function ItemDetail({ workspaceId, itemId }: { workspaceId: string; itemId: stri
           ) : null}
         </CardContent>
       </Card>
+
+      <WorkflowSection item={data} workspaceId={workspaceId} />
 
       {(data.drafts ?? []).length === 0 ? (
         <p className="text-sm text-muted-foreground">

@@ -52,11 +52,14 @@ providers.**
 - ✅ **Increment C — strategy entities.** Campaigns + briefs, audience personas, content
   pillars and topic ideas (traceable to research) — schema + tenant-scoped CRUD API +
   Campaigns and Strategy UIs.
+- ✅ **Increment D — content lifecycle & approvals.** Enforced lifecycle transitions
+  (`CONTENT_LIFECYCLE_TRANSITIONS`, invalid moves → 422), human edits with an edit history,
+  submit → review → approve/request-changes/reject flow with approval records, and a real AI
+  moderation gate on approval (FLAGGED blocks approval; honestly recorded as SKIPPED when no
+  provider is configured — never a fake pass). Studio workflow controls.
 - Remaining: content-angle entities; versioned prompt-template registry; streaming generation.
-- Citation-placement validation ✅. Moderation gate before publish (Increment D).
 - Media pipeline: sharp image ops → ffmpeg audio/video → sandboxed HTML-to-image →
   (license-permitting) Remotion.
-- Full content lifecycle with review/approval flows and audit history (Increment D).
 - Data export + retention jobs.
 
 ## Phase 4 — Publishing & Analytics

@@ -1,10 +1,14 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   createContentItemInputSchema,
   generateDraftInputSchema,
+  reviewNoteInputSchema,
+  updateContentBodyInputSchema,
   type CreateContentItemInput,
   type GenerateDraftInput,
+  type ReviewNoteInput,
+  type UpdateContentBodyInput,
 } from '@spectra/contracts';
 
 import { CurrentPrincipal, CurrentTenant, RequirePermissions } from '../auth/decorators';
@@ -68,5 +72,64 @@ export class ContentController {
     @CurrentPrincipal() principal: Principal,
   ) {
     return this.content.generate(tenant, principal, contentItemId, body);
+  }
+
+  @Patch(':contentItemId')
+  @RequirePermissions('content:write')
+  @ApiOperation({ summary: 'Human edit — replace the body; moves the item to EDITING' })
+  edit(
+    @Param('contentItemId', ParseUUIDPipe) contentItemId: string,
+    @Body(new ZodValidationPipe(updateContentBodyInputSchema)) body: UpdateContentBodyInput,
+    @CurrentTenant() tenant: TenantContext,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    return this.content.updateBody(tenant, principal, contentItemId, body);
+  }
+
+  @Post(':contentItemId/submit')
+  @RequirePermissions('content:write')
+  @ApiOperation({ summary: 'Submit the item for review' })
+  submit(
+    @Param('contentItemId', ParseUUIDPipe) contentItemId: string,
+    @CurrentTenant() tenant: TenantContext,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    return this.content.submitForReview(tenant, principal, contentItemId);
+  }
+
+  @Post(':contentItemId/approve')
+  @RequirePermissions('content:approve')
+  @ApiOperation({ summary: 'Approve — moderated first (422 if flagged); honest SKIPPED if no AI' })
+  approve(
+    @Param('contentItemId', ParseUUIDPipe) contentItemId: string,
+    @Body(new ZodValidationPipe(reviewNoteInputSchema)) body: ReviewNoteInput,
+    @CurrentTenant() tenant: TenantContext,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    return this.content.approve(tenant, principal, contentItemId, body);
+  }
+
+  @Post(':contentItemId/request-changes')
+  @RequirePermissions('content:review')
+  @ApiOperation({ summary: 'Send the item back for changes' })
+  requestChanges(
+    @Param('contentItemId', ParseUUIDPipe) contentItemId: string,
+    @Body(new ZodValidationPipe(reviewNoteInputSchema)) body: ReviewNoteInput,
+    @CurrentTenant() tenant: TenantContext,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    return this.content.requestChanges(tenant, principal, contentItemId, body);
+  }
+
+  @Post(':contentItemId/reject')
+  @RequirePermissions('content:review')
+  @ApiOperation({ summary: 'Reject the item (archives it)' })
+  reject(
+    @Param('contentItemId', ParseUUIDPipe) contentItemId: string,
+    @Body(new ZodValidationPipe(reviewNoteInputSchema)) body: ReviewNoteInput,
+    @CurrentTenant() tenant: TenantContext,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    return this.content.reject(tenant, principal, contentItemId, body);
   }
 }

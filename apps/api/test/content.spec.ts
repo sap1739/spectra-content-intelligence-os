@@ -204,4 +204,68 @@ describe('API integration: content items, evidence grounding, honest AI unavaila
     // Missing and foreign resources return the same error (no existence leak).
     expect(res.statusCode).toBe(404);
   });
+
+  /** A GENERATED item so the lifecycle can be exercised without the worker. */
+  async function seedGenerated(): Promise<string> {
+    const item = await prisma.client.contentItem.create({
+      data: {
+        organizationId: orgId,
+        workspaceId,
+        title: 'Lifecycle item',
+        contentType: 'POST',
+        lifecycleState: 'GENERATED',
+        body: 'A safe, grounded marketing post.',
+      },
+    });
+    return item.id;
+  }
+
+  it('runs the edit → submit → approve flow; approval is honestly SKIPPED without AI', async () => {
+    const id = await seedGenerated();
+
+    const edit = await inject().inject({
+      method: 'PATCH',
+      url: `/v1/workspaces/${workspaceId}/content-items/${id}`,
+      headers: { cookie },
+      payload: { body: 'Edited body.' },
+    });
+    expect(edit.statusCode).toBe(200);
+    expect((edit.json() as { lifecycleState: string }).lifecycleState).toBe('EDITING');
+
+    const submit = await inject().inject({
+      method: 'POST',
+      url: `/v1/workspaces/${workspaceId}/content-items/${id}/submit`,
+      headers: { cookie },
+    });
+    expect((submit.json() as { lifecycleState: string }).lifecycleState).toBe('REVIEW');
+
+    const approve = await inject().inject({
+      method: 'POST',
+      url: `/v1/workspaces/${workspaceId}/content-items/${id}/approve`,
+      headers: { cookie },
+      payload: {},
+    });
+    expect(approve.statusCode).toBe(201);
+    const approved = approve.json() as {
+      lifecycleState: string;
+      moderation: { status: string };
+      approvals: unknown[];
+    };
+    expect(approved.lifecycleState).toBe('APPROVED');
+    // No ANTHROPIC_API_KEY in tests → moderation is honestly recorded as SKIPPED.
+    expect(approved.moderation.status).toBe('SKIPPED');
+    expect(approved.approvals.length).toBe(1);
+  });
+
+  it('rejects an invalid lifecycle transition with 422', async () => {
+    const id = await seedGenerated();
+    // GENERATED → APPROVED is not a legal transition (must go through REVIEW).
+    const approve = await inject().inject({
+      method: 'POST',
+      url: `/v1/workspaces/${workspaceId}/content-items/${id}/approve`,
+      headers: { cookie },
+      payload: {},
+    });
+    expect(approve.statusCode).toBe(422);
+  });
 });

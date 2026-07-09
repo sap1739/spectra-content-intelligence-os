@@ -243,6 +243,19 @@ export const generateDraftInputSchema = z.object({
 });
 export type GenerateDraftInput = z.infer<typeof generateDraftInputSchema>;
 
+/** Human edit — replaces the content item body and records the edit. */
+export const updateContentBodyInputSchema = z.object({
+  body: z.string().min(1).max(200000),
+  note: z.string().max(2000).optional(),
+});
+export type UpdateContentBodyInput = z.infer<typeof updateContentBodyInputSchema>;
+
+/** A review decision note (approve / request-changes / reject). */
+export const reviewNoteInputSchema = z.object({
+  note: z.string().max(2000).optional(),
+});
+export type ReviewNoteInput = z.infer<typeof reviewNoteInputSchema>;
+
 // ---------------------------------------------------------------------------
 // Strategy entities (Phase 3C)
 // ---------------------------------------------------------------------------

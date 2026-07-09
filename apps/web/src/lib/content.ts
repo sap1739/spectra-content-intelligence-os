@@ -44,6 +44,20 @@ export interface ContentDraftRow {
   createdAt: string;
 }
 
+export interface ApprovalRecord {
+  approverId: string;
+  decision: string;
+  decidedAt: string;
+  note: string | null;
+}
+
+export interface ModerationRecord {
+  status: string;
+  categories?: string[];
+  reason?: string | null;
+  moderatedAt?: string;
+}
+
 export interface ContentItemRow {
   id: string;
   title: string;
@@ -56,6 +70,8 @@ export interface ContentItemRow {
   topicKey: string | null;
   findingIds: string[];
   citationIds: string[];
+  approvals: ApprovalRecord[];
+  moderation: ModerationRecord | null;
   createdAt: string;
   drafts?: ContentDraftRow[];
 }
@@ -145,3 +161,41 @@ export function useGenerateDraft(workspaceId: string, contentItemId: string) {
     },
   });
 }
+
+// ---------------------------------------------------------------------------
+// Lifecycle: human edits + review/approval
+// ---------------------------------------------------------------------------
+
+/** Invalidate both the item detail and the list after a lifecycle change. */
+function useItemAction<TInput>(
+  workspaceId: string,
+  contentItemId: string,
+  method: 'post' | 'patch',
+  path: string,
+) {
+  const queryClient = useQueryClient();
+  return useMutation<ContentItemRow, ApiError, TInput>({
+    mutationFn: (input) =>
+      api[method]<ContentItemRow>(
+        `/v1/workspaces/${workspaceId}/content-items/${contentItemId}${path}`,
+        input ?? {},
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: [...itemsKey(workspaceId), contentItemId],
+      });
+      void queryClient.invalidateQueries({ queryKey: itemsKey(workspaceId) });
+    },
+  });
+}
+
+export const useEditContent = (ws: string, id: string) =>
+  useItemAction<{ body: string; note?: string }>(ws, id, 'patch', '');
+export const useSubmitContent = (ws: string, id: string) =>
+  useItemAction<{ note?: string }>(ws, id, 'post', '/submit');
+export const useApproveContent = (ws: string, id: string) =>
+  useItemAction<{ note?: string }>(ws, id, 'post', '/approve');
+export const useRequestChanges = (ws: string, id: string) =>
+  useItemAction<{ note?: string }>(ws, id, 'post', '/request-changes');
+export const useRejectContent = (ws: string, id: string) =>
+  useItemAction<{ note?: string }>(ws, id, 'post', '/reject');

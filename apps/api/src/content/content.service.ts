@@ -1,5 +1,18 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
-import type { CreateContentItemInput, GenerateDraftInput } from '@spectra/contracts';
+import {
+  Injectable,
+  ServiceUnavailableException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
+import {
+  InvalidLifecycleTransitionError,
+  assertTransitionContent,
+  type ContentLifecycleState,
+  type CreateContentItemInput,
+  type GenerateDraftInput,
+  type ReviewNoteInput,
+  type UpdateContentBodyInput,
+} from '@spectra/contracts';
+import { moderateContent, type ModerationOutcome } from '@spectra/content-pipeline';
 import { TenantIsolationError } from '@spectra/security';
 import { JOB_NAMES } from '@spectra/workflow-core';
 
@@ -238,5 +251,195 @@ export class ContentService {
     });
 
     return draft;
+  }
+
+  // --- Lifecycle, human edits, review & approval ---------------------------
+
+  /** Validated transition helper — maps the contract error to 422. */
+  private assertTransition(from: string, to: ContentLifecycleState): void {
+    try {
+      assertTransitionContent(from as ContentLifecycleState, to);
+    } catch (error) {
+      if (error instanceof InvalidLifecycleTransitionError) {
+        throw new UnprocessableEntityException(error.message);
+      }
+      throw error;
+    }
+  }
+
+  /** A human edit: replaces the body and records who/when. Moves to EDITING. */
+  async updateBody(
+    tenant: TenantContext,
+    principal: Principal,
+    id: string,
+    input: UpdateContentBodyInput,
+  ) {
+    const item = await this.get(tenant, id);
+    if (item.lifecycleState !== 'EDITING') {
+      this.assertTransition(item.lifecycleState, 'EDITING');
+    }
+    const edit = {
+      editedById: principal.userId,
+      editedAt: new Date().toISOString(),
+      note: input.note ?? null,
+    };
+    const updated = await this.prisma.client.contentItem.update({
+      where: { id },
+      data: {
+        body: input.body,
+        lifecycleState: 'EDITING',
+        humanEdits: [...(item.humanEdits as unknown[]), edit],
+      },
+    });
+    await this.audit.record({
+      organizationId: tenant.organizationId,
+      workspaceId: tenant.workspaceId,
+      actorUserId: principal.userId,
+      action: 'content_item.edited',
+      resourceType: 'ContentItem',
+      resourceId: id,
+    });
+    return updated;
+  }
+
+  async submitForReview(tenant: TenantContext, principal: Principal, id: string) {
+    const item = await this.get(tenant, id);
+    this.assertTransition(item.lifecycleState, 'REVIEW');
+    return this.transition(tenant, principal, id, 'REVIEW', 'content_item.submitted');
+  }
+
+  async requestChanges(
+    tenant: TenantContext,
+    principal: Principal,
+    id: string,
+    input: ReviewNoteInput,
+  ) {
+    const item = await this.get(tenant, id);
+    this.assertTransition(item.lifecycleState, 'CHANGES_REQUESTED');
+    return this.decide(
+      tenant,
+      principal,
+      item,
+      'CHANGES_REQUESTED',
+      'CHANGES_REQUESTED',
+      input.note,
+    );
+  }
+
+  async reject(tenant: TenantContext, principal: Principal, id: string, input: ReviewNoteInput) {
+    const item = await this.get(tenant, id);
+    this.assertTransition(item.lifecycleState, 'ARCHIVED');
+    return this.decide(tenant, principal, item, 'REJECTED', 'ARCHIVED', input.note);
+  }
+
+  /**
+   * Approve. When AI is configured the body is moderated first; a FLAGGED
+   * verdict blocks approval (422) — nothing unsafe is silently approved. With
+   * no provider, moderation is honestly recorded as SKIPPED (not faked).
+   */
+  async approve(tenant: TenantContext, principal: Principal, id: string, input: ReviewNoteInput) {
+    const item = await this.get(tenant, id);
+    this.assertTransition(item.lifecycleState, 'APPROVED');
+
+    let moderation:
+      (ModerationOutcome & { moderatedAt: string }) | { status: 'SKIPPED'; moderatedAt: string };
+    if (this.ai.isConfigured && item.body) {
+      const outcome = await moderateContent(
+        this.ai.provider,
+        { organizationId: tenant.organizationId, workspaceId: tenant.workspaceId as string },
+        item.body,
+      );
+      moderation = { ...outcome, moderatedAt: new Date().toISOString() };
+      if (outcome.status === 'FLAGGED') {
+        await this.prisma.client.contentItem.update({
+          where: { id },
+          data: { moderation: moderation as unknown as object },
+        });
+        throw new UnprocessableEntityException(
+          `Content was flagged by moderation (${outcome.categories.join(', ') || 'unspecified'}) and cannot be approved.`,
+        );
+      }
+    } else {
+      moderation = { status: 'SKIPPED', moderatedAt: new Date().toISOString() };
+    }
+
+    const approval = {
+      approverId: principal.userId,
+      decision: 'APPROVED' as const,
+      decidedAt: new Date().toISOString(),
+      note: input.note ?? null,
+    };
+    const updated = await this.prisma.client.contentItem.update({
+      where: { id },
+      data: {
+        lifecycleState: 'APPROVED',
+        approvals: [...(item.approvals as unknown[]), approval],
+        moderation: moderation as unknown as object,
+      },
+    });
+    await this.audit.record({
+      organizationId: tenant.organizationId,
+      workspaceId: tenant.workspaceId,
+      actorUserId: principal.userId,
+      action: 'content_item.approved',
+      resourceType: 'ContentItem',
+      resourceId: id,
+      changes: { moderation: moderation.status },
+    });
+    return updated;
+  }
+
+  private async transition(
+    tenant: TenantContext,
+    principal: Principal,
+    id: string,
+    to: ContentLifecycleState,
+    action: string,
+  ) {
+    const updated = await this.prisma.client.contentItem.update({
+      where: { id },
+      data: { lifecycleState: to },
+    });
+    await this.audit.record({
+      organizationId: tenant.organizationId,
+      workspaceId: tenant.workspaceId,
+      actorUserId: principal.userId,
+      action,
+      resourceType: 'ContentItem',
+      resourceId: id,
+    });
+    return updated;
+  }
+
+  private async decide(
+    tenant: TenantContext,
+    principal: Principal,
+    item: { id: string; approvals: unknown },
+    decision: 'CHANGES_REQUESTED' | 'REJECTED',
+    to: ContentLifecycleState,
+    note?: string,
+  ) {
+    const approval = {
+      approverId: principal.userId,
+      decision,
+      decidedAt: new Date().toISOString(),
+      note: note ?? null,
+    };
+    const updated = await this.prisma.client.contentItem.update({
+      where: { id: item.id },
+      data: {
+        lifecycleState: to,
+        approvals: [...(item.approvals as unknown[]), approval],
+      },
+    });
+    await this.audit.record({
+      organizationId: tenant.organizationId,
+      workspaceId: tenant.workspaceId,
+      actorUserId: principal.userId,
+      action: `content_item.${decision.toLowerCase()}`,
+      resourceType: 'ContentItem',
+      resourceId: item.id,
+    });
+    return updated;
   }
 }

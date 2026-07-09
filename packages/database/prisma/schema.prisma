@@ -927,6 +927,11 @@ model ContentItem {
   objective         String?
   /// Current best body (latest accepted draft, or human edit).
   body              String?
+  /// Human edit history (HumanEditRecord[]) and approval decisions (ApprovalRecord[]).
+  humanEdits        Json                  @default("[]")
+  approvals         Json                  @default("[]")
+  /// Latest moderation verdict; null = never moderated.
+  moderation        Json?
   /// Grounding lineage — which evidence this item draws on. Never fabricated.
   evidencePackId    String?               @db.Uuid
   researchProjectId String?               @db.Uuid
