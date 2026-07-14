@@ -85,8 +85,13 @@ providers.**
   live-polling calendar with status + failure reason (ADR-0020).
 - Next: OAuth connection flows (encrypted vault) + first real adapters (WordPress, LinkedIn,
   YouTube) registering behind the publisher registry; a formal DLQ dashboard.
-- Analytics retrieval feeding trend scoring (`engagementPotential` calibration) and campaign
-  reporting. Billing & usage metering.
+- ✅ **Increment C — analytics v1.** Real first-party workspace reporting (`analytics/overview`):
+  content funnel by lifecycle, drafts, publications by dispatch status, research runs/findings/
+  packs, trends by state — all real counts. External platform engagement is honestly reported as
+  unavailable until an adapter is connected; no metrics are fabricated. Live Analytics page with
+  stat tiles, a funnel chart and an honest engagement banner (ADR-0021).
+- Next: live `AnalyticsProvider` adapters feeding `engagementPotential` trend-score calibration
+  and campaign reporting. Billing & usage metering.
 
 ## Phase 5 — Optimization & Scale
 

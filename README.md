@@ -56,7 +56,7 @@ infrastructure/
   docker/         PostgreSQL (pgvector), Redis, MinIO via Docker Compose
   scripts/        bootstrap.sh, verify.sh
 docs/             Product, architecture, security and strategy documentation
-docs/adr/         20 Architecture Decision Records
+docs/adr/         21 Architecture Decision Records
 ```
 
 ## Quick start
