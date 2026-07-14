@@ -1,8 +1,12 @@
+import { randomUUID } from 'node:crypto';
+
 import { Injectable, UnprocessableEntityException } from '@nestjs/common';
 import type { ScheduleEntryInput } from '@spectra/contracts';
 import { TenantIsolationError } from '@spectra/security';
+import { JOB_NAMES } from '@spectra/workflow-core';
 
 import { AuditService } from '../infra/audit.service';
+import { QueueService } from '../infra/queue.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { Principal, TenantContext } from '../auth/types';
 
@@ -13,6 +17,7 @@ export class CalendarService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly queue: QueueService,
   ) {}
 
   private scope(tenant: TenantContext) {
@@ -54,6 +59,15 @@ export class CalendarService {
       );
     }
 
+    // A target account (optional) must belong to the tenant.
+    if (input.socialAccountId) {
+      const account = await this.prisma.client.socialAccount.findFirst({
+        where: { id: input.socialAccountId, ...this.scope(tenant), deletedAt: null },
+        select: { id: true },
+      });
+      if (!account) throw new TenantIsolationError();
+    }
+
     const entry = await this.prisma.client.contentScheduleEntry.create({
       data: {
         ...this.scope(tenant),
@@ -61,6 +75,8 @@ export class CalendarService {
         platform: input.platform,
         scheduledAt: new Date(input.scheduledAt),
         note: input.note ?? null,
+        socialAccountId: input.socialAccountId ?? null,
+        idempotencyKey: randomUUID(),
         createdById: principal.userId,
       },
     });
@@ -83,6 +99,60 @@ export class CalendarService {
       changes: { platform: input.platform, scheduledAt: input.scheduledAt },
     });
     return entry;
+  }
+
+  /**
+   * Queues an entry for immediate publishing. Requires a target account. The
+   * worker attempts the post; with no adapter wired it resolves to UNSUPPORTED
+   * (honest) — never a fabricated PUBLISHED.
+   */
+  async publishNow(tenant: TenantContext, principal: Principal, entryId: string) {
+    const entry = await this.prisma.client.contentScheduleEntry.findFirst({
+      where: { id: entryId, ...this.scope(tenant) },
+      select: { id: true, status: true, socialAccountId: true, idempotencyKey: true },
+    });
+    if (!entry) throw new TenantIsolationError();
+    if (!entry.socialAccountId) {
+      throw new UnprocessableEntityException(
+        'Attach a target social account before publishing this entry.',
+      );
+    }
+    if (
+      entry.status !== 'SCHEDULED' &&
+      entry.status !== 'UNSUPPORTED' &&
+      entry.status !== 'FAILED'
+    ) {
+      throw new UnprocessableEntityException(
+        `Entry cannot be published from status ${entry.status}.`,
+      );
+    }
+
+    const updated = await this.prisma.client.contentScheduleEntry.update({
+      where: { id: entry.id },
+      data: {
+        status: 'QUEUED',
+        ...(entry.idempotencyKey ? {} : { idempotencyKey: randomUUID() }),
+      },
+    });
+    await this.queue.enqueue(
+      JOB_NAMES.publicationPublish,
+      { entryId: entry.id },
+      {
+        tenant: {
+          organizationId: tenant.organizationId,
+          workspaceId: tenant.workspaceId as string,
+        },
+      },
+    );
+    await this.audit.record({
+      organizationId: tenant.organizationId,
+      workspaceId: tenant.workspaceId,
+      actorUserId: principal.userId,
+      action: 'content_schedule.publish_queued',
+      resourceType: 'ContentScheduleEntry',
+      resourceId: entry.id,
+    });
+    return updated;
   }
 
   async cancel(tenant: TenantContext, principal: Principal, entryId: string) {

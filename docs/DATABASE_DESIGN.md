@@ -69,16 +69,16 @@ Migration `..._init` enables the `vector` extension. Phase 2 adds embedding tabl
 
 ## 7. Phase 3 content-generation entities
 
-| Table                    | Purpose                                                       | Key constraints / indexes                             |
-| ------------------------ | ------------------------------------------------------------- | ----------------------------------------------------- |
-| campaigns                | Campaign container (brand, vertical, status, schedule window) | index(workspaceId, status)                            |
-| content_items            | Durable content object w/ lifecycle + grounding lineage       | index(workspaceId, lifecycleState); index(campaignId) |
-| content_drafts           | One AI generation attempt w/ full provenance                  | index(contentItemId, createdAt)                       |
-| campaign_briefs          | Background/objectives/mandatories/do-nots (one per campaign)  | unique(campaignId); index(workspaceId)                |
-| audience_personas        | Who the content targets (roles, pain points, goals)           | index(workspaceId)                                    |
-| content_pillars          | Themes the brand owns (name, keywords)                        | index(workspaceId)                                    |
-| topic_ideas              | Candidate topics, optionally traced to research               | index(workspaceId, status)                            |
-| content_schedule_entries | One platform placement of a content item at a UTC instant     | index(workspaceId, scheduledAt); index(contentItemId) |
+| Table                    | Purpose                                                       | Key constraints / indexes                                                         |
+| ------------------------ | ------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| campaigns                | Campaign container (brand, vertical, status, schedule window) | index(workspaceId, status)                                                        |
+| content_items            | Durable content object w/ lifecycle + grounding lineage       | index(workspaceId, lifecycleState); index(campaignId)                             |
+| content_drafts           | One AI generation attempt w/ full provenance                  | index(contentItemId, createdAt)                                                   |
+| campaign_briefs          | Background/objectives/mandatories/do-nots (one per campaign)  | unique(campaignId); index(workspaceId)                                            |
+| audience_personas        | Who the content targets (roles, pain points, goals)           | index(workspaceId)                                                                |
+| content_pillars          | Themes the brand owns (name, keywords)                        | index(workspaceId)                                                                |
+| topic_ideas              | Candidate topics, optionally traced to research               | index(workspaceId, status)                                                        |
+| content_schedule_entries | Scheduled placement + publication record (Phase 4B)           | index(workspaceId, scheduledAt); index(contentItemId); index(status, scheduledAt) |
 
 `content_items` carry grounding lineage columns (`evidencePackId`, `researchProjectId`,
 `topicKey`, `findingIds[]`, `citationIds[]`) so every item traces back to the research it draws
@@ -103,6 +103,13 @@ adapter is wired). Any stored credential lives ONLY in `encryptedToken` (AES-256
 `@spectra/security`, env-gated on `SOCIAL_TOKEN_ENCRYPTION_KEY`) and is **never** selected into
 an API response; `tokenRef` is an opaque handle. Disconnect soft-deletes and purges the sealed
 credential (ADR-0019). Org/workspace cascade.
+
+`content_schedule_entries` double as the **publication record** (ADR-0020): an optional
+`socialAccountId` target, a unique `idempotencyKey`, and `attemptCount`/`lastAttemptAt`/
+`failureReason`/`externalPostId`/`externalUrl`/`publishedAt`. Status covers the dispatch
+lifecycle (`SCHEDULED` → `QUEUED` → `PUBLISHING` → `PUBLISHED`/`FAILED`/`UNSUPPORTED`); with no
+platform adapter wired, a dispatch resolves to the honest terminal `UNSUPPORTED` — never a
+fabricated `PUBLISHED`.
 
 ## 9. Future entities
 

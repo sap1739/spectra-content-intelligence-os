@@ -47,6 +47,7 @@ packages/
   media-core/     Rendering ports (Sharp/SVG/HTML-to-image/FFmpeg/Remotion/subtitles/audio)
   media-sharp/    Real sharp ImageRenderer adapter (resize/crop/rotate/overlay/format; ADR-0018)
   social-core/    SocialPublisher port + declared capability matrix + variant validation (no platform wired; ADR-0019)
+  publishing/     Dispatch machinery: claims due entries, attempts publish → honest UNSUPPORTED (ADR-0020)
   workflow-core/  Queue-neutral job ports; BullMQ + in-memory adapters
   storage/        Object storage port + S3/MinIO impl, tenant-scoped keys, upload validation
   testing/        Deterministic, schema-validated test data factories
@@ -55,7 +56,7 @@ infrastructure/
   docker/         PostgreSQL (pgvector), Redis, MinIO via Docker Compose
   scripts/        bootstrap.sh, verify.sh
 docs/             Product, architecture, security and strategy documentation
-docs/adr/         19 Architecture Decision Records
+docs/adr/         20 Architecture Decision Records
 ```
 
 ## Quick start

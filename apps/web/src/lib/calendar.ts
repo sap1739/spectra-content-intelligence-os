@@ -5,22 +5,44 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api, type ApiError } from './api';
 
+export type CalendarEntryStatus =
+  'SCHEDULED' | 'QUEUED' | 'PUBLISHING' | 'PUBLISHED' | 'FAILED' | 'UNSUPPORTED' | 'CANCELLED';
+
 export interface CalendarEntryRow {
   id: string;
   contentItemId: string;
   platform: string;
   scheduledAt: string;
-  status: 'SCHEDULED' | 'CANCELLED' | 'PUBLISHED' | 'FAILED';
+  status: CalendarEntryStatus;
   note: string | null;
+  socialAccountId: string | null;
+  failureReason: string | null;
+  externalUrl: string | null;
+  publishedAt: string | null;
+  attemptCount: number;
   contentItem: { title: string; contentType: string; lifecycleState: string };
 }
 
 const calendarKey = (ws: string) => ['workspaces', ws, 'calendar'] as const;
 
+const IN_FLIGHT = new Set<CalendarEntryStatus>(['QUEUED', 'PUBLISHING']);
+
 export function useCalendar(workspaceId: string) {
   return useQuery<CalendarEntryRow[], ApiError>({
     queryKey: calendarKey(workspaceId),
     queryFn: () => api.get<CalendarEntryRow[]>(`/v1/workspaces/${workspaceId}/calendar`),
+    // Poll while any entry is mid-dispatch so the worker result appears live.
+    refetchInterval: (query) =>
+      (query.state.data ?? []).some((e) => IN_FLIGHT.has(e.status)) ? 2500 : false,
+  });
+}
+
+export function usePublishNow(workspaceId: string) {
+  const qc = useQueryClient();
+  return useMutation<CalendarEntryRow, ApiError, string>({
+    mutationFn: (id) =>
+      api.post<CalendarEntryRow>(`/v1/workspaces/${workspaceId}/calendar/${id}/publish`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: calendarKey(workspaceId) }),
   });
 }
 

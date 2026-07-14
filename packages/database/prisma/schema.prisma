@@ -1127,25 +1127,39 @@ model CampaignBrief {
 
 enum ScheduleEntryStatus {
   SCHEDULED
-  CANCELLED
+  QUEUED
+  PUBLISHING
   PUBLISHED
   FAILED
+  // No live publisher wired for the platform — honest terminal state, not a failure.
+  UNSUPPORTED
+  CANCELLED
 }
 
 /// One scheduled placement of a content item on a platform at a UTC instant.
 /// Publishing itself arrives in Phase 4; entries stay SCHEDULED until then.
 model ContentScheduleEntry {
-  id             String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String              @db.Uuid
-  workspaceId    String              @db.Uuid
-  contentItemId  String              @db.Uuid
+  id              String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String              @db.Uuid
+  workspaceId     String              @db.Uuid
+  contentItemId   String              @db.Uuid
+  /// Optional publishing target; when set, the dispatcher attempts to publish.
+  socialAccountId String?             @db.Uuid
   /// Social platform label (validated against socialPlatformSchema at the API).
-  platform       String
+  platform        String
   /// UTC instant; rendered in the workspace/calendar display timezone.
-  scheduledAt    DateTime            @db.Timestamptz(6)
-  status         ScheduleEntryStatus @default(SCHEDULED)
-  note           String?
-  createdById    String?             @db.Uuid
+  scheduledAt     DateTime            @db.Timestamptz(6)
+  status          ScheduleEntryStatus @default(SCHEDULED)
+  note            String?
+  /// Publish idempotency key — dispatching the same entry twice is safe.
+  idempotencyKey  String?             @unique
+  attemptCount    Int                 @default(0)
+  lastAttemptAt   DateTime?           @db.Timestamptz(6)
+  failureReason   String?
+  externalPostId  String?
+  externalUrl     String?
+  publishedAt     DateTime?           @db.Timestamptz(6)
+  createdById     String?             @db.Uuid
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
@@ -1156,6 +1170,7 @@ model ContentScheduleEntry {
 
   @@index([workspaceId, scheduledAt])
   @@index([contentItemId])
+  @@index([status, scheduledAt])
   @@map("content_schedule_entries")
 }
 

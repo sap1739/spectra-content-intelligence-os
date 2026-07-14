@@ -77,8 +77,14 @@ providers.**
   registration model with `PENDING` targets and AES-256-GCM sealed credentials
   (env-gated on `SOCIAL_TOKEN_ENCRYPTION_KEY`, never returned); real Social Accounts page with an
   honest "live publishing not wired" state and a content-fit checker (ADR-0019).
+- ✅ **Increment B — publishing pipeline v1.** The calendar entry doubles as the publication
+  record (target account, unique idempotency key, attempt/failure/external fields; +`QUEUED`/
+  `PUBLISHING`/`UNSUPPORTED`). `@spectra/publishing` worker executor: a recurring dispatcher
+  claims due targeted entries and enqueues publish jobs; with no adapter wired every attempt
+  resolves to an honest `UNSUPPORTED`, never a fabricated `PUBLISHED`. `publish-now` API,
+  live-polling calendar with status + failure reason (ADR-0020).
 - Next: OAuth connection flows (encrypted vault) + first real adapters (WordPress, LinkedIn,
-  YouTube); scheduling engine; idempotent publish jobs with DLQ + failed-publication surfacing.
+  YouTube) registering behind the publisher registry; a formal DLQ dashboard.
 - Analytics retrieval feeding trend scoring (`engagementPotential` calibration) and campaign
   reporting. Billing & usage metering.
 

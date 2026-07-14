@@ -1,0 +1,25 @@
+{
+  "name": "@spectra/publishing",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Publishing dispatch: claims due schedule entries and attempts publication through the social-core registry. With no live adapter wired, attempts resolve to an honest UNSUPPORTED — never a fabricated PUBLISHED.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run src",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@spectra/contracts": "workspace:*",
+    "@spectra/database": "workspace:*",
+    "@spectra/logging": "workspace:*",
+    "@spectra/social-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.0"
+  }
+}

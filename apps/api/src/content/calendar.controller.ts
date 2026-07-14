@@ -34,6 +34,19 @@ export class CalendarController {
     return this.calendar.schedule(tenant, principal, body);
   }
 
+  @Post(':entryId/publish')
+  @RequirePermissions('social:publish')
+  @ApiOperation({
+    summary: 'Queue an entry for immediate publishing (honest UNSUPPORTED if no adapter wired)',
+  })
+  publishNow(
+    @Param('entryId', ParseUUIDPipe) entryId: string,
+    @CurrentTenant() tenant: TenantContext,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    return this.calendar.publishNow(tenant, principal, entryId);
+  }
+
   @Delete(':entryId')
   @RequirePermissions('content:write')
   @ApiOperation({ summary: 'Cancel a scheduled calendar entry' })

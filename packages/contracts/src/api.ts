@@ -264,6 +264,8 @@ export const scheduleEntryInputSchema = z.object({
   platform: socialPlatformSchema,
   scheduledAt: z.string().datetime(),
   note: z.string().max(2000).optional(),
+  /** Optional publishing target; when set, the dispatcher attempts to publish. */
+  socialAccountId: uuidSchema.optional(),
 });
 export type ScheduleEntryInput = z.infer<typeof scheduleEntryInputSchema>;
 

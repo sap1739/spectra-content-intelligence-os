@@ -15,6 +15,8 @@ export const JOB_NAMES = {
   researchRunExecute: 'research.run.execute',
   researchRunScheduled: 'research.run.scheduled',
   contentDraftGenerate: 'content.draft.generate',
+  publicationDispatch: 'publication.dispatch',
+  publicationPublish: 'publication.publish',
 } as const;
 
 export interface RetryPolicy {

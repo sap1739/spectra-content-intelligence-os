@@ -14,7 +14,7 @@ import {
   Skeleton,
   cn,
 } from '@spectra/ui';
-import { Calendar, X } from 'lucide-react';
+import { Calendar, Send, X } from 'lucide-react';
 import * as React from 'react';
 
 import { PageHeader } from '@/components/page-header';
@@ -22,22 +22,32 @@ import { useWorkspace } from '@/lib/auth';
 import {
   useCalendar,
   useCancelEntry,
+  usePublishNow,
   useScheduleEntry,
   type CalendarEntryRow,
 } from '@/lib/calendar';
 import { useContentItems } from '@/lib/content';
+import { useSocialAccounts } from '@/lib/social';
 
 const fieldClass = cn(
   'w-full rounded-md border border-input bg-background px-2.5 py-2 text-sm shadow-sm',
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
 );
 
-const STATUS_VARIANT: Record<string, 'success' | 'muted' | 'secondary' | 'destructive'> = {
+const STATUS_VARIANT: Record<
+  string,
+  'success' | 'muted' | 'secondary' | 'destructive' | 'warning'
+> = {
   SCHEDULED: 'secondary',
+  QUEUED: 'warning',
+  PUBLISHING: 'warning',
   PUBLISHED: 'success',
-  CANCELLED: 'muted',
   FAILED: 'destructive',
+  UNSUPPORTED: 'muted',
+  CANCELLED: 'muted',
 };
+
+const PUBLISHABLE = new Set(['SCHEDULED', 'UNSUPPORTED', 'FAILED']);
 
 function groupByDay(entries: CalendarEntryRow[]): Array<[string, CalendarEntryRow[]]> {
   const map = new Map<string, CalendarEntryRow[]>();
@@ -54,8 +64,10 @@ export default function CalendarPage() {
 
   const calendar = useCalendar(workspaceId);
   const items = useContentItems(workspaceId);
+  const accounts = useSocialAccounts(workspaceId);
   const schedule = useScheduleEntry(workspaceId);
   const cancel = useCancelEntry(workspaceId);
+  const publish = usePublishNow(workspaceId);
 
   const approved = (items.data ?? []).filter((i) =>
     ['APPROVED', 'SCHEDULED'].includes(i.lifecycleState),
@@ -63,6 +75,7 @@ export default function CalendarPage() {
 
   const [contentItemId, setContentItemId] = React.useState('');
   const [platform, setPlatform] = React.useState<string>('LINKEDIN');
+  const [accountId, setAccountId] = React.useState('');
   const [when, setWhen] = React.useState('');
 
   const submit = async (event: React.FormEvent) => {
@@ -72,6 +85,7 @@ export default function CalendarPage() {
       contentItemId,
       platform: platform as never,
       scheduledAt: new Date(when).toISOString(),
+      ...(accountId ? { socialAccountId: accountId } : {}),
     });
     setWhen('');
   };
@@ -82,7 +96,7 @@ export default function CalendarPage() {
     <>
       <PageHeader
         title="Calendar"
-        description="Schedule approved content across channels. Times are stored in UTC and shown in your local timezone. Publishing itself arrives in Phase 4."
+        description="Schedule approved content across channels (UTC storage, local display). Attach a target account to publish; the dispatcher runs due entries. No platform is wired yet, so publishing resolves to an honest UNSUPPORTED — never a fake success."
       />
 
       <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
@@ -124,6 +138,22 @@ export default function CalendarPage() {
                     {SOCIAL_PLATFORMS.map((p) => (
                       <option key={p} value={p}>
                         {p}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="cal-account">Publish to (optional)</Label>
+                  <select
+                    id="cal-account"
+                    className={fieldClass}
+                    value={accountId}
+                    onChange={(e) => setAccountId(e.target.value)}
+                  >
+                    <option value="">No target (plan only)</option>
+                    {(accounts.data ?? []).map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.displayName} ({a.platform})
                       </option>
                     ))}
                   </select>
@@ -184,12 +214,29 @@ export default function CalendarPage() {
                               minute: '2-digit',
                             })}{' '}
                             · {e.platform}
+                            {e.socialAccountId ? ' · targeted' : ''}
                           </p>
+                          {e.failureReason ? (
+                            <p className="mt-0.5 text-[11px] text-muted-foreground">
+                              {e.failureReason}
+                            </p>
+                          ) : null}
                         </div>
-                        <div className="flex shrink-0 items-center gap-2">
+                        <div className="flex shrink-0 items-center gap-1.5">
                           <Badge variant={STATUS_VARIANT[e.status] ?? 'secondary'}>
                             {e.status}
                           </Badge>
+                          {e.socialAccountId && PUBLISHABLE.has(e.status) ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={publish.isPending}
+                              onClick={() => publish.mutate(e.id)}
+                            >
+                              <Send aria-hidden="true" />
+                              Publish now
+                            </Button>
+                          ) : null}
                           {e.status === 'SCHEDULED' ? (
                             <Button
                               variant="ghost"

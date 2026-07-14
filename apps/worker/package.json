@@ -19,6 +19,7 @@
     "@spectra/database": "workspace:*",
     "@spectra/logging": "workspace:*",
     "@spectra/observability": "workspace:*",
+    "@spectra/publishing": "workspace:*",
     "@spectra/research-pipeline": "workspace:*",
     "@spectra/storage": "workspace:*",
     "@spectra/workflow-core": "workspace:*",

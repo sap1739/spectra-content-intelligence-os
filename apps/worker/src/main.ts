@@ -7,6 +7,7 @@ import { loadEnv, storageEnvSchema, workerEnvSchema } from '@spectra/config';
 import { executeContentDraft } from '@spectra/content-pipeline';
 import { createPrismaClient } from '@spectra/database';
 import { createLogger, withCorrelation } from '@spectra/logging';
+import { claimDuePublications, executePublication } from '@spectra/publishing';
 import { executeResearchRun } from '@spectra/research-pipeline';
 import { S3ObjectStorageProvider } from '@spectra/storage';
 import {
@@ -165,8 +166,43 @@ async function main(): Promise<void> {
     { concurrency: 2, timeoutMs: 5 * 60_000 },
   );
 
+  // Publishing dispatcher: claims due schedule entries (SCHEDULED, past due,
+  // with a target account) and enqueues a publish job for each.
+  runtime.register(
+    JOB_NAMES.publicationDispatch,
+    async (_envelope, context) => {
+      const dueIds = await claimDuePublications(prisma, new Date());
+      for (const entryId of dueIds) {
+        await queue.enqueue(JOB_NAMES.publicationPublish, { entryId });
+      }
+      if (dueIds.length > 0) {
+        withCorrelation(logger, context.correlationId).info(
+          { claimed: dueIds.length },
+          'Dispatched due publications',
+        );
+      }
+      return { claimed: dueIds.length };
+    },
+    { concurrency: 1, timeoutMs: 60_000 },
+  );
+
+  // Publish one entry. With no adapter wired it resolves to UNSUPPORTED
+  // (honest); a real adapter (later phase) produces PUBLISHED/FAILED.
+  runtime.register<{ entryId: string }, unknown>(
+    JOB_NAMES.publicationPublish,
+    async (envelope, context) => {
+      return executePublication(
+        { prisma, logger: withCorrelation(logger, context.correlationId) },
+        { entryId: envelope.payload.entryId },
+      );
+    },
+    { concurrency: 3, timeoutMs: 2 * 60_000 },
+  );
+
   await runtime.start();
   await queue.schedule(HEARTBEAT_JOB_NAME, {}, { everyMs: env.WORKER_HEARTBEAT_INTERVAL_MS });
+  // Scan for due publications every minute.
+  await queue.schedule(JOB_NAMES.publicationDispatch, {}, { everyMs: 60_000 });
 
   // Immediate first beat so readiness sees the worker without waiting a cycle.
   await queue.enqueue(
