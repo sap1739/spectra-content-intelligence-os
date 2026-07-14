@@ -109,6 +109,7 @@ model Organization {
   campaignBriefs   CampaignBrief[]
   scheduleEntries  ContentScheduleEntry[]
   mediaAssets      MediaAsset[]
+  socialAccounts   SocialAccount[]
 
   @@map("organizations")
 }
@@ -217,6 +218,7 @@ model Workspace {
   campaignBriefs   CampaignBrief[]
   scheduleEntries  ContentScheduleEntry[]
   mediaAssets      MediaAsset[]
+  socialAccounts   SocialAccount[]
 
   @@unique([organizationId, slug])
   @@index([organizationId, status])
@@ -1197,6 +1199,73 @@ model MediaAsset {
 
   @@index([workspaceId, createdAt])
   @@map("media_assets")
+}
+
+// ---------------------------------------------------------------------------
+// Publishing — social accounts (Phase 4)
+// ---------------------------------------------------------------------------
+
+enum SocialPlatform {
+  LINKEDIN
+  INSTAGRAM
+  FACEBOOK
+  YOUTUBE
+  TIKTOK
+  THREADS
+  X
+  PINTEREST
+  WORDPRESS
+  EMAIL
+}
+
+/// PENDING = registered target, not yet OAuth-verified (no live adapter wired).
+enum SocialAccountStatus {
+  PENDING
+  CONNECTED
+  EXPIRED
+  REVOKED
+  ERROR
+}
+
+enum SocialAccountKind {
+  PROFILE
+  PAGE
+  CHANNEL
+  BUSINESS_ACCOUNT
+  SITE
+}
+
+/// A publishing target. Any stored credential lives ONLY in `encryptedToken`
+/// (AES-256-GCM via @spectra/security) and is NEVER returned by the API;
+/// `tokenRef` is an opaque handle. No live platform is wired in Phase 4A —
+/// accounts stay PENDING until an adapter verifies them.
+model SocialAccount {
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String              @db.Uuid
+  workspaceId       String              @db.Uuid
+  platform          SocialPlatform
+  externalAccountId String
+  displayName       String
+  kind              SocialAccountKind   @default(PROFILE)
+  status            SocialAccountStatus @default(PENDING)
+  scopes            String[]            @default([])
+  /// Opaque reference to the sealed credential; never the raw token.
+  tokenRef          String?
+  /// AES-256-GCM sealed credential. NEVER selected into API responses.
+  encryptedToken    String?
+  connectedById     String?             @db.Uuid
+  connectedAt       DateTime            @default(now()) @db.Timestamptz(6)
+  lastRefreshedAt   DateTime?           @db.Timestamptz(6)
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, platform])
+  @@map("social_accounts")
 }
 
 // ---------------------------------------------------------------------------

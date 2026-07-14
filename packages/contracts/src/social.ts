@@ -67,7 +67,16 @@ export const platformCapabilitySchema = z.object({
 });
 export type PlatformCapability = z.infer<typeof platformCapabilitySchema>;
 
-export const socialAccountStatusSchema = z.enum(['CONNECTED', 'EXPIRED', 'REVOKED', 'ERROR']);
+export const socialAccountStatusSchema = z.enum([
+  // Registered as a publishing target but not yet OAuth-verified against the
+  // platform. Honest initial state while no live adapter is wired.
+  'PENDING',
+  'CONNECTED',
+  'EXPIRED',
+  'REVOKED',
+  'ERROR',
+]);
+export type SocialAccountStatus = z.infer<typeof socialAccountStatusSchema>;
 
 export const socialAccountSchema = z
   .object({

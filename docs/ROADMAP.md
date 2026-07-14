@@ -69,12 +69,16 @@ providers.**
   generation; ffmpeg audio/video, sandboxed HTML-to-image and (license-permitting) Remotion.
 - Data export + retention jobs.
 
-## Phase 4 — Publishing & Analytics
+## Phase 4 — Publishing & Analytics (in progress)
 
-- Social account connections (OAuth + encrypted vault), starting with the platforms with the
-  most tractable APIs (WordPress, LinkedIn, YouTube) then expanding.
-- Capability records captured per platform; variant validation; scheduling engine;
-  idempotent publish jobs with DLQ + failed-publication surfacing.
+- ✅ **Increment A — publishing foundation.** First-party declared `PlatformCapability` matrix
+  (`social-core`, honestly labelled not-live-verified) + deterministic `validateVariant`;
+  `SocialPublisherRegistry` that is honestly empty (no platform wired); `SocialAccount`
+  registration model with `PENDING` targets and AES-256-GCM sealed credentials
+  (env-gated on `SOCIAL_TOKEN_ENCRYPTION_KEY`, never returned); real Social Accounts page with an
+  honest "live publishing not wired" state and a content-fit checker (ADR-0019).
+- Next: OAuth connection flows (encrypted vault) + first real adapters (WordPress, LinkedIn,
+  YouTube); scheduling engine; idempotent publish jobs with DLQ + failed-publication surfacing.
 - Analytics retrieval feeding trend scoring (`engagementPotential` calibration) and campaign
   reporting. Billing & usage metering.
 

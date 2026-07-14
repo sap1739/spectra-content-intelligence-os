@@ -7,6 +7,7 @@ export {
   logLevelSchema,
   nodeEnvSchema,
   redisEnvSchema,
+  socialEnvSchema,
   storageEnvSchema,
   webEnvSchema,
   workerEnvSchema,

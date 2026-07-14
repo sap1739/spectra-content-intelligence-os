@@ -89,6 +89,9 @@ importers:
       '@spectra/security':
         specifier: workspace:*
         version: link:../../packages/security
+      '@spectra/social-core':
+        specifier: workspace:*
+        version: link:../../packages/social-core
       '@spectra/storage':
         specifier: workspace:*
         version: link:../../packages/storage

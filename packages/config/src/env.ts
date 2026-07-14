@@ -60,6 +60,15 @@ export const aiEnvSchema = z.object({
   ANTHROPIC_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(256).max(64000).default(4096),
 });
 
+/**
+ * Publishing config. Optional — without the key, storing a social credential is
+ * honestly unavailable (accounts can still be registered, just without a sealed
+ * token). Base64-encoded 32-byte AES-256-GCM key (see @spectra/security).
+ */
+export const socialEnvSchema = z.object({
+  SOCIAL_TOKEN_ENCRYPTION_KEY: z.string().min(1).optional(),
+});
+
 export const apiEnvSchema = z
   .object({
     NODE_ENV: nodeEnvSchema,
@@ -82,7 +91,9 @@ export const apiEnvSchema = z
   .merge(redisEnvSchema)
   .merge(aiEnvSchema)
   // Media rendering (Phase 3F) reads/writes tenant-rooted object storage.
-  .merge(storageEnvSchema);
+  .merge(storageEnvSchema)
+  // Publishing (Phase 4): optional token-encryption key for social credentials.
+  .merge(socialEnvSchema);
 
 export const workerEnvSchema = z
   .object({

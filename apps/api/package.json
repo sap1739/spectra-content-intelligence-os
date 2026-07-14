@@ -33,6 +33,7 @@
     "@spectra/media-sharp": "workspace:*",
     "@spectra/observability": "workspace:*",
     "@spectra/security": "workspace:*",
+    "@spectra/social-core": "workspace:*",
     "@spectra/storage": "workspace:*",
     "@spectra/workflow-core": "workspace:*",
     "fastify": "5.8.5",

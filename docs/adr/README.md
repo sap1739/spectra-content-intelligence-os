@@ -20,6 +20,7 @@
 | [0016](0016-evidence-layer-v1.md)             | Evidence layer v1: lexical embeddings, heuristic claims   | Accepted             |
 | [0017](0017-evidence-grounded-generation.md)  | Evidence-grounded generation + first paid AI adapter      | Accepted             |
 | [0018](0018-media-pipeline-v1.md)             | Media pipeline v1: real sharp image rendering             | Accepted             |
+| [0019](0019-publishing-foundation.md)         | Publishing foundation: capabilities, sealed creds, honest | Accepted             |
 
 New significant decisions require a new ADR (`NNNN-kebab-title.md`) using the
 Context / Decision / Rationale / Consequences structure.

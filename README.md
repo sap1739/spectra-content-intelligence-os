@@ -4,13 +4,15 @@ Research-first content intelligence, multimedia creation, campaign management, s
 publishing and analytics platform for B2B/B2C businesses, agencies, creators and regulated
 enterprises — built around **user-defined custom verticals** and **evidence-backed content**.
 
-> **Status: Phase 3 in progress (Phase 2 complete).** On top of the identity + research
+> **Status: Phase 4 in progress (Phases 1–3 complete).** On top of the identity + research
 > foundation: evidence-grounded content generation behind the ai-core port
 > (`@spectra/ai-anthropic`, env-gated — no key means honestly unavailable, never fabricated),
 > with citation validation, a full content lifecycle (human edits, review/approval, AI
 > moderation gate), strategy entities (campaigns, briefs, personas, pillars, topic ideas), a
-> content calendar, and real image rendering (`@spectra/media-sharp`). No social platform is
-> integrated yet; every number in the UI comes from real data.
+> content calendar, and real image rendering (`@spectra/media-sharp`). Phase 4 adds the
+> publishing foundation — a declared per-platform capability matrix, deterministic content-fit
+> validation, and social-target registration with AES-256-GCM sealed credentials. No social
+> platform is wired for live posting yet (the UI says so plainly); every number comes from real data.
 
 ## Product workflow (target)
 
@@ -44,7 +46,7 @@ packages/
   content-pipeline/ Evidence-grounded drafting: prompt isolation + cited draft generation (ADR-0017)
   media-core/     Rendering ports (Sharp/SVG/HTML-to-image/FFmpeg/Remotion/subtitles/audio)
   media-sharp/    Real sharp ImageRenderer adapter (resize/crop/rotate/overlay/format; ADR-0018)
-  social-core/    SocialPublisher port + capability guards (no platform integrated)
+  social-core/    SocialPublisher port + declared capability matrix + variant validation (no platform wired; ADR-0019)
   workflow-core/  Queue-neutral job ports; BullMQ + in-memory adapters
   storage/        Object storage port + S3/MinIO impl, tenant-scoped keys, upload validation
   testing/        Deterministic, schema-validated test data factories
@@ -53,7 +55,7 @@ infrastructure/
   docker/         PostgreSQL (pgvector), Redis, MinIO via Docker Compose
   scripts/        bootstrap.sh, verify.sh
 docs/             Product, architecture, security and strategy documentation
-docs/adr/         18 Architecture Decision Records
+docs/adr/         19 Architecture Decision Records
 ```
 
 ## Quick start

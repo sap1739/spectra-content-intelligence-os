@@ -92,8 +92,20 @@ from the model. Strategy entities (`campaign_briefs`, `audience_personas`, `cont
 (`evidencePackId`, `findingIds[]`, `trendCandidateIds[]`, `citationIds[]`). Org/workspace
 cascade; `campaignId`, `brandId`, `verticalId` use `SET NULL`.
 
-## 8. Future entities
+## 8. Phase 4 publishing entities
 
-Remaining contract-only entities (personas, pillars, angles, briefs, calendar, social accounts,
-knowledge documents) are documented in [DOMAIN_MODEL.md](DOMAIN_MODEL.md) §6 and materialize
-in later phases with their own migrations + doc updates.
+| Table           | Purpose                                              | Key constraints / indexes    |
+| --------------- | ---------------------------------------------------- | ---------------------------- |
+| social_accounts | A publishing target (platform, handle, kind, status) | index(workspaceId, platform) |
+
+`social_accounts` are registered targets, created `PENDING` (not OAuth-verified — no live
+adapter is wired). Any stored credential lives ONLY in `encryptedToken` (AES-256-GCM via
+`@spectra/security`, env-gated on `SOCIAL_TOKEN_ENCRYPTION_KEY`) and is **never** selected into
+an API response; `tokenRef` is an opaque handle. Disconnect soft-deletes and purges the sealed
+credential (ADR-0019). Org/workspace cascade.
+
+## 9. Future entities
+
+Remaining contract-only entities (angles, publications, analytics, billing/usage, knowledge
+documents) are documented in [DOMAIN_MODEL.md](DOMAIN_MODEL.md) §6 and materialize in later
+phases with their own migrations + doc updates.

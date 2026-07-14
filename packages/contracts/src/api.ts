@@ -347,3 +347,33 @@ export const upsertCampaignBriefInputSchema = z.object({
   tone: z.string().max(1000).optional(),
 });
 export type UpsertCampaignBriefInput = z.infer<typeof upsertCampaignBriefInputSchema>;
+
+// ---------------------------------------------------------------------------
+// Publishing — social accounts & variant validation (Phase 4)
+// ---------------------------------------------------------------------------
+
+export const registerSocialAccountInputSchema = z.object({
+  platform: socialPlatformSchema,
+  displayName: z.string().min(1).max(300),
+  externalAccountId: z.string().min(1).max(500),
+  kind: z.enum(['PROFILE', 'PAGE', 'CHANNEL', 'BUSINESS_ACCOUNT', 'SITE']).default('PROFILE'),
+  scopes: z.array(z.string().max(200)).default([]),
+  /**
+   * Optional credential to seal (AES-256-GCM). Requires
+   * SOCIAL_TOKEN_ENCRYPTION_KEY; the raw value is never stored or returned.
+   */
+  accessToken: z.string().min(1).max(8000).optional(),
+});
+export type RegisterSocialAccountInput = z.infer<typeof registerSocialAccountInputSchema>;
+
+export const validateVariantInputSchema = z.object({
+  platform: socialPlatformSchema,
+  text: z.string().max(100000).optional(),
+  hashtagCount: z.number().int().nonnegative().max(1000).optional(),
+  mediaCount: z.number().int().nonnegative().max(100).optional(),
+  mediaKinds: z
+    .array(z.enum(['IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT']))
+    .max(50)
+    .optional(),
+});
+export type ValidateVariantInput = z.infer<typeof validateVariantInputSchema>;
