@@ -11,21 +11,32 @@ import type { SocialPublisher } from './publisher';
  */
 export class SocialPublisherRegistry {
   private readonly publishers = new Map<SocialPlatform, SocialPublisher>();
+  private readonly wired = new Set<SocialPlatform>();
 
   register(publisher: SocialPublisher): void {
     this.publishers.set(publisher.platform, publisher);
+    this.wired.add(publisher.platform);
   }
 
   getPublisher(platform: SocialPlatform): SocialPublisher | undefined {
     return this.publishers.get(platform);
   }
 
+  /**
+   * Marks a platform as having a real adapter available. Used for the "wired"
+   * UI signal by adapters (like WordPress) that build a per-account instance at
+   * publish time rather than registering a shared credential-less publisher.
+   */
+  markWired(platform: SocialPlatform): void {
+    this.wired.add(platform);
+  }
+
   isWired(platform: SocialPlatform): boolean {
-    return this.publishers.has(platform);
+    return this.wired.has(platform);
   }
 
   wiredPlatforms(): SocialPlatform[] {
-    return [...this.publishers.keys()];
+    return [...this.wired];
   }
 }
 

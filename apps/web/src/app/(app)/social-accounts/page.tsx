@@ -146,8 +146,13 @@ export default function SocialAccountsPage() {
   const [displayName, setDisplayName] = React.useState('');
   const [handle, setHandle] = React.useState('');
   const [kind, setKind] = React.useState<string>('PROFILE');
+  const [credential, setCredential] = React.useState('');
 
   const credConfigured = platforms.data?.credentialStorageConfigured ?? false;
+  const wiredPlatforms = (platforms.data?.platforms ?? [])
+    .filter((p) => p.publisherWired)
+    .map((p) => p.capability.platform);
+  const isWordPress = platform === 'WORDPRESS';
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -158,9 +163,13 @@ export default function SocialAccountsPage() {
       externalAccountId: handle.trim(),
       kind: kind as never,
       scopes: [],
+      // WordPress publishes with an application-password credential; other
+      // platforms are registration-only until their adapters are wired.
+      ...(isWordPress && credential.trim() ? { accessToken: credential.trim() } : {}),
     });
     setDisplayName('');
     setHandle('');
+    setCredential('');
   };
 
   return (
@@ -174,17 +183,35 @@ export default function SocialAccountsPage() {
         <CardContent className="flex items-start gap-3 py-4">
           <TriangleAlert aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-amber-600" />
           <div className="text-sm">
-            <p className="font-medium">Live publishing is not wired yet</p>
+            <p className="font-medium">
+              {wiredPlatforms.length > 0
+                ? `Live publishing is wired for ${wiredPlatforms.join(', ')}`
+                : 'Live publishing is not wired yet'}
+            </p>
             <p className="text-muted-foreground">
-              No platform adapter is connected, so no post ever goes out from here. You can register
-              targets (stored as <span className="font-medium">PENDING</span>) and check content fit
-              against real platform limits now; OAuth and posting activate when an adapter is
-              configured. Credential storage is{' '}
+              {wiredPlatforms.includes('WORDPRESS') ? (
+                <>
+                  WordPress posts go out for real via the REST API using an application password —
+                  register your site URL with a{' '}
+                  <span className="font-medium">username:application-password</span> credential, then
+                  schedule and publish. Other platforms are registration-only (stored as{' '}
+                  <span className="font-medium">PENDING</span>) until their adapters are wired; a
+                  publish there resolves to <span className="font-medium">UNSUPPORTED</span> — nothing
+                  is posted and nothing is fabricated.{' '}
+                </>
+              ) : (
+                <>
+                  No platform adapter is connected, so no post ever goes out from here. You can
+                  register targets (stored as <span className="font-medium">PENDING</span>) and check
+                  content fit against real platform limits now.{' '}
+                </>
+              )}
+              Credential storage is{' '}
               {credConfigured ? (
                 <span className="font-medium text-emerald-600 dark:text-emerald-400">enabled</span>
               ) : (
                 <span className="font-medium">
-                  disabled (set SOCIAL_TOKEN_ENCRYPTION_KEY to store tokens)
+                  disabled (set SOCIAL_TOKEN_ENCRYPTION_KEY to store credentials)
                 </span>
               )}
               .
@@ -227,14 +254,35 @@ export default function SocialAccountsPage() {
                     />
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="sa-handle">Handle / account id / URL</Label>
+                    <Label htmlFor="sa-handle">
+                      {isWordPress ? 'Site URL' : 'Handle / account id / URL'}
+                    </Label>
                     <Input
                       id="sa-handle"
                       value={handle}
                       onChange={(e) => setHandle(e.target.value)}
-                      placeholder="@acme or https://…"
+                      placeholder={isWordPress ? 'https://blog.example.com' : '@acme or https://…'}
                     />
                   </div>
+                  {isWordPress ? (
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="sa-cred">Application-password credential</Label>
+                      <Input
+                        id="sa-cred"
+                        type="password"
+                        autoComplete="off"
+                        value={credential}
+                        onChange={(e) => setCredential(e.target.value)}
+                        placeholder="username:xxxx xxxx xxxx xxxx xxxx xxxx"
+                        disabled={!credConfigured}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        {credConfigured
+                          ? 'Generate an application password in your WordPress profile. Stored sealed (AES-256-GCM); never shown again or logged.'
+                          : 'Credential storage is disabled — set SOCIAL_TOKEN_ENCRYPTION_KEY to store a WordPress credential.'}
+                      </p>
+                    </div>
+                  ) : null}
                   <div className="flex flex-col gap-1.5">
                     <Label htmlFor="sa-kind">Kind</Label>
                     <select

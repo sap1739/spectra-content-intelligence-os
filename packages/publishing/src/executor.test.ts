@@ -1,14 +1,14 @@
-import { SocialPublisherRegistry } from '@spectra/social-core';
+import type { PostPublisher } from '@spectra/social-core';
 import { describe, expect, it, vi } from 'vitest';
 
-import { executePublication } from './executor';
+import { executePublication, type ResolvePublisher } from './executor';
 
 function fakePrisma(entry: { status: string; platform?: string }) {
   const updates: Array<{ data: Record<string, unknown> }> = [];
   const row = {
     id: 'e1',
     status: entry.status,
-    platform: entry.platform ?? 'X',
+    platform: entry.platform ?? 'WORDPRESS',
     organizationId: 'o1',
     workspaceId: 'w1',
     contentItemId: 'ci1',
@@ -24,18 +24,36 @@ function fakePrisma(entry: { status: string; platform?: string }) {
         return { ...row, ...args.data };
       }),
     },
-    contentItem: { update: vi.fn(async () => ({})) },
+    socialAccount: {
+      findUnique: vi.fn(async () => ({
+        id: 'acct1',
+        platform: row.platform,
+        externalAccountId: 'https://blog.example.com',
+        encryptedToken: 'sealed',
+      })),
+    },
+    contentItem: {
+      findUnique: vi.fn(async () => ({ title: 'Hello', body: '<p>World</p>' })),
+      update: vi.fn(async () => ({})),
+    },
   };
   return { prisma, updates };
 }
 
+/** A stub live publisher — never touches the network. */
+function stubResolver(outcome: Awaited<ReturnType<PostPublisher['publish']>>): ResolvePublisher {
+  return async () => ({
+    platform: 'WORDPRESS',
+    adapterVersion: 'stub-1',
+    publish: vi.fn(async () => outcome),
+  });
+}
+
 describe('executePublication', () => {
-  it('resolves to UNSUPPORTED (never fabricated) when no publisher is wired', async () => {
+  it('resolves to UNSUPPORTED (never fabricated) when no publisher can be resolved', async () => {
     const { prisma, updates } = fakePrisma({ status: 'QUEUED' });
-    const outcome = await executePublication(
-      { prisma: prisma as never, registry: new SocialPublisherRegistry() },
-      { entryId: 'e1' },
-    );
+    // No resolvePublisher supplied — nothing is wired.
+    const outcome = await executePublication({ prisma: prisma as never }, { entryId: 'e1' });
     expect(outcome.status).toBe('UNSUPPORTED');
     // First update flips to PUBLISHING + increments attempts; final is UNSUPPORTED.
     expect(updates.at(-1)!.data.status).toBe('UNSUPPORTED');
@@ -44,35 +62,43 @@ describe('executePublication', () => {
 
   it('is idempotent — an entry not QUEUED/PUBLISHING is skipped', async () => {
     const { prisma, updates } = fakePrisma({ status: 'PUBLISHED' });
-    const outcome = await executePublication(
-      { prisma: prisma as never, registry: new SocialPublisherRegistry() },
-      { entryId: 'e1' },
-    );
+    const outcome = await executePublication({ prisma: prisma as never }, { entryId: 'e1' });
     expect(outcome.status).toBe('SKIPPED');
     expect(updates).toHaveLength(0);
   });
 
-  it('publishes when an adapter is wired (future path)', async () => {
+  it('publishes the item body when a live publisher is resolved', async () => {
     const { prisma, updates } = fakePrisma({ status: 'QUEUED' });
-    const registry = new SocialPublisherRegistry();
-    registry.register({
-      platform: 'X',
-      adapterVersion: 'test-1',
-      createPost: vi.fn(async () => ({
-        idempotencyKey: 'idem-1',
-        status: 'PUBLISHED' as const,
-        externalPostId: 'x-123',
-        externalUrl: 'https://x.com/p/123',
-        publishedAt: '2026-07-14T00:00:00.000Z',
-      })),
-    } as never);
+    const resolvePublisher = stubResolver({
+      status: 'PUBLISHED',
+      externalPostId: 'wp-42',
+      externalUrl: 'https://blog.example.com/?p=42',
+      publishedAt: '2026-07-14T00:00:00.000Z',
+    });
 
     const outcome = await executePublication(
-      { prisma: prisma as never, registry },
+      { prisma: prisma as never, resolvePublisher },
       { entryId: 'e1' },
     );
     expect(outcome.status).toBe('PUBLISHED');
-    expect(updates.at(-1)!.data.externalPostId).toBe('x-123');
+    expect(updates.at(-1)!.data.externalPostId).toBe('wp-42');
     expect(prisma.contentItem.update).toHaveBeenCalled();
+  });
+
+  it('records a truthful FAILED when the publisher reports failure', async () => {
+    const { prisma, updates } = fakePrisma({ status: 'QUEUED' });
+    const resolvePublisher = stubResolver({
+      status: 'FAILED',
+      failureReason: 'WordPress responded 401 Unauthorized',
+    });
+
+    const outcome = await executePublication(
+      { prisma: prisma as never, resolvePublisher },
+      { entryId: 'e1' },
+    );
+    expect(outcome.status).toBe('FAILED');
+    expect(updates.at(-1)!.data.status).toBe('FAILED');
+    expect(String(updates.at(-1)!.data.failureReason)).toContain('401');
+    expect(prisma.contentItem.update).not.toHaveBeenCalled();
   });
 });

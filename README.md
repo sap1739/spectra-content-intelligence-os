@@ -46,8 +46,9 @@ packages/
   content-pipeline/ Evidence-grounded drafting: prompt isolation + cited draft generation (ADR-0017)
   media-core/     Rendering ports (Sharp/SVG/HTML-to-image/FFmpeg/Remotion/subtitles/audio)
   media-sharp/    Real sharp ImageRenderer adapter (resize/crop/rotate/overlay/format; ADR-0018)
-  social-core/    SocialPublisher port + declared capability matrix + variant validation (no platform wired; ADR-0019)
-  publishing/     Dispatch machinery: claims due entries, attempts publish → honest UNSUPPORTED (ADR-0020)
+  social-core/    SocialPublisher/PostPublisher ports + declared capability matrix + variant validation (ADR-0019)
+  social-wordpress/ Real WordPress adapter: REST API + application-password Basic auth — the first live platform (ADR-0022)
+  publishing/     Dispatch machinery: claims due entries, resolves a per-account publisher → real PUBLISHED/FAILED or honest UNSUPPORTED (ADR-0020, ADR-0022)
   workflow-core/  Queue-neutral job ports; BullMQ + in-memory adapters
   storage/        Object storage port + S3/MinIO impl, tenant-scoped keys, upload validation
   testing/        Deterministic, schema-validated test data factories

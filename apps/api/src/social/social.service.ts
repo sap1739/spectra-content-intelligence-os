@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import type { RegisterSocialAccountInput, ValidateVariantInput } from '@spectra/contracts';
 import { TenantIsolationError } from '@spectra/security';
 import {
@@ -9,6 +9,7 @@ import {
   socialPublisherRegistry,
   validateVariant,
 } from '@spectra/social-core';
+import { WordPressCredentialError, parseWordPressCredential } from '@spectra/social-wordpress';
 
 import { AuditService } from '../infra/audit.service';
 import { SocialCryptoService } from '../infra/social-crypto.service';
@@ -83,6 +84,22 @@ export class SocialService {
           'Credential storage is not configured (SOCIAL_TOKEN_ENCRYPTION_KEY). ' +
             'Register the account without a token, or configure the key.',
         );
+      }
+      // WordPress uses application-password Basic auth: the credential must be
+      // "username:application-password" and the account id a valid site URL.
+      // Reject a malformed one now so it never seals a credential the worker
+      // can't use.
+      if (input.platform === 'WORDPRESS') {
+        try {
+          parseWordPressCredential(input.externalAccountId, input.accessToken);
+          new URL(input.externalAccountId);
+        } catch (error) {
+          throw new BadRequestException(
+            error instanceof WordPressCredentialError
+              ? error.message
+              : 'WordPress requires a site URL and a "username:application-password" credential.',
+          );
+        }
       }
       encryptedToken = this.crypto.seal(input.accessToken);
       tokenRef = randomUUID();

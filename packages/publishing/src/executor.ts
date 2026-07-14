@@ -1,13 +1,35 @@
+import type { SocialPlatform } from '@spectra/contracts';
 import type { SpectraPrismaClient } from '@spectra/database';
 import type { Logger } from '@spectra/logging';
-import { socialPublisherRegistry } from '@spectra/social-core';
-import type { SocialPublisherRegistry } from '@spectra/social-core';
-import type { SocialPlatform } from '@spectra/contracts';
+import type { PostPublisher } from '@spectra/social-core';
+
+/**
+ * The subset of a SocialAccount a resolver needs to build a live publisher.
+ * `encryptedToken` is the sealed credential — the resolver (in the worker)
+ * decrypts it; it is never logged and never leaves that boundary.
+ */
+export interface PublishAccount {
+  id: string;
+  platform: SocialPlatform;
+  externalAccountId: string;
+  encryptedToken: string | null;
+}
+
+/**
+ * Builds a live publisher for one account, or `undefined` when publishing is
+ * not possible (no adapter for the platform, no stored credential, or no
+ * decryption key). Returning `undefined` yields an honest UNSUPPORTED — never a
+ * fabricated success. The worker wires this to the real WordPress adapter.
+ */
+export type ResolvePublisher = (account: PublishAccount) => Promise<PostPublisher | undefined>;
 
 export interface PublishDeps {
   prisma: SpectraPrismaClient;
-  /** Defaults to the shared empty registry — no live adapter in Phase 4B. */
-  registry?: SocialPublisherRegistry;
+  /**
+   * Resolves a per-account live publisher. Omitted (e.g. in-process without the
+   * decryption key) means no live publishing — every attempt is UNSUPPORTED.
+   */
+  resolvePublisher?: ResolvePublisher;
   logger?: Logger;
   now?: () => Date;
 }
@@ -22,10 +44,11 @@ export interface PublicationOutcome {
 }
 
 /**
- * Attempts to publish one QUEUED schedule entry through the social-core
- * registry. With no adapter wired for the platform, the entry resolves to
- * UNSUPPORTED — an honest terminal state, NOT a fabricated PUBLISHED. When a
- * real adapter exists (later phase) the same path produces PUBLISHED/FAILED.
+ * Attempts to publish one QUEUED schedule entry. If no live publisher can be
+ * resolved for the target account, the entry resolves to UNSUPPORTED — an
+ * honest terminal state, NOT a fabricated PUBLISHED. When a real adapter and a
+ * stored credential exist (WordPress), the same path produces PUBLISHED/FAILED
+ * from the platform's actual response.
  *
  * Idempotent: an entry not in QUEUED/PUBLISHING is skipped on re-delivery.
  */
@@ -34,7 +57,6 @@ export async function executePublication(
   input: ExecutePublicationInput,
 ): Promise<PublicationOutcome> {
   const { prisma } = deps;
-  const registry = deps.registry ?? socialPublisherRegistry;
   const now = deps.now ?? (() => new Date());
   const logger = deps.logger?.child({ entryId: input.entryId });
 
@@ -50,44 +72,47 @@ export async function executePublication(
     data: { status: 'PUBLISHING', attemptCount: { increment: 1 }, lastAttemptAt: now() },
   });
 
-  const publisher = registry.getPublisher(entry.platform as SocialPlatform);
+  const publisher = await resolvePublisherFor(deps, entry.socialAccountId);
   if (!publisher) {
-    // Honest: nothing published. Not a failure of our system — no adapter exists.
+    // Honest: nothing published. Either no adapter for the platform, or the
+    // account has no stored credential / no decryption key available.
     await prisma.contentScheduleEntry.update({
       where: { id: entry.id },
       data: {
         status: 'UNSUPPORTED',
-        failureReason: `No live publisher is wired for ${entry.platform}. Nothing was published.`,
+        failureReason: `No live publisher is available for ${entry.platform}. Nothing was published.`,
       },
     });
-    logger?.info({ platform: entry.platform }, 'No publisher wired — marked UNSUPPORTED');
+    logger?.info({ platform: entry.platform }, 'No publisher resolved — marked UNSUPPORTED');
     return { status: 'UNSUPPORTED', entryId: entry.id };
   }
 
-  // A real adapter is wired — attempt the post (future phase). Failures are
-  // recorded truthfully; the idempotencyKey makes retries safe.
+  // Publish the item's current best body. Failures are recorded truthfully; the
+  // idempotencyKey makes retries safe.
+  const item = await prisma.contentItem.findUnique({
+    where: { id: entry.contentItemId },
+    select: { title: true, body: true },
+  });
+
   try {
-    const result = await publisher.createPost({
+    const outcome = await publisher.publish({
       idempotencyKey: entry.idempotencyKey ?? entry.id,
-      accountId: entry.socialAccountId as string,
-      channelVariantId: null,
-      text: entry.note ?? null,
-      externalMediaIds: [],
-      link: null,
-      scheduledFor: null,
-      aiContentDisclosure: false,
-      organizationId: entry.organizationId,
-      workspaceId: entry.workspaceId,
+      title: item?.title ?? 'Untitled',
+      body: item?.body ?? entry.note ?? '',
     });
-    const published = result.status === 'PUBLISHED';
+    const published = outcome.status === 'PUBLISHED';
     await prisma.contentScheduleEntry.update({
       where: { id: entry.id },
       data: {
         status: published ? 'PUBLISHED' : 'FAILED',
-        externalPostId: result.externalPostId ?? null,
-        externalUrl: result.externalUrl ?? null,
-        publishedAt: published ? (result.publishedAt ? new Date(result.publishedAt) : now()) : null,
-        failureReason: published ? null : (result.failureReason ?? 'Publish failed'),
+        externalPostId: outcome.externalPostId ?? null,
+        externalUrl: outcome.externalUrl ?? null,
+        publishedAt: published
+          ? outcome.publishedAt
+            ? new Date(outcome.publishedAt)
+            : now()
+          : null,
+        failureReason: published ? null : (outcome.failureReason ?? 'Publish failed'),
       },
     });
     if (published) {
@@ -95,6 +120,7 @@ export async function executePublication(
         .update({ where: { id: entry.contentItemId }, data: { lifecycleState: 'PUBLISHED' } })
         .catch(() => undefined);
     }
+    logger?.info({ platform: entry.platform, status: outcome.status }, 'Publish attempt complete');
     return { status: published ? 'PUBLISHED' : 'FAILED', entryId: entry.id };
   } catch (error) {
     const failureReason = error instanceof Error ? error.message : 'Publish failed';
@@ -105,6 +131,19 @@ export async function executePublication(
     logger?.warn({ err: failureReason }, 'Publish attempt failed');
     return { status: 'FAILED', entryId: entry.id };
   }
+}
+
+async function resolvePublisherFor(
+  deps: PublishDeps,
+  socialAccountId: string | null,
+): Promise<PostPublisher | undefined> {
+  if (!socialAccountId || !deps.resolvePublisher) return undefined;
+  const account = await deps.prisma.socialAccount.findUnique({
+    where: { id: socialAccountId },
+    select: { id: true, platform: true, externalAccountId: true, encryptedToken: true },
+  });
+  if (!account) return undefined;
+  return deps.resolvePublisher(account as PublishAccount);
 }
 
 /**

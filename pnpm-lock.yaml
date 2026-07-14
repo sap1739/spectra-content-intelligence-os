@@ -92,6 +92,9 @@ importers:
       '@spectra/social-core':
         specifier: workspace:*
         version: link:../../packages/social-core
+      '@spectra/social-wordpress':
+        specifier: workspace:*
+        version: link:../../packages/social-wordpress
       '@spectra/storage':
         specifier: workspace:*
         version: link:../../packages/storage
@@ -226,6 +229,12 @@ importers:
       '@spectra/research-pipeline':
         specifier: workspace:*
         version: link:../../packages/research-pipeline
+      '@spectra/security':
+        specifier: workspace:*
+        version: link:../../packages/security
+      '@spectra/social-wordpress':
+        specifier: workspace:*
+        version: link:../../packages/social-wordpress
       '@spectra/storage':
         specifier: workspace:*
         version: link:../../packages/storage
@@ -581,6 +590,25 @@ importers:
       '@spectra/contracts':
         specifier: workspace:*
         version: link:../contracts
+    devDependencies:
+      '@types/node':
+        specifier: ^22.15.0
+        version: 22.20.0
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)
+
+  packages/social-wordpress:
+    dependencies:
+      '@spectra/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@spectra/social-core':
+        specifier: workspace:*
+        version: link:../social-core
     devDependencies:
       '@types/node':
         specifier: ^22.15.0

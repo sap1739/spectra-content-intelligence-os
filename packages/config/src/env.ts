@@ -107,7 +107,10 @@ export const workerEnvSchema = z
   .merge(databaseEnvSchema)
   .merge(storageEnvSchema)
   // Content generation (Phase 3): optional AI provider for the draft worker.
-  .merge(aiEnvSchema);
+  .merge(aiEnvSchema)
+  // Publishing (Phase 4): the worker decrypts sealed social credentials to
+  // publish. Without the key, publishing resolves to UNSUPPORTED (honest).
+  .merge(socialEnvSchema);
 
 export const webEnvSchema = z.object({
   NODE_ENV: nodeEnvSchema,

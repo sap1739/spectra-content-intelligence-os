@@ -62,7 +62,7 @@ describe('API integration: social accounts, capabilities, honest publishing foun
     await app.close();
   });
 
-  it('reports declared capabilities with no publisher wired and no credential storage', async () => {
+  it('reports declared capabilities: only WordPress is wired, no credential storage', async () => {
     const res = await inject().inject({
       method: 'GET',
       url: `/v1/workspaces/${workspaceId}/social/platforms`,
@@ -75,7 +75,9 @@ describe('API integration: social accounts, capabilities, honest publishing foun
     };
     expect(body.credentialStorageConfigured).toBe(false);
     expect(body.platforms.length).toBe(10);
-    expect(body.platforms.every((p) => p.publisherWired === false)).toBe(true);
+    // WordPress is the one live adapter; every other platform is honestly unwired.
+    const wired = body.platforms.filter((p) => p.publisherWired).map((p) => p.capability.platform);
+    expect(wired).toEqual(['WORDPRESS']);
   });
 
   it('validates content against a platform’s declared limits', async () => {

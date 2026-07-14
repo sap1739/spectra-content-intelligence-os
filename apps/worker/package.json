@@ -21,6 +21,8 @@
     "@spectra/observability": "workspace:*",
     "@spectra/publishing": "workspace:*",
     "@spectra/research-pipeline": "workspace:*",
+    "@spectra/security": "workspace:*",
+    "@spectra/social-wordpress": "workspace:*",
     "@spectra/storage": "workspace:*",
     "@spectra/workflow-core": "workspace:*",
     "ioredis": "5.10.1"

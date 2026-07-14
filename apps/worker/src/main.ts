@@ -7,8 +7,17 @@ import { loadEnv, storageEnvSchema, workerEnvSchema } from '@spectra/config';
 import { executeContentDraft } from '@spectra/content-pipeline';
 import { createPrismaClient } from '@spectra/database';
 import { createLogger, withCorrelation } from '@spectra/logging';
-import { claimDuePublications, executePublication } from '@spectra/publishing';
+import {
+  claimDuePublications,
+  executePublication,
+  type ResolvePublisher,
+} from '@spectra/publishing';
 import { executeResearchRun } from '@spectra/research-pipeline';
+import { type KeyRing, decryptSecret } from '@spectra/security';
+import {
+  WordPressPublisher,
+  parseWordPressCredential,
+} from '@spectra/social-wordpress';
 import { S3ObjectStorageProvider } from '@spectra/storage';
 import {
   BullMqJobQueue,
@@ -186,13 +195,55 @@ async function main(): Promise<void> {
     { concurrency: 1, timeoutMs: 60_000 },
   );
 
-  // Publish one entry. With no adapter wired it resolves to UNSUPPORTED
-  // (honest); a real adapter (later phase) produces PUBLISHED/FAILED.
+  // Live publisher resolution. The worker holds the social token-encryption key
+  // (env-gated). For a WordPress account with a stored credential, it decrypts
+  // the sealed `username:application-password`, parses it, and builds a real
+  // WordPressPublisher. Any missing piece — not WordPress, no credential, no
+  // key — returns undefined, which the executor records as an honest
+  // UNSUPPORTED. The decrypted secret never leaves this closure and is never
+  // logged.
+  const SOCIAL_KEY_ID = 'social-v1';
+  const socialRing: KeyRing | undefined = env.SOCIAL_TOKEN_ENCRYPTION_KEY
+    ? { keys: { [SOCIAL_KEY_ID]: env.SOCIAL_TOKEN_ENCRYPTION_KEY }, activeKeyId: SOCIAL_KEY_ID }
+    : undefined;
+  if (!socialRing) {
+    logger.warn(
+      'SOCIAL_TOKEN_ENCRYPTION_KEY is not set — publishing resolves to UNSUPPORTED for all platforms',
+    );
+  }
+
+  const resolvePublisher: ResolvePublisher = async (account) => {
+    if (account.platform !== 'WORDPRESS') return undefined; // WordPress is the only live adapter
+    if (!account.encryptedToken || !socialRing) return undefined; // honest: no cred/key → UNSUPPORTED
+    let secret: string;
+    try {
+      secret = decryptSecret(account.encryptedToken, socialRing);
+    } catch (error) {
+      logger.warn(
+        { accountId: account.id, err: error instanceof Error ? error.message : 'decrypt failed' },
+        'Could not decrypt social credential — treating as UNSUPPORTED',
+      );
+      return undefined;
+    }
+    try {
+      return new WordPressPublisher(parseWordPressCredential(account.externalAccountId, secret));
+    } catch (error) {
+      logger.warn(
+        { accountId: account.id, err: error instanceof Error ? error.message : 'invalid credential' },
+        'Invalid WordPress credential — treating as UNSUPPORTED',
+      );
+      return undefined;
+    }
+  };
+
+  // Publish one entry. With no live publisher resolvable it records an honest
+  // UNSUPPORTED; a WordPress account with a stored credential produces a real
+  // PUBLISHED/FAILED from the platform's own response.
   runtime.register<{ entryId: string }, unknown>(
     JOB_NAMES.publicationPublish,
     async (envelope, context) => {
       return executePublication(
-        { prisma, logger: withCorrelation(logger, context.correlationId) },
+        { prisma, resolvePublisher, logger: withCorrelation(logger, context.correlationId) },
         { entryId: envelope.payload.entryId },
       );
     },

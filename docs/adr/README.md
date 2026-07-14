@@ -23,6 +23,7 @@
 | [0019](0019-publishing-foundation.md)           | Publishing foundation: capabilities, sealed creds, honest          | Accepted             |
 | [0020](0020-publishing-pipeline-v1.md)          | Publishing pipeline v1: dispatch machinery, honest UNSUPPORTED     | Accepted             |
 | [0021](0021-analytics-first-party-reporting.md) | Analytics v1: real first-party reporting, no fabricated engagement | Accepted             |
+| [0022](0022-wordpress-first-live-adapter.md)    | WordPress: first live platform adapter (REST + application password)| Accepted             |
 
 New significant decisions require a new ADR (`NNNN-kebab-title.md`) using the
 Context / Decision / Rationale / Consequences structure.

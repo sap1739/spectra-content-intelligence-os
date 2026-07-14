@@ -8,3 +8,4 @@ export {
 export { validateVariant } from './validation';
 export type { ValidationIssue, VariantValidation, VariantValidationInput } from './validation';
 export { SocialPublisherRegistry, socialPublisherRegistry } from './registry';
+export type { PostPublisher, PublishInput, PublishOutcome } from './post-publisher';
