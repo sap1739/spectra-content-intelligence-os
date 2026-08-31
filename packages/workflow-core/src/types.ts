@@ -17,6 +17,7 @@ export const JOB_NAMES = {
   contentDraftGenerate: 'content.draft.generate',
   publicationDispatch: 'publication.dispatch',
   publicationPublish: 'publication.publish',
+  knowledgeReembed: 'knowledge.reembed',
 } as const;
 
 export interface RetryPolicy {

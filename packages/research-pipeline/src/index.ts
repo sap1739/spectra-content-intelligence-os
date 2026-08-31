@@ -15,3 +15,5 @@ export { extractClaims, splitSentences } from './claims';
 export type { HeuristicClaim, HeuristicClaimType } from './claims';
 export { PIPELINE_VERSION, executeResearchRun } from './executor';
 export type { ExecuteRunInput, PipelineDeps, RunOutcome } from './executor';
+export { executeReembed } from './reembed';
+export type { ReembedDeps, ReembedInput, ReembedOutcome } from './reembed';

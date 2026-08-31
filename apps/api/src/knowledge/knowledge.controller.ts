@@ -1,4 +1,4 @@
-import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 
@@ -19,7 +19,7 @@ export class KnowledgeController {
   @RequirePermissions('knowledge:read')
   @ApiOperation({
     summary:
-      'Hybrid lexical search over embedded research findings (pgvector). Lexical embeddings in Phase 2 — semantic models arrive in Phase 3 (ADR-0016).',
+      'Hybrid search over embedded research findings (pgvector). Semantic when VOYAGE_API_KEY is set, otherwise first-party lexical — the response `retrieval` field states which (ADR-0023).',
   })
   search(
     @Param('workspaceId', ParseUUIDPipe) _workspaceId: string,
@@ -28,5 +28,31 @@ export class KnowledgeController {
     @CurrentTenant() tenant: TenantContext,
   ) {
     return this.knowledge.search(tenant, q, topK);
+  }
+
+  @Get('status')
+  @RequirePermissions('knowledge:read')
+  @ApiOperation({
+    summary:
+      'Active retrieval mode (semantic vs lexical) and how much of the workspace is actually indexed in that collection.',
+  })
+  status(
+    @Param('workspaceId', ParseUUIDPipe) _workspaceId: string,
+    @CurrentTenant() tenant: TenantContext,
+  ) {
+    return this.knowledge.status(tenant);
+  }
+
+  @Post('reembed')
+  @RequirePermissions('knowledge:write')
+  @ApiOperation({
+    summary:
+      'Backfill the active embedding collection. Required after changing embedding model, otherwise existing findings are absent from search.',
+  })
+  reembed(
+    @Param('workspaceId', ParseUUIDPipe) _workspaceId: string,
+    @CurrentTenant() tenant: TenantContext,
+  ) {
+    return this.knowledge.reembed(tenant);
   }
 }

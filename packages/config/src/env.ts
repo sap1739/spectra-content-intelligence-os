@@ -58,6 +58,21 @@ export const aiEnvSchema = z.object({
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
   ANTHROPIC_MODEL: z.string().min(1).default('claude-opus-4-8'),
   ANTHROPIC_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(256).max(64000).default(4096),
+  /**
+   * Semantic embeddings (Phase 5A). Optional — without a key the system falls
+   * back to the first-party lexical embedder and SAYS SO (retrieval stays
+   * lexical; nothing is silently degraded or fabricated).
+   */
+  VOYAGE_API_KEY: z.string().min(1).optional(),
+  VOYAGE_EMBEDDING_MODEL: z.string().min(1).default('voyage-4'),
+  /** Matryoshka output width. voyage-4 family supports 256/512/1024/2048. */
+  VOYAGE_EMBEDDING_DIMENSIONS: z.coerce
+    .number()
+    .int()
+    .refine((d) => [256, 512, 1024, 2048].includes(d), {
+      message: 'VOYAGE_EMBEDDING_DIMENSIONS must be one of 256, 512, 1024, 2048',
+    })
+    .default(1024),
 });
 
 /**

@@ -2,7 +2,7 @@
   "name": "@spectra/api",
   "version": "0.1.0",
   "private": true,
-  "description": "Spectra REST API — NestJS on Fastify.",
+  "description": "Spectra REST API \u2014 NestJS on Fastify.",
   "main": "./dist/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -23,6 +23,7 @@
     "@nestjs/swagger": "^11.2.0",
     "@spectra/ai-anthropic": "workspace:*",
     "@spectra/ai-core": "workspace:*",
+    "@spectra/ai-voyage": "workspace:*",
     "@spectra/config": "workspace:*",
     "@spectra/content-pipeline": "workspace:*",
     "@spectra/contracts": "workspace:*",

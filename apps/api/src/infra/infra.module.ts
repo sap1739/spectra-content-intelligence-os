@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AiTextService } from './ai.service';
 import { AuditService } from './audit.service';
+import { EmbeddingService } from './embedding.service';
 import { QueueService } from './queue.service';
 import { SocialCryptoService } from './social-crypto.service';
 
@@ -16,6 +17,7 @@ import { SocialCryptoService } from './social-crypto.service';
     AuditService,
     QueueService,
     AiTextService,
+    EmbeddingService,
     SocialCryptoService,
   ],
   exports: [
@@ -24,6 +26,7 @@ import { SocialCryptoService } from './social-crypto.service';
     AuditService,
     QueueService,
     AiTextService,
+    EmbeddingService,
     SocialCryptoService,
   ],
 })

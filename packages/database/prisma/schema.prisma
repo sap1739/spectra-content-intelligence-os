@@ -719,7 +719,10 @@ model DocumentChunk {
   embeddingProvider String
   embeddingModel    String
   dimensions        Int
-  embedding         Unsupported("vector(256)")?
+  /// Unconstrained pgvector column: collections carry different widths (lexical
+  /// 256, voyage-4 up to 2048) and must coexist. `dimensions` + `collection`
+  /// discriminate; search always filters by collection so widths never mix.
+  embedding         Unsupported("vector")?
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)

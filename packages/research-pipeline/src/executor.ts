@@ -1,11 +1,7 @@
 import type { EmbeddingProvider } from '@spectra/ai-core';
 import type { ResearchRunStats } from '@spectra/contracts';
 import { PgVectorStore, type Prisma, type SpectraPrismaClient } from '@spectra/database';
-import {
-  HashingEmbeddingProvider,
-  LEXICAL_EMBEDDING_COLLECTION,
-  type VectorStoreProvider,
-} from '@spectra/knowledge-core';
+import { resolveEmbedding, type VectorStoreProvider } from '@spectra/knowledge-core';
 import type { Logger } from '@spectra/logging';
 import { buildObjectKey, type ObjectStorageProvider } from '@spectra/storage';
 
@@ -94,7 +90,10 @@ export async function executeResearchRun(
   const rss = new FirstPartyRssProvider(deps.fetchOptions);
   const extraction = new HtmlExtractionProvider();
   const engine = new WeightedTrendScoringEngine(deps.scoringConfig ?? DEFAULT_TREND_SCORING_CONFIG);
-  const embedder = deps.embedder ?? new HashingEmbeddingProvider();
+  // Provider and collection resolve together so ingestion and search can never
+  // disagree about which model's vectors live where (ADR-0023).
+  const embedding = resolveEmbedding(deps.embedder);
+  const embedder = embedding.provider;
   const vectorStore = deps.vectorStore ?? new PgVectorStore(deps.prisma);
 
   const run = await deps.prisma.researchRun.findUnique({
@@ -399,13 +398,14 @@ export async function executeResearchRun(
             },
           });
 
-          // KNOWLEDGE_BASE_STORAGE: lexical embedding → pgvector.
+          // KNOWLEDGE_BASE_STORAGE: embed → pgvector. Stored as a passage
+          // ('document'), which real models encode differently from a query.
           const embedText = `${item.title ?? ''}\n${text.slice(0, 1500)}`.trim();
           if (embedText.length > 0) {
-            const [vector] = await embedder.embed([embedText], tenant);
+            const [vector] = await embedder.embed([embedText], tenant, 'document');
             await vectorStore.upsertChunks({
               tenant,
-              collection: LEXICAL_EMBEDDING_COLLECTION,
+              collection: embedding.collection,
               chunks: [
                 {
                   chunk: {

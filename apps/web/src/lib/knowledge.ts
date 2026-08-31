@@ -18,11 +18,26 @@ export interface KnowledgeHit {
   };
 }
 
+/** What retrieval actually did — semantic or lexical. Never implied, always stated. */
+export interface RetrievalMode {
+  semantic: boolean;
+  provider: string;
+  model: string;
+  dimensions: number;
+  collection: string;
+  note: string;
+}
+
+export interface KnowledgeSearchResult {
+  hits: KnowledgeHit[];
+  retrieval: RetrievalMode;
+}
+
 export function useKnowledgeSearch(workspaceId: string, query: string) {
-  return useQuery<KnowledgeHit[], ApiError>({
+  return useQuery<KnowledgeSearchResult, ApiError>({
     queryKey: ['workspaces', workspaceId, 'knowledge', query],
     queryFn: () =>
-      api.get<KnowledgeHit[]>(
+      api.get<KnowledgeSearchResult>(
         `/v1/workspaces/${workspaceId}/knowledge/search?q=${encodeURIComponent(query)}&topK=15`,
       ),
     enabled: query.trim().length >= 2,

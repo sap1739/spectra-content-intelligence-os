@@ -112,3 +112,21 @@ providers.**
 
 Honest UI states; provenance on every claim; explainable scores; permission-based authz;
 tenant isolation everywhere; no unlicensed data usage; ADR for every significant decision.
+
+## Phase 5 — Research Depth (in progress)
+
+Phases 1–4 built a broad port surface with one adapter behind each. Phase 5 attacks the
+weakest link in the differentiator: research and evidence quality.
+
+- ✅ **Increment A — semantic embeddings.** `@spectra/ai-voyage` behind the ai-core
+  `EmbeddingProvider` port (voyage-4, 1024-d default), replacing lexical hashing (ADR-0016)
+  as the active retriever when `VOYAGE_API_KEY` is set — with an honest lexical fallback that
+  states, in the API response and the UI, that it matches words rather than meaning. The
+  pgvector column widened from `vector(256)` to unconstrained `vector` so collections of
+  different widths coexist; `resolveEmbedding()` returns provider + collection as one value so
+  ingestion and search can never disagree; the port gained query/document asymmetry. A
+  `knowledge.reembed` worker job + `POST knowledge/reembed` backfills the active collection
+  (idempotent, source collection preserved for instant rollback) and `GET knowledge/status`
+  reports real index coverage — switching model can never silently empty search (ADR-0023).
+- Next: real web + news search providers behind `WebSearchProvider`/`NewsSearchProvider`;
+  content extraction for discovered URLs; fact verification; hybrid retrieval tuning + reranking.

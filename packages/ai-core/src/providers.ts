@@ -62,9 +62,20 @@ export interface StructuredGenerationProvider extends AiProviderIdentity {
   ): Promise<{ data: z.infer<TSchema>; modelRef: ModelRef; usage?: GenerationUsage }>;
 }
 
+/**
+ * Retrieval asymmetry: modern embedding models encode a search query and a
+ * stored passage differently, which materially improves recall. Providers that
+ * do not distinguish them ignore this hint.
+ */
+export type EmbeddingInputType = 'query' | 'document';
+
 export interface EmbeddingProvider extends AiProviderIdentity {
   readonly dimensions: number;
-  embed(texts: readonly string[], tenant: TenantScope): Promise<number[][]>;
+  embed(
+    texts: readonly string[],
+    tenant: TenantScope,
+    inputType?: EmbeddingInputType,
+  ): Promise<number[][]>;
 }
 
 export interface ImageGenerationRequest {

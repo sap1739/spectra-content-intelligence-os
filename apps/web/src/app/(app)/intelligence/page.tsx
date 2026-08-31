@@ -48,7 +48,7 @@ function IntelligenceSearch() {
         <EmptyState
           icon={<Sparkles />}
           title="Search everything your research has learned"
-          description="Every finding your runs ingest is embedded into the knowledge base. Search is lexical in Phase 2 (exact and near-word matches, ADR-0016); semantic models arrive in Phase 3."
+          description="Every finding your runs ingest is embedded into the knowledge base. Retrieval is semantic when an embedding provider is configured, otherwise first-party lexical — each result set states which."
         />
       ) : results.isPending ? (
         <div className="space-y-3">
@@ -57,7 +57,7 @@ function IntelligenceSearch() {
         </div>
       ) : results.isError ? (
         <EmptyState icon={<Sparkles />} title="Search failed" description={results.error.message} />
-      ) : results.data.length === 0 ? (
+      ) : results.data.hits.length === 0 ? (
         <EmptyState
           icon={<Sparkles />}
           title={`No matches for “${query}”`}
@@ -65,7 +65,13 @@ function IntelligenceSearch() {
         />
       ) : (
         <ul className="flex max-w-3xl flex-col gap-3">
-          {results.data.map((hit) => (
+          <li>
+            <p className="text-xs text-muted-foreground">
+              {results.data.retrieval.semantic ? 'Semantic retrieval' : 'Lexical retrieval'} ·{' '}
+              {results.data.retrieval.note}
+            </p>
+          </li>
+          {results.data.hits.map((hit) => (
             <li key={hit.chunkId}>
               <Card>
                 <CardContent className="flex flex-col gap-2 pt-5">

@@ -2,6 +2,7 @@ export type {
   AiProviderIdentity,
   AudioGenerationProvider,
   AudioGenerationRequest,
+  EmbeddingInputType,
   EmbeddingProvider,
   GeneratedMediaResult,
   GenerationUsage,

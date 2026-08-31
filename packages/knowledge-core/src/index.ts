@@ -10,3 +10,5 @@ export {
   lexicalEmbed,
 } from './hashing-embedder';
 export type { WrappedUntrustedContent } from './prompt-injection';
+export { embeddingCollectionFor, resolveEmbedding } from './embedding-resolver';
+export type { ResolvedEmbedding } from './embedding-resolver';

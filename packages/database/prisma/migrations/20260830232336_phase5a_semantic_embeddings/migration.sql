@@ -1,0 +1,20 @@
+-- Phase 5A: semantic embeddings (ADR-0023).
+--
+-- The embedding column was pinned to vector(256) — the width of the first-party
+-- lexical hashing embedder (ADR-0016). Real semantic models are wider
+-- (voyage-4 emits 256/512/1024/2048), so the fixed width blocked every real
+-- provider.
+--
+-- Widening to an UNCONSTRAINED `vector` lets collections of different widths
+-- coexist in one table. `collection` (already indexed) isolates one embedding
+-- model per collection and every query filters by it, so widths never mix
+-- inside a single search. Existing lexical vectors remain valid and are NOT
+-- rewritten — the lexical collection keeps working untouched.
+--
+-- Trade-off, recorded honestly: pgvector can only build ivfflat/hnsw indexes on
+-- fixed-width columns, so this table uses exact cosine scan. That is correct
+-- (exact > approximate) and adequate at current scale; note the previous HNSW
+-- index was already dropped in 20260708120727_phase2_closeout, so this removes
+-- no capability that was live. Revisit with per-width partitions or a dedicated
+-- vector store when chunk counts make the scan the bottleneck.
+ALTER TABLE "document_chunks" ALTER COLUMN "embedding" TYPE vector;

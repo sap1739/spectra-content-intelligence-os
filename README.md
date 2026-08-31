@@ -4,15 +4,16 @@ Research-first content intelligence, multimedia creation, campaign management, s
 publishing and analytics platform for B2B/B2C businesses, agencies, creators and regulated
 enterprises — built around **user-defined custom verticals** and **evidence-backed content**.
 
-> **Status: Phase 4 in progress (Phases 1–3 complete).** On top of the identity + research
+> **Status: Phase 5 in progress (Phases 1–4 complete).** On top of the identity + research
 > foundation: evidence-grounded content generation behind the ai-core port
 > (`@spectra/ai-anthropic`, env-gated — no key means honestly unavailable, never fabricated),
 > with citation validation, a full content lifecycle (human edits, review/approval, AI
-> moderation gate), strategy entities (campaigns, briefs, personas, pillars, topic ideas), a
-> content calendar, and real image rendering (`@spectra/media-sharp`). Phase 4 adds the
-> publishing foundation — a declared per-platform capability matrix, deterministic content-fit
-> validation, and social-target registration with AES-256-GCM sealed credentials. No social
-> platform is wired for live posting yet (the UI says so plainly); every number comes from real data.
+> moderation gate), strategy entities, a content calendar, and real image rendering
+> (`@spectra/media-sharp`). Phase 4 delivered publishing end to end — capability matrix, sealed
+> credentials, a dispatch pipeline, first-party analytics, and **WordPress as the first live
+> platform** (real REST publishing; every unwired platform still resolves to an honest
+> `UNSUPPORTED`). Phase 5 deepens research: **semantic embeddings** via `@spectra/ai-voyage`,
+> with an honest lexical fallback that says so. Every number comes from real data.
 
 ## Product workflow (target)
 
@@ -34,7 +35,7 @@ packages/
   config/         Validated environment schemas (fail-fast at boot)
   database/       Prisma schema, tenant-guard client, migrations, deterministic seed
   security/       Permission bundles, tenant isolation guards, AES-256-GCM token encryption
-  auth/           Principal model + auth/token-vault ports (direction only; no login yet)
+  auth/           Principal model + auth/token-vault ports (direction only; superseded by apps/api/src/auth)
   logging/        pino structured logging with mandatory secret redaction
   observability/  Correlation IDs (AsyncLocalStorage), health aggregation
   research-core/  11 provider-neutral research ports, registry, 22-stage pipeline model
@@ -43,6 +44,7 @@ packages/
   knowledge-core/ Vector store port, chunking, prompt-injection scanner & isolation
   ai-core/        12 provider-neutral AI interfaces (ports; vendors plug in behind them)
   ai-anthropic/   Anthropic Claude adapter for the TextGenerationProvider port (env-gated; ADR-0017)
+  ai-voyage/      Voyage AI adapter for the EmbeddingProvider port — real semantic retrieval (env-gated; ADR-0023)
   content-pipeline/ Evidence-grounded drafting: prompt isolation + cited draft generation (ADR-0017)
   media-core/     Rendering ports (Sharp/SVG/HTML-to-image/FFmpeg/Remotion/subtitles/audio)
   media-sharp/    Real sharp ImageRenderer adapter (resize/crop/rotate/overlay/format; ADR-0018)
@@ -57,7 +59,7 @@ infrastructure/
   docker/         PostgreSQL (pgvector), Redis, MinIO via Docker Compose
   scripts/        bootstrap.sh, verify.sh
 docs/             Product, architecture, security and strategy documentation
-docs/adr/         21 Architecture Decision Records
+docs/adr/         23 Architecture Decision Records
 ```
 
 ## Quick start

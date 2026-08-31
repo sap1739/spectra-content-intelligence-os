@@ -3,6 +3,7 @@ import { hostname } from 'node:os';
 import { resolve } from 'node:path';
 
 import { AnthropicTextGenerationProvider } from '@spectra/ai-anthropic';
+import { VoyageEmbeddingProvider } from '@spectra/ai-voyage';
 import { loadEnv, storageEnvSchema, workerEnvSchema } from '@spectra/config';
 import { executeContentDraft } from '@spectra/content-pipeline';
 import { createPrismaClient } from '@spectra/database';
@@ -12,12 +13,9 @@ import {
   executePublication,
   type ResolvePublisher,
 } from '@spectra/publishing';
-import { executeResearchRun } from '@spectra/research-pipeline';
+import { executeReembed, executeResearchRun } from '@spectra/research-pipeline';
 import { type KeyRing, decryptSecret } from '@spectra/security';
-import {
-  WordPressPublisher,
-  parseWordPressCredential,
-} from '@spectra/social-wordpress';
+import { WordPressPublisher, parseWordPressCredential } from '@spectra/social-wordpress';
 import { S3ObjectStorageProvider } from '@spectra/storage';
 import {
   BullMqJobQueue,
@@ -83,6 +81,21 @@ async function main(): Promise<void> {
   const storage = new S3ObjectStorageProvider(loadEnv(storageEnvSchema));
   await storage.ensureBucket();
 
+  // Semantic embedder (Phase 5A). Env-gated: without VOYAGE_API_KEY the
+  // pipeline resolves to the first-party lexical embedder and says so — it
+  // never silently pretends retrieval is semantic.
+  const embedder = new VoyageEmbeddingProvider({
+    apiKey: env.VOYAGE_API_KEY,
+    model: env.VOYAGE_EMBEDDING_MODEL,
+    dimensions: env.VOYAGE_EMBEDDING_DIMENSIONS,
+  });
+  logger.info(
+    { semantic: embedder.isConfigured, model: env.VOYAGE_EMBEDDING_MODEL },
+    embedder.isConfigured
+      ? 'Semantic embeddings enabled'
+      : 'VOYAGE_API_KEY not set — retrieval stays lexical (matches words, not meaning)',
+  );
+
   runtime.register<{ runId: string }, unknown>(
     JOB_NAMES.researchRunExecute,
     async (envelope, context) => {
@@ -92,7 +105,7 @@ async function main(): Promise<void> {
         'Research run started',
       );
       const outcome = await executeResearchRun(
-        { prisma, storage, logger: jobLogger },
+        { prisma, storage, embedder, logger: jobLogger },
         {
           runId: envelope.payload.runId,
           signal: context.signal,
@@ -141,7 +154,7 @@ async function main(): Promise<void> {
       });
       jobLogger.info({ projectId, runId: run.id }, 'Scheduled research run created');
       return executeResearchRun(
-        { prisma, storage, logger: jobLogger },
+        { prisma, storage, embedder, logger: jobLogger },
         {
           runId: run.id,
           signal: context.signal,
@@ -163,6 +176,7 @@ async function main(): Promise<void> {
     model: env.ANTHROPIC_MODEL,
     maxOutputTokens: env.ANTHROPIC_MAX_OUTPUT_TOKENS,
   });
+
   runtime.register<{ draftId: string }, unknown>(
     JOB_NAMES.contentDraftGenerate,
     async (envelope, context) => {
@@ -229,7 +243,10 @@ async function main(): Promise<void> {
       return new WordPressPublisher(parseWordPressCredential(account.externalAccountId, secret));
     } catch (error) {
       logger.warn(
-        { accountId: account.id, err: error instanceof Error ? error.message : 'invalid credential' },
+        {
+          accountId: account.id,
+          err: error instanceof Error ? error.message : 'invalid credential',
+        },
         'Invalid WordPress credential — treating as UNSUPPORTED',
       );
       return undefined;
@@ -248,6 +265,24 @@ async function main(): Promise<void> {
       );
     },
     { concurrency: 3, timeoutMs: 2 * 60_000 },
+  );
+
+  // Backfill: re-embed a workspace's chunks into the ACTIVE collection. Needed
+  // when the embedding model changes, otherwise search would point at a new,
+  // empty collection and silently return nothing for existing findings.
+  runtime.register<{ organizationId: string; workspaceId: string }, unknown>(
+    JOB_NAMES.knowledgeReembed,
+    async (envelope, context) => {
+      const jobLogger = withCorrelation(logger, context.correlationId);
+      return executeReembed(
+        { prisma, embedder, logger: jobLogger },
+        {
+          organizationId: envelope.payload.organizationId,
+          workspaceId: envelope.payload.workspaceId,
+        },
+      );
+    },
+    { concurrency: 1, timeoutMs: 15 * 60_000 },
   );
 
   await runtime.start();

@@ -193,17 +193,17 @@ export default function SocialAccountsPage() {
                 <>
                   WordPress posts go out for real via the REST API using an application password —
                   register your site URL with a{' '}
-                  <span className="font-medium">username:application-password</span> credential, then
-                  schedule and publish. Other platforms are registration-only (stored as{' '}
+                  <span className="font-medium">username:application-password</span> credential,
+                  then schedule and publish. Other platforms are registration-only (stored as{' '}
                   <span className="font-medium">PENDING</span>) until their adapters are wired; a
-                  publish there resolves to <span className="font-medium">UNSUPPORTED</span> — nothing
-                  is posted and nothing is fabricated.{' '}
+                  publish there resolves to <span className="font-medium">UNSUPPORTED</span> —
+                  nothing is posted and nothing is fabricated.{' '}
                 </>
               ) : (
                 <>
                   No platform adapter is connected, so no post ever goes out from here. You can
-                  register targets (stored as <span className="font-medium">PENDING</span>) and check
-                  content fit against real platform limits now.{' '}
+                  register targets (stored as <span className="font-medium">PENDING</span>) and
+                  check content fit against real platform limits now.{' '}
                 </>
               )}
               Credential storage is{' '}

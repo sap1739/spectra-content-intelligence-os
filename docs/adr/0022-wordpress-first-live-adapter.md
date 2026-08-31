@@ -24,13 +24,13 @@ publish time. Credentials never enter the domain packages in the clear; the work
 1. **A narrow `PostPublisher` port (social-core).** The full `SocialPublisher` port (OAuth,
    analytics, webhooks) remains aspirational. Real adapters implement the minimal
    `PostPublisher` now: `publish({ idempotencyKey, title, body }) → { status, externalPostId?,
-   externalUrl?, publishedAt?, failureReason? }`. This keeps the first adapter to the surface it
+externalUrl?, publishedAt?, failureReason? }`. This keeps the first adapter to the surface it
    actually needs.
 
 2. **`WordPressPublisher` — genuine HTTP I/O.** Constructed with `{ siteUrl, username,
-   applicationPassword }`; `publish` does a real `fetch` `POST` to `/wp-json/wp/v2/posts` with
+applicationPassword }`; `publish` does a real `fetch` `POST` to `/wp-json/wp/v2/posts` with
    `Authorization: Basic base64(username:app-password)` and `{ title, content, status:
-   'publish' }`. `2xx` with a post id ⇒ `PUBLISHED` (records id + link + `date_gmt` as UTC);
+'publish' }`. `2xx` with a post id ⇒ `PUBLISHED` (records id + link + `date_gmt` as UTC);
    any non-2xx or network/parse error ⇒ `FAILED` with the real status + trimmed body. The site
    URL is validated as http(s); the credential and auth header are never logged.
 

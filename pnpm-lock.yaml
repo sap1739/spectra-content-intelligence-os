@@ -59,6 +59,9 @@ importers:
       '@spectra/ai-core':
         specifier: workspace:*
         version: link:../../packages/ai-core
+      '@spectra/ai-voyage':
+        specifier: workspace:*
+        version: link:../../packages/ai-voyage
       '@spectra/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -208,6 +211,9 @@ importers:
       '@spectra/ai-anthropic':
         specifier: workspace:*
         version: link:../../packages/ai-anthropic
+      '@spectra/ai-voyage':
+        specifier: workspace:*
+        version: link:../../packages/ai-voyage
       '@spectra/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -295,6 +301,25 @@ importers:
       typescript:
         specifier: ^5.8.3
         version: 5.9.3
+
+  packages/ai-voyage:
+    dependencies:
+      '@spectra/ai-core':
+        specifier: workspace:*
+        version: link:../ai-core
+      '@spectra/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+    devDependencies:
+      '@types/node':
+        specifier: ^22.15.0
+        version: 22.20.0
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)
 
   packages/auth:
     dependencies:
@@ -2521,6 +2546,7 @@ packages:
   eslint@9.39.4:
     resolution: {integrity: sha512-XoMjdBOwe/esVgEvLmNsD3IRHkm7fbKIUGvrleloJXUZgDHig2IPWNniv+GwjyJXzuNqVjlr5+4yVUZjycJwfQ==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    deprecated: This version is no longer supported. Please see https://eslint.org/version-support for other options.
     hasBin: true
     peerDependencies:
       jiti: '*'
