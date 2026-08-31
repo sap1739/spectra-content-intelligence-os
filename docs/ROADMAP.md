@@ -83,13 +83,22 @@ providers.**
   claims due targeted entries and enqueues publish jobs; with no adapter wired every attempt
   resolves to an honest `UNSUPPORTED`, never a fabricated `PUBLISHED`. `publish-now` API,
   live-polling calendar with status + failure reason (ADR-0020).
-- Next: OAuth connection flows (encrypted vault) + first real adapters (WordPress, LinkedIn,
-  YouTube) registering behind the publisher registry; a formal DLQ dashboard.
+- Next: OAuth connection flows (encrypted vault) for the platforms that require them
+  (LinkedIn, YouTube, X); a formal DLQ dashboard.
 - ✅ **Increment C — analytics v1.** Real first-party workspace reporting (`analytics/overview`):
   content funnel by lifecycle, drafts, publications by dispatch status, research runs/findings/
   packs, trends by state — all real counts. External platform engagement is honestly reported as
   unavailable until an adapter is connected; no metrics are fabricated. Live Analytics page with
   stat tiles, a funnel chart and an honest engagement banner (ADR-0021).
+- ✅ **Increment D — WordPress, the first live platform adapter.** Real publishing via the
+  WordPress REST API with application-password Basic auth (no OAuth dance): a narrow
+  `PostPublisher` port in `social-core`, `@spectra/social-wordpress` doing genuine HTTP
+  `POST /wp-json/wp/v2/posts`, and per-account publisher resolution in `executePublication`.
+  The worker holds `SOCIAL_TOKEN_ENCRYPTION_KEY`, decrypts the sealed
+  `username:application-password` and builds the adapter per account; any missing piece
+  (no key, no credential, unwired platform) still degrades to an honest `UNSUPPORTED`.
+  API marks WordPress wired + validates credential format; web collects the credential
+  (ADR-0022).
 - Next: live `AnalyticsProvider` adapters feeding `engagementPotential` trend-score calibration
   and campaign reporting. Billing & usage metering.
 
