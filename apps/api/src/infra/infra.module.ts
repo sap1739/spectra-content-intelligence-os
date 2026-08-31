@@ -6,6 +6,7 @@ import { AiTextService } from './ai.service';
 import { AuditService } from './audit.service';
 import { EmbeddingService } from './embedding.service';
 import { QueueService } from './queue.service';
+import { SearchProviderService } from './search.service';
 import { SocialCryptoService } from './social-crypto.service';
 
 /** Global infrastructure providers shared by every feature module. */
@@ -18,6 +19,7 @@ import { SocialCryptoService } from './social-crypto.service';
     QueueService,
     AiTextService,
     EmbeddingService,
+    SearchProviderService,
     SocialCryptoService,
   ],
   exports: [
@@ -27,6 +29,7 @@ import { SocialCryptoService } from './social-crypto.service';
     QueueService,
     AiTextService,
     EmbeddingService,
+    SearchProviderService,
     SocialCryptoService,
   ],
 })

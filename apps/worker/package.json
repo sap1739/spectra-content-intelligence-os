@@ -21,6 +21,8 @@
     "@spectra/logging": "workspace:*",
     "@spectra/observability": "workspace:*",
     "@spectra/publishing": "workspace:*",
+    "@spectra/research-brave": "workspace:*",
+    "@spectra/research-core": "workspace:*",
     "@spectra/research-pipeline": "workspace:*",
     "@spectra/security": "workspace:*",
     "@spectra/social-wordpress": "workspace:*",

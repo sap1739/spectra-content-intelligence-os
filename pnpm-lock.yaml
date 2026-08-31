@@ -89,6 +89,12 @@ importers:
       '@spectra/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@spectra/research-brave':
+        specifier: workspace:*
+        version: link:../../packages/research-brave
+      '@spectra/research-core':
+        specifier: workspace:*
+        version: link:../../packages/research-core
       '@spectra/security':
         specifier: workspace:*
         version: link:../../packages/security
@@ -232,6 +238,12 @@ importers:
       '@spectra/publishing':
         specifier: workspace:*
         version: link:../../packages/publishing
+      '@spectra/research-brave':
+        specifier: workspace:*
+        version: link:../../packages/research-brave
+      '@spectra/research-core':
+        specifier: workspace:*
+        version: link:../../packages/research-core
       '@spectra/research-pipeline':
         specifier: workspace:*
         version: link:../../packages/research-pipeline
@@ -524,6 +536,25 @@ importers:
       '@spectra/social-core':
         specifier: workspace:*
         version: link:../social-core
+    devDependencies:
+      '@types/node':
+        specifier: ^22.15.0
+        version: 22.20.0
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)
+
+  packages/research-brave:
+    dependencies:
+      '@spectra/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@spectra/research-core':
+        specifier: workspace:*
+        version: link:../research-core
     devDependencies:
       '@types/node':
         specifier: ^22.15.0

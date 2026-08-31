@@ -76,6 +76,15 @@ export const aiEnvSchema = z.object({
 });
 
 /**
+ * Research discovery config (Phase 5B). Optional — without a key, live web/news
+ * search is honestly unavailable and research runs fall back to the operator's
+ * own RSS feeds. No result is ever invented.
+ */
+export const researchEnvSchema = z.object({
+  BRAVE_SEARCH_API_KEY: z.string().min(1).optional(),
+});
+
+/**
  * Publishing config. Optional — without the key, storing a social credential is
  * honestly unavailable (accounts can still be registered, just without a sealed
  * token). Base64-encoded 32-byte AES-256-GCM key (see @spectra/security).
@@ -108,7 +117,9 @@ export const apiEnvSchema = z
   // Media rendering (Phase 3F) reads/writes tenant-rooted object storage.
   .merge(storageEnvSchema)
   // Publishing (Phase 4): optional token-encryption key for social credentials.
-  .merge(socialEnvSchema);
+  .merge(socialEnvSchema)
+  // Research discovery (Phase 5B): optional live web/news search.
+  .merge(researchEnvSchema);
 
 export const workerEnvSchema = z
   .object({
@@ -125,7 +136,9 @@ export const workerEnvSchema = z
   .merge(aiEnvSchema)
   // Publishing (Phase 4): the worker decrypts sealed social credentials to
   // publish. Without the key, publishing resolves to UNSUPPORTED (honest).
-  .merge(socialEnvSchema);
+  .merge(socialEnvSchema)
+  // Research discovery (Phase 5B): optional live web/news search.
+  .merge(researchEnvSchema);
 
 export const webEnvSchema = z.object({
   NODE_ENV: nodeEnvSchema,

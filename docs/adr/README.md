@@ -25,6 +25,7 @@
 | [0021](0021-analytics-first-party-reporting.md) | Analytics v1: real first-party reporting, no fabricated engagement   | Accepted             |
 | [0022](0022-wordpress-first-live-adapter.md)    | WordPress: first live platform adapter (REST + application password) | Accepted             |
 | [0023](0023-semantic-embeddings.md)             | Semantic embeddings: Voyage behind the port, collection-paired       | Accepted             |
+| [0024](0024-brave-search-discovery.md)          | Brave Search: live web/news discovery behind the research ports      | Accepted             |
 
 New significant decisions require a new ADR (`NNNN-kebab-title.md`) using the
 Context / Decision / Rationale / Consequences structure.

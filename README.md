@@ -40,6 +40,7 @@ packages/
   observability/  Correlation IDs (AsyncLocalStorage), health aggregation
   research-core/  11 provider-neutral research ports, registry, 22-stage pipeline model
   research-pipeline/ First-party RSS pipeline v1: fetch, snapshot, dedup, score (ADR-0015)
+  research-brave/ Brave Search adapters for the web/news discovery ports (env-gated; ADR-0024)
   trend-core/     Versioned, explainable TrendScoringEngine + trend lifecycle
   knowledge-core/ Vector store port, chunking, prompt-injection scanner & isolation
   ai-core/        12 provider-neutral AI interfaces (ports; vendors plug in behind them)
@@ -59,7 +60,7 @@ infrastructure/
   docker/         PostgreSQL (pgvector), Redis, MinIO via Docker Compose
   scripts/        bootstrap.sh, verify.sh
 docs/             Product, architecture, security and strategy documentation
-docs/adr/         23 Architecture Decision Records
+docs/adr/         24 Architecture Decision Records
 ```
 
 ## Quick start

@@ -71,7 +71,7 @@ describe('API integration: health & platform behaviour', () => {
       url: '/v1/meta/version',
     });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({ name: 'spectra-api', phase: 1 });
+    expect(response.json()).toMatchObject({ name: 'spectra-api', phase: 5 });
   });
 
   it('returns problem+json for unknown routes', async () => {

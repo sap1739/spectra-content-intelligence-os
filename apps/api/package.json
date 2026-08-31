@@ -33,6 +33,8 @@
     "@spectra/media-core": "workspace:*",
     "@spectra/media-sharp": "workspace:*",
     "@spectra/observability": "workspace:*",
+    "@spectra/research-brave": "workspace:*",
+    "@spectra/research-core": "workspace:*",
     "@spectra/security": "workspace:*",
     "@spectra/social-core": "workspace:*",
     "@spectra/social-wordpress": "workspace:*",

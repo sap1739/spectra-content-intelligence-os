@@ -128,5 +128,13 @@ weakest link in the differentiator: research and evidence quality.
   `knowledge.reembed` worker job + `POST knowledge/reembed` backfills the active collection
   (idempotent, source collection preserved for instant rollback) and `GET knowledge/status`
   reports real index coverage — switching model can never silently empty search (ADR-0023).
-- Next: real web + news search providers behind `WebSearchProvider`/`NewsSearchProvider`;
-  content extraction for discovered URLs; fact verification; hybrid retrieval tuning + reranking.
+- ✅ **Increment B — live discovery providers.** `@spectra/research-brave` implements the
+  `WebSearchProvider` and `NewsSearchProvider` ports against Brave's independent index
+  (header-only auth, web/news endpoints, coarse freshness buckets widened rather than narrowed).
+  Env-gated on `BRAVE_SEARCH_API_KEY`: unconfigured providers are not registered at all, and a
+  request failure raises rather than returning an empty set that would look like a thorough
+  search finding nothing. Results without a usable absolute http(s) URL are dropped, never
+  guessed; timezone-less dates are pinned to UTC (regression-tested UTC−8…UTC+14).
+  `GET /v1/meta/capabilities` reports what is actually live in the deployment (ADR-0024).
+- Next: wire discovered URLs into the SSRF-guarded ingest path (search-driven research runs);
+  content extraction; fact verification; hybrid retrieval tuning + reranking; query budgeting.
