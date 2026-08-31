@@ -115,3 +115,23 @@ export function useClaims(workspaceId: string, projectId: string) {
       api.get<ClaimRow[]>(`/v1/workspaces/${workspaceId}/research-projects/${projectId}/claims`),
   });
 }
+
+/** What this deployment can actually do — every integration is env-gated. */
+export interface Capabilities {
+  generation: { configured: boolean; provider: string; model: string };
+  retrieval: RetrievalMode;
+  discovery: {
+    liveSearchConfigured: boolean;
+    providers: Array<{ id: string; kind: string; displayName: string }>;
+    note: string;
+  };
+  credentialStorage: { configured: boolean; note: string };
+}
+
+export function useCapabilities() {
+  return useQuery<Capabilities, ApiError>({
+    queryKey: ['meta', 'capabilities'],
+    queryFn: () => api.get<Capabilities>('/v1/meta/capabilities'),
+    staleTime: 5 * 60_000,
+  });
+}

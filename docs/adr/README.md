@@ -26,6 +26,7 @@
 | [0022](0022-wordpress-first-live-adapter.md)    | WordPress: first live platform adapter (REST + application password) | Accepted             |
 | [0023](0023-semantic-embeddings.md)             | Semantic embeddings: Voyage behind the port, collection-paired       | Accepted             |
 | [0024](0024-brave-search-discovery.md)          | Brave Search: live web/news discovery behind the research ports      | Accepted             |
+| [0025](0025-search-driven-research-runs.md)     | Search-driven research runs: one ingest path for feeds + search      | Accepted             |
 
 New significant decisions require a new ADR (`NNNN-kebab-title.md`) using the
 Context / Decision / Rationale / Consequences structure.

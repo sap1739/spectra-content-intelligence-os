@@ -12,6 +12,9 @@ import {
   canTransitionTrend,
 } from '@spectra/trend-core';
 
+import type { ResearchProviderRegistry } from '@spectra/research-core';
+
+import { candidatesFromFeed, candidatesFromSearch, type CandidateItem } from './discovery';
 import { HtmlExtractionProvider } from './extraction';
 import { sha256Hex, titleKey, urlHash } from './hashing';
 import { FirstPartyRssProvider } from './rss';
@@ -25,7 +28,6 @@ import {
 } from './signals';
 
 export const PIPELINE_VERSION = 'rss-pipeline/1.0.0';
-const MAX_ITEMS_PER_FEED = 50;
 const TREND_WINDOW_DAYS = 30;
 const TREND_RECENT_DAYS = 7;
 const MS_PER_DAY = 86_400_000;
@@ -40,6 +42,13 @@ export interface PipelineDeps {
   embedder?: EmbeddingProvider;
   /** Defaults to the pgvector store bound to `prisma`. */
   vectorStore?: VectorStoreProvider;
+  /**
+   * Discovery providers (web/news search). Omitted or empty => the run uses
+   * only its configured feeds; search discovery is honestly unavailable.
+   */
+  providerRegistry?: ResearchProviderRegistry;
+  /** Fetch discovered pages for full text (default true). */
+  fetchDiscoveredPages?: boolean;
   now?: () => Date;
 }
 
@@ -56,6 +65,8 @@ export interface RunOutcome {
 
 interface QueryPlan {
   feedUrls: string[];
+  /** Free-text queries run against registered discovery providers (ADR-0025). */
+  searchQueries?: string[];
 }
 
 function emptyStats(): ResearchRunStats {
@@ -143,36 +154,78 @@ export async function executeResearchRun(
     await setStage('QUERY_PLANNING', 5);
     const plan = run.queryPlan as unknown as QueryPlan;
     const feedUrls = Array.isArray(plan?.feedUrls) ? plan.feedUrls : [];
-    if (feedUrls.length === 0) {
-      throw new Error('Run has no feed URLs in its query plan');
+    const searchQueries = Array.isArray(plan?.searchQueries) ? plan.searchQueries : [];
+    const searchable =
+      searchQueries.length > 0 &&
+      (deps.providerRegistry?.listByKind('web-search').length ?? 0) +
+        (deps.providerRegistry?.listByKind('news-search').length ?? 0) >
+        0;
+    if (feedUrls.length === 0 && !searchable) {
+      // Honest: a plan with search queries but no configured provider cannot
+      // run, and says so rather than reporting an empty but "successful" run.
+      throw new Error(
+        searchQueries.length > 0
+          ? 'Run has search queries but no live search provider is configured (set BRAVE_SEARCH_API_KEY), and no feed URLs to fall back on'
+          : 'Run has no feed URLs in its query plan',
+      );
     }
-    stats.queriesPlanned = feedUrls.length;
+    stats.queriesPlanned = feedUrls.length + (searchable ? searchQueries.length : 0);
 
     // ----- SOURCE_DISCOVERY / RETRIEVAL / EXTRACTION ----------------------
     await setStage('SOURCE_DISCOVERY', 10);
     const seenTitleKeys = new Map<string, string>(); // titleKey → sourceId (near-dup in run)
 
-    for (const [feedIndex, feedUrl] of feedUrls.entries()) {
+    // Both feeds and search results normalize to CandidateItem so there is ONE
+    // ingest path — same SSRF guard, dedup, extraction, scoring and provenance.
+    const candidates: CandidateItem[] = [];
+
+    for (const feedUrl of feedUrls) {
       checkAbort();
       try {
-        const { feedTitle, items } = await rss.fetchFeedWithMeta(feedUrl);
+        candidates.push(...(await candidatesFromFeed(rss, feedUrl)));
         stats.queriesExecuted += 1;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        feedErrors.push(`${feedUrl}: ${message}`);
+        logger.warn({ feedUrl, err: message }, 'Feed processing failed');
+      }
+    }
 
-        for (const item of items.slice(0, MAX_ITEMS_PER_FEED)) {
+    if (searchable && deps.providerRegistry) {
+      const discovery = await candidatesFromSearch({
+        registry: deps.providerRegistry,
+        queries: searchQueries,
+        tenant,
+        ...(deps.fetchOptions ? { fetchOptions: deps.fetchOptions } : {}),
+        ...(deps.fetchDiscoveredPages === false ? { fetchPages: false } : {}),
+        ...(input.signal ? { signal: input.signal } : {}),
+        logger,
+      });
+      candidates.push(...discovery.candidates);
+      stats.queriesExecuted += discovery.executed;
+      // A failed search is recorded, never silently treated as "found nothing".
+      feedErrors.push(...discovery.errors);
+    }
+
+    await setStage('CONTENT_EXTRACTION', 20);
+
+    for (const [candidateIndex, candidate] of candidates.entries()) {
+      {
+        {
           checkAbort();
           try {
-            assertSafeUrl(item.url, deps.fetchOptions?.allowPrivateHosts ?? false);
+            assertSafeUrl(candidate.url, deps.fetchOptions?.allowPrivateHosts ?? false);
           } catch {
             continue; // hostile/invalid item link — skip silently
           }
-          const domain = domainOf(item.url);
+          const domain = domainOf(candidate.url);
           if (blockedDomains.some((b) => domain === b || domain.endsWith(`.${b}`))) {
             continue;
           }
           stats.sourcesDiscovered += 1;
 
           // Exact duplicate: URL already ingested in this workspace.
-          const uHash = urlHash(item.url);
+          const uHash = urlHash(candidate.url);
           const existingByUrl = await deps.prisma.researchSource.findFirst({
             where: {
               organizationId: tenant.organizationId,
@@ -186,27 +239,27 @@ export async function executeResearchRun(
             continue;
           }
 
-          const rawHtml = item.contentHtml ?? item.summary ?? item.title ?? '';
+          const rawHtml = candidate.rawHtml;
           const extracted = await extraction.extract(
-            { html: rawHtml, sourceUrl: item.url },
+            { html: rawHtml, sourceUrl: candidate.url },
             tenant,
           );
           const text = extracted.text;
-          const fullText = `${item.title ?? ''}\n${text}`;
+          const fullText = `${candidate.title ?? ''}\n${text}`;
 
           if (excludedKeywords.length > 0 && matchKeywords(fullText, excludedKeywords).length > 0) {
             continue; // vertical explicitly excludes this content
           }
 
-          const publishedAt = item.publishedAt ? new Date(item.publishedAt) : null;
-          const contentHash = sha256Hex(text || item.url);
+          const publishedAt = candidate.publishedAt ? new Date(candidate.publishedAt) : null;
+          const contentHash = sha256Hex(text || candidate.url);
           const credibility = credibilityScore(domain, trustedDomains);
           const freshness = freshnessScore(publishedAt, now());
           const blocked = extracted.injectionRisk?.disposition === 'BLOCK';
 
           // Near-duplicates: identical extracted content anywhere in the
           // workspace, or same normalized title within this run.
-          const tKey = item.title ? titleKey(item.title) : null;
+          const tKey = candidate.title ? titleKey(candidate.title) : null;
           const existingByContent = await deps.prisma.researchSource.findFirst({
             where: {
               organizationId: tenant.organizationId,
@@ -224,26 +277,29 @@ export async function executeResearchRun(
               workspaceId: tenant.workspaceId,
               projectId: run.projectId,
               runId: run.id,
-              url: item.url,
+              url: candidate.url,
               urlHash: uHash,
-              title: item.title ?? null,
-              publisher: feedTitle ?? domain,
-              author: item.author ?? null,
+              title: candidate.title ?? null,
+              publisher: candidate.publisher ?? domain,
+              author: candidate.author ?? null,
               publishedAt,
               retrievedAt: now(),
-              language: item.language ?? null,
-              category: 'NEWS',
+              language: candidate.language ?? null,
+              category: candidate.category,
               credibilityScore: credibility,
               freshnessScore: freshness,
               contentHash,
               duplicateOfSourceId: nearDupOfId,
               duplicateClusterKey: nearDupOfId ? contentHash : null,
               provenance: {
-                providerId: rss.id,
-                providerKind: rss.kind,
-                requestRef: feedUrl,
+                providerId: candidate.provenance.providerId,
+                providerKind: candidate.provenance.providerKind,
+                requestRef: candidate.provenance.requestRef,
                 retrievedAt: now().toISOString(),
                 pipelineVersion: PIPELINE_VERSION,
+                // Snippet-only means the page could not be fetched — a finding
+                // built from it must never look like one from the full article.
+                snippetOnly: candidate.snippetOnly,
               },
               processingStatus: blocked ? 'SKIPPED' : nearDupOfId ? 'DEDUPLICATED' : 'EXTRACTED',
               metadata: blocked ? { injectionRiskLevel: extracted.injectionRisk?.riskLevel } : {},
@@ -257,11 +313,11 @@ export async function executeResearchRun(
             workspaceId: tenant.workspaceId,
             domain: 'research-snapshots',
             resourceId: source.id,
-            filename: 'item.html',
+            filename: 'candidate.html',
           });
           await deps.storage.putObject({
             key: storageKey,
-            body: rawHtml || item.url,
+            body: rawHtml || candidate.url,
             contentType: 'text/html; charset=utf-8',
           });
           const snapshot = await deps.prisma.sourceSnapshot.create({
@@ -273,7 +329,7 @@ export async function executeResearchRun(
               contentHash,
               storageKey,
               mimeType: 'text/html',
-              sizeBytes: Buffer.byteLength(rawHtml || item.url, 'utf8'),
+              sizeBytes: Buffer.byteLength(rawHtml || candidate.url, 'utf8'),
               extractionStatus: blocked ? 'FAILED' : 'EXTRACTED',
             },
           });
@@ -300,20 +356,23 @@ export async function executeResearchRun(
               runId: run.id,
               sourceId: source.id,
               snapshotId: snapshot.id,
-              summary: item.title ?? text.slice(0, 180) ?? item.url,
+              summary: candidate.title ?? text.slice(0, 180) ?? candidate.url,
               excerpt: text.slice(0, 800) || null,
               credibilityScore: credibility,
               freshnessScore: freshness,
-              language: item.language ?? null,
+              language: candidate.language ?? null,
               sourceCategory: 'NEWS',
               topics,
               entities: [],
               provenance: {
-                providerId: rss.id,
-                providerKind: rss.kind,
-                requestRef: feedUrl,
+                providerId: candidate.provenance.providerId,
+                providerKind: candidate.provenance.providerKind,
+                requestRef: candidate.provenance.requestRef,
                 retrievedAt: now().toISOString(),
                 pipelineVersion: PIPELINE_VERSION,
+                // Snippet-only means the page could not be fetched — a finding
+                // built from it must never look like one from the full article.
+                snippetOnly: candidate.snippetOnly,
               },
               status: 'PENDING_REVIEW',
               processingStage: 'HUMAN_REVIEW',
@@ -326,7 +385,7 @@ export async function executeResearchRun(
           stats.findingsExtracted += 1;
 
           // CLAIM_EXTRACTION: heuristic claims, corroborated across sources.
-          const heuristicClaims = extractClaims(`${item.title ?? ''}. ${text}`);
+          const heuristicClaims = extractClaims(`${candidate.title ?? ''}. ${text}`);
           let firstClaimId: string | null = null;
           for (const heuristic of heuristicClaims) {
             const existingClaim = await deps.prisma.extractedClaim.findFirst({
@@ -387,9 +446,9 @@ export async function executeResearchRun(
               sourceId: source.id,
               snapshotId: snapshot.id,
               claimId: firstClaimId,
-              url: item.url,
-              title: item.title ?? null,
-              publisher: feedTitle ?? domain,
+              url: candidate.url,
+              title: candidate.title ?? null,
+              publisher: candidate.publisher ?? domain,
               publishedAt,
               retrievedAt: now(),
               excerpt: text.slice(0, excerptLength) || null,
@@ -400,7 +459,7 @@ export async function executeResearchRun(
 
           // KNOWLEDGE_BASE_STORAGE: embed → pgvector. Stored as a passage
           // ('document'), which real models encode differently from a query.
-          const embedText = `${item.title ?? ''}\n${text.slice(0, 1500)}`.trim();
+          const embedText = `${candidate.title ?? ''}\n${text.slice(0, 1500)}`.trim();
           if (embedText.length > 0) {
             const [vector] = await embedder.embed([embedText], tenant, 'document');
             await vectorStore.upsertChunks({
@@ -414,14 +473,14 @@ export async function executeResearchRun(
                     workspaceId: tenant.workspaceId,
                     documentId: source.id,
                     index: 0,
-                    text: `${item.title ?? ''} — ${text.slice(0, 500)}`.trim(),
+                    text: `${candidate.title ?? ''} — ${text.slice(0, 500)}`.trim(),
                     headingPath: [],
                     metadata: {
                       kind: 'RESEARCH_FINDING',
                       findingId: finding.id,
                       projectId: run.projectId,
-                      sourceUrl: item.url,
-                      title: item.title ?? null,
+                      sourceUrl: candidate.url,
+                      title: candidate.title ?? null,
                     },
                     embedding: {
                       provider: embedder.modelRef.provider,
@@ -436,15 +495,13 @@ export async function executeResearchRun(
             });
           }
         }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        feedErrors.push(`${feedUrl}: ${message}`);
-        logger.warn({ feedUrl, err: message }, 'Feed processing failed');
       }
-      await setStage(
-        'CONTENT_EXTRACTION',
-        10 + Math.round(((feedIndex + 1) / feedUrls.length) * 50),
-      );
+      if (candidates.length > 0 && (candidateIndex + 1) % 10 === 0) {
+        await setStage(
+          'CONTENT_EXTRACTION',
+          20 + Math.round(((candidateIndex + 1) / candidates.length) * 40),
+        );
+      }
     }
 
     // ----- DUPLICATE_DETECTION marker (work happened inline above) --------

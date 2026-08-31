@@ -136,5 +136,15 @@ weakest link in the differentiator: research and evidence quality.
   search finding nothing. Results without a usable absolute http(s) URL are dropped, never
   guessed; timezone-less dates are pinned to UTC (regression-tested UTC−8…UTC+14).
   `GET /v1/meta/capabilities` reports what is actually live in the deployment (ADR-0024).
-- Next: wire discovered URLs into the SSRF-guarded ingest path (search-driven research runs);
-  content extraction; fact verification; hybrid retrieval tuning + reranking; query budgeting.
+- ✅ **Increment C — search-driven research runs.** RSS items and search results normalize to a
+  single `CandidateItem`, so both flow through ONE ingest path — same SSRF guard, dedup,
+  injection scan, snapshotting, scoring and embedding (two parallel paths would drift, and the
+  one that drifts is the one that stops scanning). Discovered URLs are fetched through the
+  existing `safeFetch` for real article text; a failed fetch keeps the snippet and marks the
+  source `snippetOnly` rather than dropping it or passing it off as the full article. Provenance
+  records the _query_ that found a source. A search-only plan with no configured provider fails
+  loudly instead of completing with zero sources, and provider errors are recorded rather than
+  swallowed. Runs accept `feedUrls` and/or `searchQueries` (ADR-0025).
+- Next: content extraction for non-HTML sources; fact verification; hybrid retrieval tuning +
+  reranking; per-run page/query budgeting and usage metering; down-weighting snippet-only
+  evidence in trend scoring.

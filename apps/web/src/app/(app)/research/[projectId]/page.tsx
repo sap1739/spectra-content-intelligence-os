@@ -20,7 +20,7 @@ import * as React from 'react';
 
 import { PageHeader } from '@/components/page-header';
 import { useWorkspace } from '@/lib/auth';
-import { useClaims, useEvidencePacks, type ClaimRow } from '@/lib/knowledge';
+import { useCapabilities, useClaims, useEvidencePacks, type ClaimRow } from '@/lib/knowledge';
 import { useClearSchedule, useSetSchedule } from '@/lib/team';
 import {
   isRunActive,
@@ -185,6 +185,16 @@ export default function ResearchProjectPage() {
   const feedUrls = parseFeedUrls(feedsRaw);
   const feedsValid = feedUrls.length > 0 && feedUrls.every((u) => /^https?:\/\/.+/i.test(u));
 
+  const capabilities = useCapabilities();
+  const [queriesRaw, setQueriesRaw] = React.useState('');
+  const searchQueries = queriesRaw
+    .split('\n')
+    .map((q) => q.trim())
+    .filter((q) => q.length >= 2)
+    .slice(0, 10);
+  // Either discovery path is enough to start a run.
+  const canRun = feedsValid || searchQueries.length > 0;
+
   const anyRunActive = (runs.data ?? []).some(isRunActive);
 
   // Refresh findings when an active run finishes.
@@ -256,6 +266,26 @@ export default function ResearchProjectPage() {
                   tags topics from your vertical keywords, and rescores trends.
                 </p>
               </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="queries">Search queries (one per line, up to 10)</Label>
+                <textarea
+                  id="queries"
+                  rows={3}
+                  value={queriesRaw}
+                  onChange={(e) => setQueriesRaw(e.target.value)}
+                  placeholder={'enterprise AI testing adoption\nLLM evaluation benchmarks 2026'}
+                  className={cn(
+                    'w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm',
+                    'placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  )}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {capabilities.data && !capabilities.data.discovery.liveSearchConfigured
+                    ? capabilities.data.discovery.note
+                    : 'Discovers sources beyond your feeds. Each result page is fetched and extracted; when a page cannot be fetched the search snippet is kept and marked as snippet-only.'}
+                </p>
+              </div>
               {startRun.isError ? (
                 <p role="alert" className="text-xs text-destructive">
                   {startRun.error.message}
@@ -263,8 +293,10 @@ export default function ResearchProjectPage() {
               ) : null}
               <div>
                 <Button
-                  disabled={!feedsValid || startRun.isPending}
-                  onClick={() => startRun.mutate({ feedUrls: feedUrls.slice(0, 25) })}
+                  disabled={!canRun || startRun.isPending}
+                  onClick={() =>
+                    startRun.mutate({ feedUrls: feedUrls.slice(0, 25), searchQueries })
+                  }
                 >
                   <Play aria-hidden="true" />
                   {startRun.isPending ? 'Queueing…' : 'Run research'}

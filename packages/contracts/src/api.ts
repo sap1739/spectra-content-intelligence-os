@@ -178,13 +178,20 @@ export type UpdateResearchProjectInput = z.infer<typeof updateResearchProjectInp
 // ---------------------------------------------------------------------------
 
 /**
- * Phase 2 research runs monitor RSS/Atom feeds (first-party provider).
- * Feed URLs are user-supplied; the UI pre-fills URL-shaped entries from the
- * vertical's preferred publications.
+ * Research runs draw on two discovery paths (ADR-0025): RSS/Atom feeds the
+ * operator names, and free-text queries run against registered search providers
+ * (live only when one is configured — ADR-0024). At least one of the two must
+ * be supplied; a search-only plan on a deployment without a search provider
+ * fails loudly rather than reporting an empty success.
  */
-export const startResearchRunInputSchema = z.object({
-  feedUrls: z.array(z.string().url()).min(1).max(25),
-});
+export const startResearchRunInputSchema = z
+  .object({
+    feedUrls: z.array(z.string().url()).max(25).default([]),
+    searchQueries: z.array(z.string().min(2).max(300)).max(10).default([]),
+  })
+  .refine((v) => v.feedUrls.length > 0 || v.searchQueries.length > 0, {
+    message: 'Provide at least one feed URL or search query',
+  });
 export type StartResearchRunInput = z.infer<typeof startResearchRunInputSchema>;
 
 export const reviewFindingInputSchema = z.object({

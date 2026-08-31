@@ -75,7 +75,10 @@ export class ResearchRunsService {
         status: 'QUEUED',
         trigger: 'MANUAL',
         createdById: principal.userId,
-        queryPlan: { feedUrls: input.feedUrls } as Prisma.InputJsonValue,
+        queryPlan: {
+          feedUrls: input.feedUrls,
+          searchQueries: input.searchQueries,
+        } as Prisma.InputJsonValue,
       },
     });
 
@@ -101,7 +104,7 @@ export class ResearchRunsService {
       resourceType: 'ResearchRun',
       resourceId: run.id,
       correlationId: correlationId ?? null,
-      changes: { feedUrls: input.feedUrls },
+      changes: { feedUrls: input.feedUrls, searchQueries: input.searchQueries },
     });
 
     return run;

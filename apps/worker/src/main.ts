@@ -4,6 +4,8 @@ import { resolve } from 'node:path';
 
 import { AnthropicTextGenerationProvider } from '@spectra/ai-anthropic';
 import { VoyageEmbeddingProvider } from '@spectra/ai-voyage';
+import { BraveNewsSearchProvider, BraveWebSearchProvider } from '@spectra/research-brave';
+import { ResearchProviderRegistry } from '@spectra/research-core';
 import { loadEnv, storageEnvSchema, workerEnvSchema } from '@spectra/config';
 import { executeContentDraft } from '@spectra/content-pipeline';
 import { createPrismaClient } from '@spectra/database';
@@ -96,6 +98,23 @@ async function main(): Promise<void> {
       : 'VOYAGE_API_KEY not set — retrieval stays lexical (matches words, not meaning)',
   );
 
+  // Discovery providers (Phase 5C). Registered only when configured, so the
+  // pipeline's `listByKind` answers "what can actually run". Unconfigured means
+  // runs use their own feeds and a search-only plan fails loudly rather than
+  // reporting an empty success.
+  const providerRegistry = new ResearchProviderRegistry();
+  const braveWeb = new BraveWebSearchProvider({ apiKey: env.BRAVE_SEARCH_API_KEY });
+  if (braveWeb.isConfigured) {
+    providerRegistry.register(braveWeb);
+    providerRegistry.register(new BraveNewsSearchProvider({ apiKey: env.BRAVE_SEARCH_API_KEY }));
+  }
+  logger.info(
+    { liveSearch: braveWeb.isConfigured },
+    braveWeb.isConfigured
+      ? 'Live web/news discovery enabled'
+      : 'BRAVE_SEARCH_API_KEY not set — research runs use configured feeds only',
+  );
+
   runtime.register<{ runId: string }, unknown>(
     JOB_NAMES.researchRunExecute,
     async (envelope, context) => {
@@ -105,7 +124,7 @@ async function main(): Promise<void> {
         'Research run started',
       );
       const outcome = await executeResearchRun(
-        { prisma, storage, embedder, logger: jobLogger },
+        { prisma, storage, embedder, providerRegistry, logger: jobLogger },
         {
           runId: envelope.payload.runId,
           signal: context.signal,
@@ -154,7 +173,7 @@ async function main(): Promise<void> {
       });
       jobLogger.info({ projectId, runId: run.id }, 'Scheduled research run created');
       return executeResearchRun(
-        { prisma, storage, embedder, logger: jobLogger },
+        { prisma, storage, embedder, providerRegistry, logger: jobLogger },
         {
           runId: run.id,
           signal: context.signal,
