@@ -32,6 +32,7 @@
     "@spectra/logging": "workspace:*",
     "@spectra/media-core": "workspace:*",
     "@spectra/media-sharp": "workspace:*",
+    "@spectra/metering": "workspace:*",
     "@spectra/observability": "workspace:*",
     "@spectra/research-brave": "workspace:*",
     "@spectra/research-core": "workspace:*",

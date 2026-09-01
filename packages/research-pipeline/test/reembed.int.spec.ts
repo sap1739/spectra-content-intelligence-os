@@ -26,12 +26,15 @@ const stubSemantic: EmbeddingProvider & { isConfigured: boolean } = {
   modelRef: { provider: 'stub', model: 'semantic' },
   dimensions: DIMS,
   isConfigured: true,
-  embed: async (texts: readonly string[], _t: TenantScope) =>
-    texts.map((text) => {
+  embed: async (texts: readonly string[], _t: TenantScope) => ({
+    vectors: texts.map((text) => {
       const seed = lexicalEmbed(text, 256);
       // Deterministically widen 256 -> 1024 so vectors differ per text.
       return Array.from({ length: DIMS }, (_, i) => seed[i % 256] as number);
     }),
+    // Stub reports usage so the metering path is exercised end-to-end.
+    usage: { totalTokens: texts.length * 10 },
+  }),
 };
 
 describe('executeReembed (integration)', () => {
@@ -125,7 +128,9 @@ describe('executeReembed (integration)', () => {
 
   it('semantic vectors are searchable in their own collection', async () => {
     const store = new PgVectorStore(prisma);
-    const [queryVector] = await stubSemantic.embed(['beta document'], {
+    const {
+      vectors: [queryVector],
+    } = await stubSemantic.embed(['beta document'], {
       organizationId,
       workspaceId,
     });

@@ -13,7 +13,10 @@ enterprises — built around **user-defined custom verticals** and **evidence-ba
 > credentials, a dispatch pipeline, first-party analytics, and **WordPress as the first live
 > platform** (real REST publishing; every unwired platform still resolves to an honest
 > `UNSUPPORTED`). Phase 5 deepens research: **semantic embeddings** via `@spectra/ai-voyage`,
-> with an honest lexical fallback that says so. Every number comes from real data.
+> with an honest lexical fallback that says so, **live web/news discovery** (Brave) feeding
+> search-driven research runs, and **usage metering** — an append-only ledger of measured provider
+> spend with clearly-labelled cost estimates and per-run fetch budgets. Every number comes from
+> real data.
 
 ## Product workflow (target)
 
@@ -40,6 +43,7 @@ packages/
   observability/  Correlation IDs (AsyncLocalStorage), health aggregation
   research-core/  11 provider-neutral research ports, registry, 22-stage pipeline model
   research-pipeline/ Ingest pipeline: feeds + search normalize to one candidate path (ADR-0015, ADR-0025)
+  metering/       Usage ledger + versioned cost ESTIMATES (never invoices; ADR-0026)
   research-brave/ Brave Search adapters for the web/news discovery ports (env-gated; ADR-0024)
   trend-core/     Versioned, explainable TrendScoringEngine + trend lifecycle
   knowledge-core/ Vector store port, chunking, prompt-injection scanner & isolation
@@ -60,7 +64,7 @@ infrastructure/
   docker/         PostgreSQL (pgvector), Redis, MinIO via Docker Compose
   scripts/        bootstrap.sh, verify.sh
 docs/             Product, architecture, security and strategy documentation
-docs/adr/         25 Architecture Decision Records
+docs/adr/         26 Architecture Decision Records
 ```
 
 ## Quick start

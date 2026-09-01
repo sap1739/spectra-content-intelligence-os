@@ -27,6 +27,7 @@
 | [0023](0023-semantic-embeddings.md)             | Semantic embeddings: Voyage behind the port, collection-paired       | Accepted             |
 | [0024](0024-brave-search-discovery.md)          | Brave Search: live web/news discovery behind the research ports      | Accepted             |
 | [0025](0025-search-driven-research-runs.md)     | Search-driven research runs: one ingest path for feeds + search      | Accepted             |
+| [0026](0026-usage-metering.md)                  | Usage metering: measured spend, estimated cost, capped runs          | Accepted             |
 
 New significant decisions require a new ADR (`NNNN-kebab-title.md`) using the
 Context / Decision / Rationale / Consequences structure.

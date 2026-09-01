@@ -42,7 +42,7 @@ describe('VoyageEmbeddingProvider', () => {
     });
     expect(provider.isConfigured).toBe(true);
 
-    const vectors = await provider.embed(['hello world'], TENANT, 'query');
+    const { vectors } = await provider.embed(['hello world'], TENANT, 'query');
     expect(vectors).toHaveLength(1);
     expect(vectors[0]).toHaveLength(1024);
 
@@ -84,7 +84,7 @@ describe('VoyageEmbeddingProvider', () => {
     });
 
     const texts = ['1', '2', '3', '4', '5'];
-    const vectors = await provider.embed(texts, TENANT);
+    const { vectors } = await provider.embed(texts, TENANT);
     expect(fetchMock).toHaveBeenCalledTimes(3); // 2 + 2 + 1
     expect(vectors).toHaveLength(5);
     // Each vector's fill value encodes its source text — order must survive batching.
@@ -105,7 +105,7 @@ describe('VoyageEmbeddingProvider', () => {
       dimensions: 256,
       fetch: fetchMock as unknown as typeof fetch,
     });
-    const vectors = await provider.embed(['a', 'b'], TENANT);
+    const { vectors } = await provider.embed(['a', 'b'], TENANT);
     expect(vectors.map((v) => v[0])).toEqual([1, 2]);
   });
 
@@ -147,7 +147,8 @@ describe('VoyageEmbeddingProvider', () => {
       apiKey: 'k',
       fetch: fetchMock as unknown as typeof fetch,
     });
-    expect(await provider.embed([], TENANT)).toEqual([]);
+    // No input => no vectors and, importantly, no usage: nothing was billed.
+    expect(await provider.embed([], TENANT)).toEqual({ vectors: [] });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

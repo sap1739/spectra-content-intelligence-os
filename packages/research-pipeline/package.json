@@ -18,6 +18,7 @@
     "@spectra/database": "workspace:*",
     "@spectra/knowledge-core": "workspace:*",
     "@spectra/logging": "workspace:*",
+    "@spectra/metering": "workspace:*",
     "@spectra/research-core": "workspace:*",
     "@spectra/storage": "workspace:*",
     "@spectra/trend-core": "workspace:*",

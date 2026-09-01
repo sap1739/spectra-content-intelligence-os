@@ -4,6 +4,7 @@ import type { EmbeddingProvider } from '@spectra/ai-core';
 import { PgVectorStore, type SpectraPrismaClient } from '@spectra/database';
 import { resolveEmbedding, type VectorStoreProvider } from '@spectra/knowledge-core';
 import type { Logger } from '@spectra/logging';
+import type { UsageRecorder } from '@spectra/metering';
 
 /**
  * Re-embeds a workspace's stored chunks into the ACTIVE embedding collection.
@@ -25,6 +26,8 @@ export interface ReembedDeps {
   embedder?: EmbeddingProvider;
   vectorStore?: VectorStoreProvider;
   logger?: Logger;
+  /** Records real provider spend; omitted means no ledger. */
+  usage?: UsageRecorder;
 }
 
 export interface ReembedInput {
@@ -94,11 +97,21 @@ export async function executeReembed(
     let vectors: number[][];
     try {
       // Stored passages embed as 'document' — matching how search queries them.
-      vectors = await embedding.provider.embed(
+      const result = await embedding.provider.embed(
         batch.map((r) => r.text),
         tenant,
         'document',
       );
+      vectors = result.vectors;
+      if (result.usage && deps.usage) {
+        await deps.usage.record(tenant, {
+          kind: 'AI_EMBEDDING',
+          provider: embedding.provider.modelRef.provider,
+          model: embedding.provider.modelRef.model,
+          totalTokens: result.usage.totalTokens,
+          resourceType: 'REEMBED',
+        });
+      }
     } catch (error) {
       failed += batch.length;
       logger?.warn(

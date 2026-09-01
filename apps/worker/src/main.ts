@@ -10,6 +10,7 @@ import { loadEnv, storageEnvSchema, workerEnvSchema } from '@spectra/config';
 import { executeContentDraft } from '@spectra/content-pipeline';
 import { createPrismaClient } from '@spectra/database';
 import { createLogger, withCorrelation } from '@spectra/logging';
+import { PrismaUsageRecorder } from '@spectra/metering';
 import {
   claimDuePublications,
   executePublication,
@@ -98,6 +99,9 @@ async function main(): Promise<void> {
       : 'VOYAGE_API_KEY not set — retrieval stays lexical (matches words, not meaning)',
   );
 
+  // One ledger for every metered operation this worker performs (Phase 5D).
+  const usage = new PrismaUsageRecorder(prisma, logger);
+
   // Discovery providers (Phase 5C). Registered only when configured, so the
   // pipeline's `listByKind` answers "what can actually run". Unconfigured means
   // runs use their own feeds and a search-only plan fails loudly rather than
@@ -124,7 +128,7 @@ async function main(): Promise<void> {
         'Research run started',
       );
       const outcome = await executeResearchRun(
-        { prisma, storage, embedder, providerRegistry, logger: jobLogger },
+        { prisma, storage, embedder, providerRegistry, usage, logger: jobLogger },
         {
           runId: envelope.payload.runId,
           signal: context.signal,
@@ -173,7 +177,7 @@ async function main(): Promise<void> {
       });
       jobLogger.info({ projectId, runId: run.id }, 'Scheduled research run created');
       return executeResearchRun(
-        { prisma, storage, embedder, providerRegistry, logger: jobLogger },
+        { prisma, storage, embedder, providerRegistry, usage, logger: jobLogger },
         {
           runId: run.id,
           signal: context.signal,
@@ -201,7 +205,7 @@ async function main(): Promise<void> {
     async (envelope, context) => {
       const jobLogger = withCorrelation(logger, context.correlationId);
       return executeContentDraft(
-        { prisma, provider: textProvider, logger: jobLogger },
+        { prisma, provider: textProvider, usage, logger: jobLogger },
         { draftId: envelope.payload.draftId },
       );
     },

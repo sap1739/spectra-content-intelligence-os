@@ -1,5 +1,5 @@
 import type { TenantScope } from '@spectra/contracts';
-import type { EmbeddingProvider, ModelRef } from '@spectra/ai-core';
+import type { EmbeddingResult, EmbeddingProvider, ModelRef } from '@spectra/ai-core';
 
 /**
  * Deterministic LEXICAL embedding via feature hashing (the "hashing trick"):
@@ -73,7 +73,9 @@ export class HashingEmbeddingProvider implements EmbeddingProvider {
     version: '1.0.0',
   };
 
-  async embed(texts: readonly string[], _tenant: TenantScope): Promise<number[][]> {
-    return texts.map((text) => lexicalEmbed(text, this.dimensions));
+  async embed(texts: readonly string[], _tenant: TenantScope): Promise<EmbeddingResult> {
+    // No `usage`: this embedder is first-party and costs nothing. Reporting
+    // zero tokens would imply a metered call that happened to be free.
+    return { vectors: texts.map((text) => lexicalEmbed(text, this.dimensions)) };
   }
 }

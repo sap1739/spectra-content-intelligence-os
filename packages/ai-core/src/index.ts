@@ -4,6 +4,8 @@ export type {
   AudioGenerationRequest,
   EmbeddingInputType,
   EmbeddingProvider,
+  EmbeddingResult,
+  EmbeddingUsage,
   GeneratedMediaResult,
   GenerationUsage,
   ImageEditingProvider,

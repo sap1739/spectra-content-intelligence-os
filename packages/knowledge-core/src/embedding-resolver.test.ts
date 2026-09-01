@@ -17,8 +17,9 @@ function fakeSemantic(
     modelRef: { provider: 'voyage', model: 'voyage-4' },
     dimensions,
     isConfigured,
-    embed: async (texts: readonly string[], _t: TenantScope) =>
-      texts.map(() => new Array<number>(dimensions).fill(0.1)),
+    embed: async (texts: readonly string[], _t: TenantScope) => ({
+      vectors: texts.map(() => new Array<number>(dimensions).fill(0.1)),
+    }),
   };
 }
 

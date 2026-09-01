@@ -19,6 +19,7 @@
     "@spectra/content-pipeline": "workspace:*",
     "@spectra/database": "workspace:*",
     "@spectra/logging": "workspace:*",
+    "@spectra/metering": "workspace:*",
     "@spectra/observability": "workspace:*",
     "@spectra/publishing": "workspace:*",
     "@spectra/research-brave": "workspace:*",

@@ -1,4 +1,9 @@
-import type { EmbeddingInputType, EmbeddingProvider, ModelRef } from '@spectra/ai-core';
+import type {
+  EmbeddingInputType,
+  EmbeddingProvider,
+  EmbeddingResult,
+  ModelRef,
+} from '@spectra/ai-core';
 import type { TenantScope } from '@spectra/contracts';
 
 /**
@@ -100,22 +105,28 @@ export class VoyageEmbeddingProvider implements EmbeddingProvider {
     texts: readonly string[],
     _tenant: TenantScope,
     inputType: EmbeddingInputType = 'document',
-  ): Promise<number[][]> {
+  ): Promise<EmbeddingResult> {
     if (!this.apiKey) throw new EmbeddingProviderUnavailableError(this.id);
-    if (texts.length === 0) return [];
+    if (texts.length === 0) return { vectors: [] };
 
     const out: number[][] = [];
+    // Summed across batches so a multi-batch call reports its true total.
+    let totalTokens: number | undefined;
     for (let i = 0; i < texts.length; i += this.batchSize) {
       const batch = texts.slice(i, i + this.batchSize);
-      out.push(...(await this.embedBatch(batch, inputType)));
+      const result = await this.embedBatch(batch, inputType);
+      out.push(...result.vectors);
+      if (result.totalTokens !== undefined) {
+        totalTokens = (totalTokens ?? 0) + result.totalTokens;
+      }
     }
-    return out;
+    return { vectors: out, ...(totalTokens !== undefined ? { usage: { totalTokens } } : {}) };
   }
 
   private async embedBatch(
     batch: readonly string[],
     inputType: EmbeddingInputType,
-  ): Promise<number[][]> {
+  ): Promise<{ vectors: number[][]; totalTokens?: number }> {
     let res: Response;
     try {
       res = await this.fetchImpl(VOYAGE_ENDPOINT, {
@@ -182,7 +193,11 @@ export class VoyageEmbeddingProvider implements EmbeddingProvider {
     if (ordered.some((v) => v === undefined)) {
       throw new EmbeddingRequestError('Voyage response was missing an embedding index');
     }
-    return ordered;
+    const reported = body.usage?.total_tokens;
+    return {
+      vectors: ordered,
+      ...(typeof reported === 'number' ? { totalTokens: reported } : {}),
+    };
   }
 }
 

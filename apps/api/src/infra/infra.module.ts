@@ -8,6 +8,7 @@ import { EmbeddingService } from './embedding.service';
 import { QueueService } from './queue.service';
 import { SearchProviderService } from './search.service';
 import { SocialCryptoService } from './social-crypto.service';
+import { UsageService } from './usage.service';
 
 /** Global infrastructure providers shared by every feature module. */
 @Global()
@@ -21,6 +22,7 @@ import { SocialCryptoService } from './social-crypto.service';
     EmbeddingService,
     SearchProviderService,
     SocialCryptoService,
+    UsageService,
   ],
   exports: [
     PrismaService,
@@ -31,6 +33,7 @@ import { SocialCryptoService } from './social-crypto.service';
     EmbeddingService,
     SearchProviderService,
     SocialCryptoService,
+    UsageService,
   ],
 })
 export class InfraModule {}

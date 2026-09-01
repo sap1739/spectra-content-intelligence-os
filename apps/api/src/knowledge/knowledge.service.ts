@@ -5,6 +5,7 @@ import { JOB_NAMES } from '@spectra/workflow-core';
 
 import { EmbeddingService } from '../infra/embedding.service';
 import { QueueService } from '../infra/queue.service';
+import { UsageService } from '../infra/usage.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { TenantContext } from '../auth/types';
 
@@ -23,6 +24,7 @@ export class KnowledgeService {
     private readonly prisma: PrismaService,
     private readonly embeddings: EmbeddingService,
     private readonly queue: QueueService,
+    private readonly usage: UsageService,
   ) {
     this.vectorStore = new PgVectorStore(this.prisma.client);
   }
@@ -39,7 +41,17 @@ export class KnowledgeService {
     const { provider, collection } = this.embeddings.active;
     // 'query' side of the asymmetric pair — real models encode a search query
     // differently from a stored passage.
-    const [queryVector] = await provider.embed([query], scope, 'query');
+    const embedResult = await provider.embed([query], scope, 'query');
+    const [queryVector] = embedResult.vectors;
+    if (embedResult.usage) {
+      await this.usage.record(scope, {
+        kind: 'AI_EMBEDDING',
+        provider: provider.modelRef.provider,
+        model: provider.modelRef.model,
+        totalTokens: embedResult.usage.totalTokens,
+        resourceType: 'KNOWLEDGE_SEARCH',
+      });
+    }
     const hits = await this.vectorStore.search({
       ...scope,
       collection,

@@ -1,6 +1,7 @@
 import type { TextGenerationProvider } from '@spectra/ai-core';
 import type { SpectraPrismaClient } from '@spectra/database';
 import type { Logger } from '@spectra/logging';
+import type { UsageRecorder } from '@spectra/metering';
 
 import { validateCitations } from './citations';
 import { generateDraft } from './generator';
@@ -10,6 +11,8 @@ export interface ContentDraftDeps {
   prisma: SpectraPrismaClient;
   provider: TextGenerationProvider;
   logger?: Logger;
+  /** Records real provider spend; omitted means no ledger. */
+  usage?: UsageRecorder;
 }
 
 export interface ExecuteContentDraftInput {
@@ -165,6 +168,23 @@ export async function executeContentDraft(
           : {}),
       },
     });
+
+    // Meter the generation from exactly what the provider reported — the same
+    // numbers persisted on the draft above, so ledger and draft never disagree.
+    if (result.usage) {
+      await deps.usage?.record(
+        { organizationId: draft.organizationId, workspaceId: draft.workspaceId },
+        {
+          kind: 'AI_GENERATION',
+          provider: result.modelRef.provider,
+          model: result.modelRef.model,
+          inputTokens: result.usage.inputTokens ?? null,
+          outputTokens: result.usage.outputTokens ?? null,
+          resourceType: 'CONTENT_DRAFT',
+          resourceId: draft.id,
+        },
+      );
+    }
 
     if (updated.status === 'READY') {
       await prisma.contentItem.update({

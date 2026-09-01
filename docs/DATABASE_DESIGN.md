@@ -111,8 +111,33 @@ lifecycle (`SCHEDULED` → `QUEUED` → `PUBLISHING` → `PUBLISHED`/`FAILED`/`U
 platform adapter wired, a dispatch resolves to the honest terminal `UNSUPPORTED` — never a
 fabricated `PUBLISHED`.
 
-## 9. Future entities
+## 9. Phase 5 usage metering
 
-Remaining contract-only entities (angles, publications, analytics, billing/usage, knowledge
+| Table        | Purpose                                      | Key constraints / indexes                                                                                          |
+| ------------ | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| usage_events | Append-only meter of external provider spend | index(organizationId, occurredAt), index(organizationId, workspaceId, occurredAt), index(resourceType, resourceId) |
+
+`usage_events` records one row per metered external operation — `AI_GENERATION`,
+`AI_EMBEDDING`, `WEB_SEARCH`, `NEWS_SEARCH`, `PAGE_FETCH` — with the provider, model, request
+count, token counts, bytes, and what the spend was for (`resourceType`/`resourceId`, e.g. the
+research run or content draft). Org/workspace cascade; `workspaceId` is nullable for
+org-level spend.
+
+Two honesty rules are enforced by the column semantics (ADR-0026):
+
+- **Token columns are NULL when the provider did not report them** — never `0`, which would
+  claim the call was measured and free.
+- **`estimatedCostMicros` is an ESTIMATE, not a charge.** It is computed from a local, versioned
+  rate table and is NULL when no rate is known for that provider/model. `rateVersion` records
+  which table priced the row, so old rows stay interpretable after prices change. Nothing in
+  this schema represents an invoice, a plan, or an amount billed — no payment provider exists.
+
+Rows are written best-effort: a failed ledger insert is logged and swallowed rather than failing
+the work being measured, so the table is a strong operational signal, not an audit-grade
+financial record.
+
+## 10. Future entities
+
+Remaining contract-only entities (angles, publications, workspace budgets, knowledge
 documents) are documented in [DOMAIN_MODEL.md](DOMAIN_MODEL.md) §6 and materialize in later
 phases with their own migrations + doc updates.

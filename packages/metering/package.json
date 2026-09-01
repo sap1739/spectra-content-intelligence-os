@@ -1,8 +1,8 @@
 {
-  "name": "@spectra/content-pipeline",
+  "name": "@spectra/metering",
   "version": "0.1.0",
   "private": true,
-  "description": "Evidence-grounded content drafting. Builds prompts that separate trusted instructions from wrapped untrusted evidence, calls an ai-core TextGenerationProvider, and returns drafts carrying exactly the citations they were grounded on.",
+  "description": "Usage metering: an append-only ledger of real provider spend plus versioned cost ESTIMATES. Records only what providers actually report.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
@@ -12,12 +12,9 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@spectra/ai-core": "workspace:*",
     "@spectra/contracts": "workspace:*",
     "@spectra/database": "workspace:*",
-    "@spectra/knowledge-core": "workspace:*",
-    "@spectra/logging": "workspace:*",
-    "@spectra/metering": "workspace:*"
+    "@spectra/logging": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",

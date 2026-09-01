@@ -45,7 +45,9 @@ describe('lexicalEmbed', () => {
 describe('HashingEmbeddingProvider', () => {
   it('implements the EmbeddingProvider port with a versioned model ref', async () => {
     const provider = new HashingEmbeddingProvider();
-    const [a, b] = await provider.embed(['first text', 'second text'], TENANT);
+    const {
+      vectors: [a, b],
+    } = await provider.embed(['first text', 'second text'], TENANT);
     expect(a).toHaveLength(provider.dimensions);
     expect(b).toHaveLength(provider.dimensions);
     expect(provider.modelRef).toEqual({

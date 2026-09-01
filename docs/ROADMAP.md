@@ -145,6 +145,18 @@ weakest link in the differentiator: research and evidence quality.
   records the _query_ that found a source. A search-only plan with no configured provider fails
   loudly instead of completing with zero sources, and provider errors are recorded rather than
   swallowed. Runs accept `feedUrls` and/or `searchQueries` (ADR-0025).
-- Next: content extraction for non-HTML sources; fact verification; hybrid retrieval tuning +
-  reranking; per-run page/query budgeting and usage metering; down-weighting snippet-only
+- ✅ **Increment D — usage metering + per-run budgets.** Every paid provider (Anthropic, Voyage,
+  Brave) and every page fetch now writes to an append-only `UsageEvent` ledger, tenant-scoped and
+  attributed to the run/draft that caused it. Quantities are MEASURED from what providers report;
+  cost is a separate, versioned ESTIMATE from a local rate table and is labelled as such
+  everywhere — unreported figures stay NULL (never 0, which would claim "measured and free") and
+  unpriced events are counted separately instead of folded in at zero. `EmbeddingProvider.embed()`
+  now returns `{vectors, usage?}` so Voyage's token count — previously parsed and discarded — is
+  actually captured; usage travels with the result rather than via a stateful accessor that would
+  misattribute tokens across concurrent callers. Ledger writes are best-effort: a meter failure
+  never breaks the work it measures. Discovery is capped per run (default 100 fetches) and
+  degrades to snippet-only past the cap, reporting that it did. The billing placeholder is now a
+  real usage page that also states plainly that nothing charges anyone (ADR-0026).
+- Next: per-workspace budgets with pre-flight enforcement; content extraction for non-HTML
+  sources; fact verification; hybrid retrieval tuning + reranking; down-weighting snippet-only
   evidence in trend scoring.

@@ -75,7 +75,25 @@ export interface EmbeddingProvider extends AiProviderIdentity {
     texts: readonly string[],
     tenant: TenantScope,
     inputType?: EmbeddingInputType,
-  ): Promise<number[][]>;
+  ): Promise<EmbeddingResult>;
+}
+
+export interface EmbeddingResult {
+  vectors: number[][];
+  /**
+   * Reported by the provider, when it reports usage at all. `undefined` means
+   * "not reported" (e.g. the first-party lexical embedder, which costs
+   * nothing) and must never be recorded as zero tokens of a paid provider.
+   *
+   * Returned WITH the vectors rather than via a `lastUsage()` accessor: one
+   * provider instance serves concurrent callers, so per-call usage must travel
+   * with its own result.
+   */
+  usage?: EmbeddingUsage;
+}
+
+export interface EmbeddingUsage {
+  totalTokens: number;
 }
 
 export interface ImageGenerationRequest {

@@ -314,6 +314,46 @@ describe('search-driven research runs (integration)', () => {
     expect(outcome.status).toBe('FAILED');
   }, 30_000);
 
+  it('caps page fetches per run and says so instead of failing silently', async () => {
+    const stub = new StubWebSearch(
+      (base) => [
+        { url: `${base}/article-1?a=1`, title: 'One', snippet: 'snippet one', category: 'WEB' },
+        { url: `${base}/article-2?a=2`, title: 'Two', snippet: 'snippet two', category: 'WEB' },
+        { url: `${base}/article-3?a=3`, title: 'Three', snippet: 'snippet three', category: 'WEB' },
+      ],
+      baseUrl,
+    );
+    const registry = new ResearchProviderRegistry();
+    registry.register(stub);
+
+    const runId = await newRun({ feedUrls: [], searchQueries: ['budget test'] });
+    await executeResearchRun(
+      {
+        prisma,
+        storage: storage(),
+        logger,
+        providerRegistry: registry,
+        fetchOptions: FETCH_OPTIONS,
+        maxPageFetchesPerRun: 1,
+      },
+      { runId },
+    );
+
+    const sources = await prisma.researchSource.findMany({
+      where: { organizationId: orgId, workspaceId, runId },
+    });
+    // All three still ingested — the budget degrades quality, it does not drop
+    // real results.
+    expect(sources).toHaveLength(3);
+    const snippetOnly = sources.filter(
+      (s) => (s.provenance as Record<string, unknown>)['snippetOnly'] === true,
+    );
+    expect(snippetOnly).toHaveLength(2);
+
+    const run = await prisma.researchRun.findUnique({ where: { id: runId } });
+    expect(run?.failureReason ?? '').toMatch(/budget of 1 reached/);
+  }, 30_000);
+
   it('refuses a search-only plan when no provider is configured', async () => {
     const runId = await newRun({ feedUrls: [], searchQueries: ['anything'] });
     // Recorded on the run, then re-thrown so the queue sees a real failure.

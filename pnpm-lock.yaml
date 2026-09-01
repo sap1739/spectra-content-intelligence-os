@@ -86,6 +86,9 @@ importers:
       '@spectra/media-sharp':
         specifier: workspace:*
         version: link:../../packages/media-sharp
+      '@spectra/metering':
+        specifier: workspace:*
+        version: link:../../packages/metering
       '@spectra/observability':
         specifier: workspace:*
         version: link:../../packages/observability
@@ -232,6 +235,9 @@ importers:
       '@spectra/logging':
         specifier: workspace:*
         version: link:../../packages/logging
+      '@spectra/metering':
+        specifier: workspace:*
+        version: link:../../packages/metering
       '@spectra/observability':
         specifier: workspace:*
         version: link:../../packages/observability
@@ -382,6 +388,9 @@ importers:
       '@spectra/logging':
         specifier: workspace:*
         version: link:../logging
+      '@spectra/metering':
+        specifier: workspace:*
+        version: link:../metering
     devDependencies:
       '@types/node':
         specifier: ^22.15.0
@@ -510,6 +519,28 @@ importers:
         specifier: ^3.2.0
         version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)
 
+  packages/metering:
+    dependencies:
+      '@spectra/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@spectra/database':
+        specifier: workspace:*
+        version: link:../database
+      '@spectra/logging':
+        specifier: workspace:*
+        version: link:../logging
+    devDependencies:
+      '@types/node':
+        specifier: ^22.15.0
+        version: 22.20.0
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)
+
   packages/observability:
     devDependencies:
       '@types/node':
@@ -599,6 +630,9 @@ importers:
       '@spectra/logging':
         specifier: workspace:*
         version: link:../logging
+      '@spectra/metering':
+        specifier: workspace:*
+        version: link:../metering
       '@spectra/research-core':
         specifier: workspace:*
         version: link:../research-core

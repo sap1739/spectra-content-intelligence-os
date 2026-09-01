@@ -14,6 +14,8 @@ import {
 
 import type { ResearchProviderRegistry } from '@spectra/research-core';
 
+import { NoopUsageRecorder, type UsageRecorder } from '@spectra/metering';
+
 import { candidatesFromFeed, candidatesFromSearch, type CandidateItem } from './discovery';
 import { HtmlExtractionProvider } from './extraction';
 import { sha256Hex, titleKey, urlHash } from './hashing';
@@ -28,6 +30,7 @@ import {
 } from './signals';
 
 export const PIPELINE_VERSION = 'rss-pipeline/1.0.0';
+const DEFAULT_MAX_PAGE_FETCHES = 100;
 const TREND_WINDOW_DAYS = 30;
 const TREND_RECENT_DAYS = 7;
 const MS_PER_DAY = 86_400_000;
@@ -49,6 +52,10 @@ export interface PipelineDeps {
   providerRegistry?: ResearchProviderRegistry;
   /** Fetch discovered pages for full text (default true). */
   fetchDiscoveredPages?: boolean;
+  /** Records real provider spend. Defaults to discarding (no ledger). */
+  usage?: UsageRecorder;
+  /** Hard ceiling on pages fetched per run (default 100). */
+  maxPageFetchesPerRun?: number;
   now?: () => Date;
 }
 
@@ -97,6 +104,7 @@ export async function executeResearchRun(
   input: ExecuteRunInput,
 ): Promise<RunOutcome> {
   const now = deps.now ?? (() => new Date());
+  const usage = deps.usage ?? new NoopUsageRecorder();
   const logger = deps.logger.child({ runId: input.runId });
   const rss = new FirstPartyRssProvider(deps.fetchOptions);
   const extraction = new HtmlExtractionProvider();
@@ -200,6 +208,9 @@ export async function executeResearchRun(
         ...(deps.fetchDiscoveredPages === false ? { fetchPages: false } : {}),
         ...(input.signal ? { signal: input.signal } : {}),
         logger,
+        usage,
+        resourceId: run.id,
+        maxPageFetches: deps.maxPageFetchesPerRun ?? DEFAULT_MAX_PAGE_FETCHES,
       });
       candidates.push(...discovery.candidates);
       stats.queriesExecuted += discovery.executed;
@@ -461,7 +472,19 @@ export async function executeResearchRun(
           // ('document'), which real models encode differently from a query.
           const embedText = `${candidate.title ?? ''}\n${text.slice(0, 1500)}`.trim();
           if (embedText.length > 0) {
-            const [vector] = await embedder.embed([embedText], tenant, 'document');
+            const embedResult = await embedder.embed([embedText], tenant, 'document');
+            const [vector] = embedResult.vectors;
+            // Meter only what the provider actually reported.
+            if (embedResult.usage) {
+              await usage.record(tenant, {
+                kind: 'AI_EMBEDDING',
+                provider: embedder.modelRef.provider,
+                model: embedder.modelRef.model,
+                totalTokens: embedResult.usage.totalTokens,
+                resourceType: 'RESEARCH_RUN',
+                resourceId: run.id,
+              });
+            }
             await vectorStore.upsertChunks({
               tenant,
               collection: embedding.collection,

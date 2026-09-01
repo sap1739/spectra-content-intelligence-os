@@ -98,6 +98,7 @@ model Organization {
   researchFindings ResearchFinding[]
   trendCandidates  TrendCandidate[]
   auditLogs        AuditLog[]
+  usageEvents      UsageEvent[]
   invitations      Invitation[]
   trendWatchlists  TrendWatchlist[]
   campaigns        Campaign[]
@@ -219,6 +220,7 @@ model Workspace {
   scheduleEntries  ContentScheduleEntry[]
   mediaAssets      MediaAsset[]
   socialAccounts   SocialAccount[]
+  usageEvents      UsageEvent[]
 
   @@unique([organizationId, slug])
   @@index([organizationId, status])
@@ -1321,4 +1323,56 @@ model AuditLog {
   @@index([resourceType, resourceId])
   @@index([correlationId])
   @@map("audit_logs")
+}
+
+/// Append-only meter of every billable/rate-limited external operation.
+///
+/// Recorded ONLY from what a provider actually reports. When a provider does not
+/// report token counts, the token columns stay NULL — never 0, which would read
+/// as "measured, and it was free". `estimatedCostMicros` is exactly that: an
+/// ESTIMATE derived from a versioned local rate table (`rateVersion`), not a
+/// vendor invoice. Never present it as an amount charged.
+model UsageEvent {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String        @db.Uuid
+  workspaceId    String?       @db.Uuid
+  kind           UsageKind
+  /// Provider + model as reported by the adapter (e.g. "anthropic"/"claude-opus-4-8").
+  provider       String
+  model          String?
+  /// Number of API calls this event covers (usually 1; batched embeds may be more).
+  requests       Int           @default(1)
+  /// NULL = the provider did not report it. Never coerce to zero.
+  inputTokens    Int?
+  outputTokens   Int?
+  totalTokens    Int?
+  bytes          Int?
+  /// Estimated cost in millionths of a currency unit; NULL when no rate is known.
+  estimatedCostMicros Int?
+  /// Rate-table version used for the estimate — makes old rows re-interpretable.
+  rateVersion    String?
+  currency       String        @default("USD")
+  /// What this spend was for: RESEARCH_RUN/CONTENT_DRAFT/etc + its id.
+  resourceType   String?
+  resourceId     String?       @db.Uuid
+  correlationId  String?
+  metadata       Json          @default("{}")
+  occurredAt     DateTime      @default(now()) @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace?   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, occurredAt])
+  @@index([organizationId, workspaceId, occurredAt])
+  @@index([resourceType, resourceId])
+  @@map("usage_events")
+}
+
+/// What kind of metered work an event covers.
+enum UsageKind {
+  AI_GENERATION
+  AI_EMBEDDING
+  WEB_SEARCH
+  NEWS_SEARCH
+  PAGE_FETCH
 }

@@ -6,6 +6,7 @@ import type {
   WebSearchProvider,
 } from '@spectra/research-core';
 import type { Logger } from '@spectra/logging';
+import type { UsageRecorder } from '@spectra/metering';
 
 import type { FirstPartyRssProvider } from './rss';
 import { safeFetch, type SafeFetchOptions } from './safe-fetch';
@@ -81,6 +82,17 @@ export interface SearchDiscoveryOptions {
   fetchOptions?: SafeFetchOptions;
   logger?: Logger;
   signal?: AbortSignal;
+  /** Records real provider spend; omitted means no ledger. */
+  usage?: UsageRecorder;
+  /** Stamped on ledger rows so spend is attributable to the run. */
+  resourceId?: string;
+  /**
+   * Hard ceiling on pages fetched in one run. Discovery is otherwise unbounded
+   * (queries x results-per-query), which is the pipeline's real runaway-cost
+   * risk. Candidates past the cap are still ingested — as snippet-only, and the
+   * cap is reported — rather than silently dropped.
+   */
+  maxPageFetches?: number;
 }
 
 /**
@@ -108,6 +120,7 @@ export async function candidatesFromSearch(
   }
 
   const seenUrls = new Set<string>();
+  let fetched = 0;
 
   for (const queryText of queries) {
     if (options.signal?.aborted) break;
@@ -116,9 +129,24 @@ export async function candidatesFromSearch(
       ...(options.maxResultsPerQuery ? { maxResults: options.maxResultsPerQuery } : {}),
     };
 
-    const calls: Array<{ label: string; run: () => Promise<DiscoveredSource[]> }> = [
-      ...web.map((p) => ({ label: p.id, run: () => p.search(input, tenant) })),
-      ...news.map((p) => ({ label: p.id, run: () => p.searchNews(input, tenant) })),
+    const calls: Array<{
+      label: string;
+      providerName: string;
+      kind: 'WEB_SEARCH' | 'NEWS_SEARCH';
+      run: () => Promise<DiscoveredSource[]>;
+    }> = [
+      ...web.map((p) => ({
+        label: p.id,
+        providerName: providerNameOf(p.id),
+        kind: 'WEB_SEARCH' as const,
+        run: () => p.search(input, tenant),
+      })),
+      ...news.map((p) => ({
+        label: p.id,
+        providerName: providerNameOf(p.id),
+        kind: 'NEWS_SEARCH' as const,
+        run: () => p.searchNews(input, tenant),
+      })),
     ];
 
     for (const call of calls) {
@@ -127,6 +155,16 @@ export async function candidatesFromSearch(
       try {
         discovered = await call.run();
         executed += 1;
+        // Search bills per query — meter the call that actually happened.
+        await options.usage?.record(tenant, {
+          kind: call.kind,
+          provider: call.providerName,
+          model: call.kind === 'NEWS_SEARCH' ? 'news-search' : 'web-search',
+          requests: 1,
+          resourceType: 'RESEARCH_RUN',
+          ...(options.resourceId ? { resourceId: options.resourceId } : {}),
+          metadata: { query: queryText, results: discovered.length },
+        });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         errors.push(`${call.label} "${queryText}": ${message}`);
@@ -139,11 +177,26 @@ export async function candidatesFromSearch(
         // de-duplicates against stored sources separately.
         if (seenUrls.has(source.url)) continue;
         seenUrls.add(source.url);
-        candidates.push(await toCandidate(source, queryText, call.label, options));
+        const budgetLeft = options.maxPageFetches === undefined || fetched < options.maxPageFetches;
+        const candidate = await toCandidate(source, queryText, call.label, {
+          ...options,
+          // Past the budget: keep ingesting, but as snippet-only rather than
+          // dropping real results on the floor.
+          ...(budgetLeft ? {} : { fetchPages: false }),
+        });
+        if (!candidate.snippetOnly) fetched += 1;
+        candidates.push(candidate);
       }
     }
   }
 
+  if (options.maxPageFetches !== undefined && fetched >= options.maxPageFetches) {
+    // Surfaced, not silent: the operator must know results were degraded to
+    // snippets by the budget rather than by unreachable pages.
+    errors.push(
+      `Page-fetch budget of ${options.maxPageFetches} reached — remaining sources kept as search snippets only`,
+    );
+  }
   return { candidates, executed, errors };
 }
 
@@ -183,6 +236,19 @@ async function toCandidate(
     }
     const html = result.body.toString('utf8');
     if (html.trim().length === 0) return base;
+    // Not vendor-billed, but metered: page fetches are the pipeline's main
+    // rate-limit and bandwidth cost, and the thing a per-run budget caps.
+    await options.usage?.record(
+      { organizationId: options.tenant.organizationId, workspaceId: options.tenant.workspaceId },
+      {
+        kind: 'PAGE_FETCH',
+        provider: 'first-party',
+        requests: 1,
+        bytes: result.body.byteLength,
+        resourceType: 'RESEARCH_RUN',
+        ...(options.resourceId ? { resourceId: options.resourceId } : {}),
+      },
+    );
     return { ...base, rawHtml: html, snippetOnly: false };
   } catch (error) {
     options.logger?.debug(
@@ -191,4 +257,9 @@ async function toCandidate(
     );
     return base;
   }
+}
+
+/** "brave-web-search" => "brave"; keeps ledger provider names vendor-level. */
+function providerNameOf(providerId: string): string {
+  return providerId.split('-')[0] ?? providerId;
 }
