@@ -53,3 +53,23 @@ Generated drafts render citation markers bound to `Citation` ids; the review UI 
 publisher, publication date, retrieval date and credibility per citation; exports include a
 source list. AI-generated content labelling requirements are covered in
 [SECURITY.md](SECURITY.md).
+
+## Source quality on the provenance record (Phase 5F, ADR-0030)
+
+Every `ResearchSource` now records how well we actually retrieved it, alongside where it came
+from:
+
+| Field                                          | Meaning                                                                                                                                         |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `snippetOnly`                                  | The body is a search snippet, not the article. Always paired with a `fetchNote` saying why.                                                     |
+| `robotsDecision`                               | `ALLOWED` / `DISALLOWED` / `UNAVAILABLE` / `NOT_CHECKED`. `UNAVAILABLE` means we did not verify permission — it is never recorded as `ALLOWED`. |
+| `robotsCheckedAt`                              | When the check ran.                                                                                                                             |
+| `stalenessStatus`                              | `FRESH` / `AGING` / `STALE` / `EVERGREEN` / `UNKNOWN`. `UNKNOWN` means no publication date was stated.                                          |
+| `evidenceEligible` + `evidenceExclusionReason` | Whether it may be cited, and if not, precisely why.                                                                                             |
+| `diversityWeight`                              | Below 1 for members of a syndication cluster.                                                                                                   |
+
+Publication date and retrieval date are both preserved and distinct: `publishedAt` may be null
+(and then `stalenessStatus` is `UNKNOWN`), while `retrievedAt` is always recorded.
+
+A citation built from a snippet-only source is still a real citation to a real URL — but the
+record says it is snippet-derived, and downstream weighting treats it accordingly.

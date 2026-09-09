@@ -9,6 +9,8 @@ import type { Logger } from '@spectra/logging';
 import type { UsageRecorder } from '@spectra/metering';
 
 import type { FirstPartyRssProvider } from './rss';
+import type { FetchScheduler } from './fetch-scheduler';
+import type { RobotsDecision, RobotsGateway } from './robots';
 import { safeFetch, type SafeFetchOptions } from './safe-fetch';
 
 /**
@@ -39,6 +41,10 @@ export interface CandidateItem {
    * one built from the full article.
    */
   snippetOnly: boolean;
+  /** Outcome of the robots.txt check, when one was performed (ADR-0030). */
+  robotsDecision: RobotsDecision;
+  /** Why this candidate is snippet-only / was not fetched. Always specific. */
+  fetchNote: string | null;
 }
 
 export interface DiscoveryOutcome {
@@ -69,6 +75,10 @@ export async function candidatesFromFeed(
     rawHtml: item.contentHtml ?? item.summary ?? item.title ?? '',
     provenance: { providerId: rss.id, providerKind: rss.kind, requestRef: feedUrl },
     snippetOnly: false,
+    // Feed bodies are supplied BY the publisher through their own feed, so no
+    // crawl happens and robots.txt does not apply.
+    robotsDecision: 'NOT_CHECKED' as RobotsDecision,
+    fetchNote: null,
   }));
 }
 
@@ -82,6 +92,10 @@ export interface SearchDiscoveryOptions {
   fetchOptions?: SafeFetchOptions;
   logger?: Logger;
   signal?: AbortSignal;
+  /** Checks robots.txt before any page fetch. Omitted => no fetching at all. */
+  robots?: RobotsGateway;
+  /** Bounds concurrency and spaces requests per host. */
+  scheduler?: FetchScheduler;
   /** Records real provider spend; omitted means no ledger. */
   usage?: UsageRecorder;
   /** Stamped on ledger rows so spend is attributable to the run. */
@@ -207,6 +221,8 @@ async function toCandidate(
   options: SearchDiscoveryOptions,
 ): Promise<CandidateItem> {
   const base: CandidateItem = {
+    robotsDecision: 'NOT_CHECKED',
+    fetchNote: null,
     url: source.url,
     title: source.title ?? null,
     author: null,
@@ -224,18 +240,48 @@ async function toCandidate(
     snippetOnly: true,
   };
 
-  if (options.fetchPages === false) return base;
+  if (options.fetchPages === false) {
+    return {
+      ...base,
+      fetchNote: 'Page fetching is disabled for this run; the search snippet is all we hold.',
+    };
+  }
+
+  // ASK BEFORE FETCHING. A disallowed page is never retrieved — it stays
+  // snippet-only with the site's own rule as the reason (ADR-0030).
+  let crawlDelaySeconds: number | null = null;
+  if (options.robots) {
+    const verdict = await options.robots.check(source.url);
+    crawlDelaySeconds = verdict.crawlDelaySeconds;
+    if (verdict.decision === 'DISALLOWED') {
+      return { ...base, robotsDecision: 'DISALLOWED', fetchNote: verdict.reason };
+    }
+    base.robotsDecision = verdict.decision;
+    base.fetchNote = verdict.decision === 'UNAVAILABLE' ? verdict.reason : null;
+  }
 
   // Fetch the page for real text. The snippet is a fallback, not a substitute:
   // a failure downgrades the candidate honestly rather than dropping it.
   try {
-    const result = await safeFetch(source.url, options.fetchOptions);
+    const run = () => safeFetch(source.url, options.fetchOptions);
+    const result = options.scheduler
+      ? await options.scheduler.run(source.url, run, crawlDelaySeconds)
+      : await run();
     const contentType = result.contentType.toLowerCase();
     if (!contentType.includes('html') && !contentType.includes('text')) {
-      return base; // binary/PDF — snippet stands until a document extractor exists
+      // Binary/PDF — snippet stands until a document extractor exists.
+      return {
+        ...base,
+        fetchNote: `The page is ${result.contentType || 'a non-text document'}; no extractor exists for it yet, so only the search snippet is held.`,
+      };
     }
     const html = result.body.toString('utf8');
-    if (html.trim().length === 0) return base;
+    if (html.trim().length === 0) {
+      return {
+        ...base,
+        fetchNote: 'The page returned no readable text; the search snippet is all we hold.',
+      };
+    }
     // Not vendor-billed, but metered: page fetches are the pipeline's main
     // rate-limit and bandwidth cost, and the thing a per-run budget caps.
     await options.usage?.record(
@@ -251,11 +297,12 @@ async function toCandidate(
     );
     return { ...base, rawHtml: html, snippetOnly: false };
   } catch (error) {
-    options.logger?.debug(
-      { url: source.url, err: error instanceof Error ? error.message : String(error) },
-      'Page fetch failed — falling back to search snippet',
-    );
-    return base;
+    const message = error instanceof Error ? error.message : String(error);
+    options.logger?.debug({ url: source.url, err: message }, 'Page fetch failed — snippet only');
+    return {
+      ...base,
+      fetchNote: `The page could not be fetched (${message}); the search snippet is all we hold.`,
+    };
   }
 }
 

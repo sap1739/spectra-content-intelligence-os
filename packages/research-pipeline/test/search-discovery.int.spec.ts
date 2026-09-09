@@ -68,6 +68,16 @@ describe('search-driven research runs (integration)', () => {
   beforeAll(async () => {
     server = createServer((req, res) => {
       const path = new URL(req.url ?? '/', 'http://127.0.0.1').pathname;
+      if (path === '/robots.txt') {
+        res.setHeader('content-type', 'text/plain');
+        res.end('User-agent: *\nDisallow: /private\n');
+        return;
+      }
+      if (path === '/private/secret') {
+        res.setHeader('content-type', 'text/html; charset=utf-8');
+        res.end('<html><body><article><p>Should never be fetched.</p></article></body></html>');
+        return;
+      }
       if (path === '/article-1') {
         res.setHeader('content-type', 'text/html; charset=utf-8');
         res.end(
@@ -406,6 +416,88 @@ describe('search-driven research runs (integration)', () => {
     // Clean up so later assertions in this file are unaffected.
     await prisma.workspaceBudget.deleteMany({ where: { organizationId: orgId, workspaceId } });
     await prisma.usageEvent.deleteMany({ where: { organizationId: orgId, workspaceId } });
+  }, 30_000);
+
+  it('respects robots.txt: a disallowed page is never fetched and stays snippet-only', async () => {
+    const stub = new StubWebSearch(
+      (base) => [
+        {
+          url: `${base}/private/secret`,
+          title: 'Disallowed page',
+          snippet: 'Only the snippet about AI testing is available.',
+          category: 'WEB',
+        },
+      ],
+      baseUrl,
+    );
+    const registry = new ResearchProviderRegistry();
+    registry.register(stub);
+
+    const runId = await newRun({ feedUrls: [], searchQueries: ['robots test'] });
+    const outcome = await executeResearchRun(
+      {
+        prisma,
+        storage: storage(),
+        logger,
+        providerRegistry: registry,
+        fetchOptions: FETCH_OPTIONS,
+      },
+      { runId },
+    );
+
+    const source = await prisma.researchSource.findFirst({
+      where: { organizationId: orgId, workspaceId, runId },
+    });
+    expect(source).toBeTruthy();
+    expect(source?.robotsDecision).toBe('DISALLOWED');
+    expect(source?.snippetOnly).toBe(true);
+    expect(source?.processingStatus).toBe('ROBOTS_BLOCKED');
+    // Kept with a truthful reason rather than dropped or pretended fetched.
+    expect(String((source?.metadata as Record<string, unknown>)['fetchNote'])).toMatch(
+      /disallows \/private\/secret/,
+    );
+    expect(outcome.stats.robotsBlocked).toBe(1);
+    expect(outcome.stats.snippetOnly).toBe(1);
+
+    await prisma.robotsCacheEntry.deleteMany({ where: { origin: baseUrl } });
+  }, 30_000);
+
+  it('rejects a blocked domain instead of ingesting it as evidence', async () => {
+    await prisma.customVertical.updateMany({
+      where: { organizationId: orgId, workspaceId },
+      data: { blockedDomains: ['127.0.0.1'] },
+    });
+
+    const stub = new StubWebSearch(
+      (base) => [{ url: `${base}/article-1?b=1`, title: 'Blocked', snippet: 's', category: 'WEB' }],
+      baseUrl,
+    );
+    const registry = new ResearchProviderRegistry();
+    registry.register(stub);
+
+    const runId = await newRun({ feedUrls: [], searchQueries: ['blocked domain'] });
+    const outcome = await executeResearchRun(
+      {
+        prisma,
+        storage: storage(),
+        logger,
+        providerRegistry: registry,
+        fetchOptions: FETCH_OPTIONS,
+      },
+      { runId },
+    );
+
+    // Counted and reported — not silently dropped.
+    expect(outcome.stats.blockedDomainRejected).toBe(1);
+    const sources = await prisma.researchSource.findMany({
+      where: { organizationId: orgId, workspaceId, runId },
+    });
+    expect(sources).toHaveLength(0);
+
+    await prisma.customVertical.updateMany({
+      where: { organizationId: orgId, workspaceId },
+      data: { blockedDomains: [] },
+    });
   }, 30_000);
 
   it('refuses a search-only plan when no provider is configured', async () => {

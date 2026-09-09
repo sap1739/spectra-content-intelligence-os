@@ -178,3 +178,45 @@ export function useTrends(workspaceId: string) {
     queryFn: () => api.get<TrendRow[]>(`/v1/workspaces/${workspaceId}/trends`),
   });
 }
+
+// --- Phase 5F: per-source research quality (ADR-0030) ----------------------
+
+export interface RunQualitySource {
+  id: string;
+  url: string;
+  title: string | null;
+  publisher: string | null;
+  publishedAt: string | null;
+  retrievedAt: string;
+  credibilityScore: number | null;
+  freshnessScore: number | null;
+  stalenessStatus: string;
+  snippetOnly: boolean;
+  robotsDecision: string;
+  evidenceEligible: boolean;
+  evidenceExclusionReason: string | null;
+  diversityWeight: number;
+  duplicateOfSourceId: string | null;
+  duplicateClusterKey: string | null;
+  processingStatus: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface RunQuality {
+  run: { id: string; status: string; stats: Record<string, number>; failureReason: string | null };
+  sources: RunQualitySource[];
+  duplicateClusters: Array<{ key: string; size: number; sourceIds: string[] }>;
+  note: string;
+}
+
+export function useRunQuality(workspaceId: string, projectId: string, runId: string | null) {
+  return useQuery<RunQuality, ApiError>({
+    queryKey: ['run-quality', workspaceId, projectId, runId],
+    queryFn: () =>
+      api.get<RunQuality>(
+        `/v1/workspaces/${workspaceId}/research-projects/${projectId}/runs/${runId}/quality`,
+      ),
+    enabled: runId !== null,
+    staleTime: 30_000,
+  });
+}

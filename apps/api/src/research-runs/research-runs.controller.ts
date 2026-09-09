@@ -85,4 +85,19 @@ export class ResearchRunsController {
   ) {
     return this.runs.get(tenant, projectId, runId);
   }
+
+  @Get(':runId/quality')
+  @RequirePermissions('research:read')
+  @ApiOperation({
+    summary: 'Per-source research quality for a run',
+    description:
+      'Robots decision, snippet-only status, credibility, freshness/staleness, duplicate cluster and evidence eligibility per source, plus near-duplicate clusters. Reports what the run could not retrieve as prominently as what it could.',
+  })
+  quality(
+    @Param('projectId', ParseUUIDPipe) projectId: string,
+    @Param('runId', ParseUUIDPipe) runId: string,
+    @CurrentTenant() tenant: TenantContext,
+  ) {
+    return this.runs.quality(tenant, projectId, runId);
+  }
 }

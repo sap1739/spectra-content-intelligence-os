@@ -27,6 +27,7 @@ import {
   useFindings,
   useResearchProject,
   useReviewFinding,
+  useRunQuality,
   useRuns,
   useStartRun,
   type FindingRow,
@@ -163,6 +164,96 @@ function parseFeedUrls(raw: string): string[] {
   ];
 }
 
+const ROBOTS_LABEL: Record<
+  string,
+  { text: string; variant: 'success' | 'destructive' | 'warning' | 'muted' }
+> = {
+  ALLOWED: { text: 'robots: allowed', variant: 'success' },
+  DISALLOWED: { text: 'robots: blocked', variant: 'destructive' },
+  UNAVAILABLE: { text: 'robots: unverified', variant: 'warning' },
+  NOT_CHECKED: { text: 'robots: n/a', variant: 'muted' },
+};
+
+const STALENESS_VARIANT: Record<string, 'success' | 'warning' | 'destructive' | 'muted'> = {
+  FRESH: 'success',
+  AGING: 'warning',
+  STALE: 'destructive',
+  EVERGREEN: 'success',
+  UNKNOWN: 'muted',
+};
+
+/** Per-source quality for one run. Never invents a score it does not have. */
+function RunQualityPanel({
+  workspaceId,
+  projectId,
+  runId,
+}: {
+  workspaceId: string;
+  projectId: string;
+  runId: string;
+}) {
+  const quality = useRunQuality(workspaceId, projectId, runId);
+  if (quality.isPending) return <Skeleton className="mt-2 h-24 w-full" />;
+  if (quality.isError) {
+    return <p className="mt-2 text-xs text-destructive">{quality.error.message}</p>;
+  }
+
+  return (
+    <div className="mt-2 flex flex-col gap-2 rounded-md bg-muted/40 p-2">
+      <p className="text-xs text-muted-foreground">{quality.data.note}</p>
+
+      {quality.data.duplicateClusters.length > 0 ? (
+        <p className="text-xs text-muted-foreground">
+          {quality.data.duplicateClusters.length} near-duplicate cluster(s) — syndicated copies
+          count once toward source diversity, not once each.
+        </p>
+      ) : null}
+
+      {quality.data.sources.length === 0 ? (
+        <p className="text-xs text-muted-foreground">No sources recorded for this run.</p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {quality.data.sources.slice(0, 25).map((s) => {
+            const robots = ROBOTS_LABEL[s.robotsDecision] ?? ROBOTS_LABEL['NOT_CHECKED'];
+            const note =
+              typeof s.metadata?.['fetchNote'] === 'string' ? s.metadata['fetchNote'] : null;
+            return (
+              <li key={s.id} className="rounded border border-border bg-background p-2">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="min-w-0 flex-1 truncate text-xs font-medium">{s.title ?? s.url}</p>
+                  <Badge variant={s.evidenceEligible ? 'success' : 'muted'}>
+                    {s.evidenceEligible ? 'evidence-eligible' : 'not evidence'}
+                  </Badge>
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-1">
+                  <Badge variant={robots!.variant}>{robots!.text}</Badge>
+                  {s.snippetOnly ? <Badge variant="warning">snippet-only</Badge> : null}
+                  <Badge variant={STALENESS_VARIANT[s.stalenessStatus] ?? 'muted'}>
+                    {s.stalenessStatus.toLowerCase()}
+                  </Badge>
+                  {s.duplicateClusterKey || s.duplicateOfSourceId ? (
+                    <Badge variant="muted">duplicate cluster</Badge>
+                  ) : null}
+                  <span className="text-xs text-muted-foreground">
+                    {/* Dash, not a fabricated number, when a score is absent. */}
+                    credibility {s.credibilityScore === null ? '—' : s.credibilityScore.toFixed(2)}
+                    {' · '}
+                    freshness {s.freshnessScore === null ? '—' : s.freshnessScore.toFixed(2)}
+                  </span>
+                </div>
+                {s.evidenceExclusionReason ? (
+                  <p className="mt-1 text-xs text-muted-foreground">{s.evidenceExclusionReason}</p>
+                ) : null}
+                {note ? <p className="mt-1 text-xs text-muted-foreground">{note}</p> : null}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function ResearchProjectPage() {
   const params = useParams<{ projectId: string }>();
   const projectId = params.projectId;
@@ -186,6 +277,7 @@ export default function ResearchProjectPage() {
   const feedsValid = feedUrls.length > 0 && feedUrls.every((u) => /^https?:\/\/.+/i.test(u));
 
   const capabilities = useCapabilities();
+  const [qualityRunId, setQualityRunId] = React.useState<string | null>(null);
   const [queriesRaw, setQueriesRaw] = React.useState('');
   const searchQueries = queriesRaw
     .split('\n')
@@ -392,13 +484,54 @@ export default function ResearchProjectPage() {
                           </span>
                         ) : null}
                         <span>{run.stats?.sourcesDiscovered ?? 0} discovered</span>
+                        <span>{run.stats?.sourcesFetched ?? 0} fetched</span>
                         <span>{run.stats?.findingsExtracted ?? 0} findings</span>
-                        <span>{run.stats?.duplicatesRemoved ?? 0} duplicates removed</span>
+                        <span>{run.stats?.duplicatesRemoved ?? 0} duplicates</span>
                       </div>
+                      {/* What the run could NOT do, shown as prominently as
+                          what it could — a partial run must not read as thorough. */}
+                      {(run.stats?.robotsBlocked ?? 0) > 0 ||
+                      (run.stats?.snippetOnly ?? 0) > 0 ||
+                      (run.stats?.blockedDomainRejected ?? 0) > 0 ? (
+                        <div className="mt-1 flex flex-wrap gap-2">
+                          {(run.stats?.robotsBlocked ?? 0) > 0 ? (
+                            <Badge variant="warning">
+                              {run.stats?.robotsBlocked} robots-blocked
+                            </Badge>
+                          ) : null}
+                          {(run.stats?.snippetOnly ?? 0) > 0 ? (
+                            <Badge variant="warning">{run.stats?.snippetOnly} snippet-only</Badge>
+                          ) : null}
+                          {(run.stats?.blockedDomainRejected ?? 0) > 0 ? (
+                            <Badge variant="muted">
+                              {run.stats?.blockedDomainRejected} blocked-domain
+                            </Badge>
+                          ) : null}
+                          {(run.stats?.evidenceEligible ?? 0) > 0 ? (
+                            <Badge variant="success">
+                              {run.stats?.evidenceEligible} evidence-eligible
+                            </Badge>
+                          ) : null}
+                        </div>
+                      ) : null}
                       {run.failureReason ? (
                         <p className="mt-2 line-clamp-2 text-xs text-destructive">
                           {run.failureReason}
                         </p>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="mt-2 text-xs font-medium text-primary underline-offset-2 hover:underline"
+                        onClick={() => setQualityRunId(qualityRunId === run.id ? null : run.id)}
+                      >
+                        {qualityRunId === run.id ? 'Hide source quality' : 'Source quality'}
+                      </button>
+                      {qualityRunId === run.id ? (
+                        <RunQualityPanel
+                          workspaceId={workspaceId}
+                          projectId={projectId}
+                          runId={run.id}
+                        />
                       ) : null}
                     </li>
                   ))}

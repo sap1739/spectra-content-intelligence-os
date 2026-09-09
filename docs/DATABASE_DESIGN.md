@@ -199,7 +199,40 @@ throws rather than relying on convention. The single documented exception is the
 expiry sweep (`budget.reservation.sweep`), which uses `$executeRaw` and touches only expiry
 bookkeeping.
 
-## 10. Future entities
+## 10. Phase 5F research-quality entities
+
+| Table                | Purpose                                             | Key constraints / indexes                                  |
+| -------------------- | --------------------------------------------------- | ---------------------------------------------------------- |
+| domain_policies      | Workspace-level stance + credibility for one domain | unique(workspaceId, domain), index(organizationId, stance) |
+| robots_cache_entries | Cached robots.txt rules per origin                  | unique(origin), index(expiresAt)                           |
+
+`research_sources` gained quality columns (ADR-0030), each recording how well we actually
+retrieved a source rather than assuming we did:
+
+- `snippetOnly` — promoted from provenance JSON to an indexed column so evidence selection and
+  scoring can filter and weight on it. Always paired with a `metadata.fetchNote` saying _why_ the
+  page was not retrieved.
+- `robotsDecision` (`RobotsDecision`) + `robotsCheckedAt` — `ALLOWED` / `DISALLOWED` /
+  `UNAVAILABLE` / `NOT_CHECKED`. **`UNAVAILABLE` is never stored as `ALLOWED`**: proceeding under
+  the missing-file convention is not the same as having verified permission. Feed items are
+  `NOT_CHECKED` because the publisher supplied that content through their own feed.
+- `stalenessStatus` (`StalenessStatus`) — `FRESH` / `AGING` / `STALE` / `EVERGREEN` / `UNKNOWN`.
+  `UNKNOWN` means no publication date was stated; the source is uncertain, not certainly old.
+  `publishedAt` and `retrievedAt` remain distinct and both preserved.
+- `evidenceEligible` + `evidenceExclusionReason` — whether the source may be cited, and if not,
+  precisely why. Never eligible-false without a reason.
+- `diversityWeight` — below 1 for members of a syndication cluster, so one wire story republished
+  by ten outlets contributes one unit of source diversity rather than ten.
+
+`SourceProcessingStatus` gained `ROBOTS_BLOCKED` and `BLOCKED_DOMAIN`. A robots-blocked source
+keeps that status even after its snippet is analysed, so the record never hides why its text is
+thin.
+
+`robots_cache_entries` is deliberately **not** tenant-scoped: robots.txt describes the remote
+site, not any workspace, and the row holds only public crawl rules. `retrieved: false` records a
+failed retrieval explicitly and is cached far more briefly than a success.
+
+## 11. Future entities
 
 Remaining contract-only entities (angles, publications, workspace budgets, knowledge
 documents) are documented in [DOMAIN_MODEL.md](DOMAIN_MODEL.md) §6 and materialize in later

@@ -28,3 +28,41 @@ describe('titleKey', () => {
     expect(titleKey('নতুন অ্যালবাম!')).toContain('নতুন');
   });
 });
+
+describe('normalizeUrl — 5F canonicalization (ADR-0030)', () => {
+  it('collapses http and https of the same page', () => {
+    expect(normalizeUrl('http://example.com/a')).toBe(normalizeUrl('https://example.com/a'));
+  });
+
+  it('collapses www, m and amp host variants', () => {
+    const canonical = normalizeUrl('https://example.com/a');
+    expect(normalizeUrl('https://www.example.com/a')).toBe(canonical);
+    expect(normalizeUrl('https://m.example.com/a')).toBe(canonical);
+    expect(normalizeUrl('https://amp.example.com/a')).toBe(canonical);
+  });
+
+  it('collapses AMP and index paths onto the canonical page', () => {
+    const canonical = normalizeUrl('https://example.com/story');
+    expect(normalizeUrl('https://example.com/story/amp')).toBe(canonical);
+    expect(normalizeUrl('https://example.com/story/')).toBe(canonical);
+    expect(normalizeUrl('https://example.com/story/index.html')).toBe(canonical);
+  });
+
+  it('drops default ports and duplicate slashes', () => {
+    expect(normalizeUrl('https://example.com:443//a//b')).toBe(
+      normalizeUrl('https://example.com/a/b'),
+    );
+  });
+
+  it('strips the broadened tracking-param set so one story is one source', () => {
+    const canonical = normalizeUrl('https://example.com/a?id=7');
+    // The same article from a newsletter, a social share and a search result.
+    expect(normalizeUrl('https://example.com/a?id=7&mc_cid=1&utm_source=news')).toBe(canonical);
+    expect(normalizeUrl('https://example.com/a?id=7&fbclid=abc&igshid=z')).toBe(canonical);
+    expect(normalizeUrl('https://example.com/a?id=7&ref=twitter&spm=x')).toBe(canonical);
+  });
+
+  it('keeps meaningful query params', () => {
+    expect(normalizeUrl('https://example.com/a?page=2')).toContain('page=2');
+  });
+});

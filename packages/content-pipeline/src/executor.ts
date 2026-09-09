@@ -46,16 +46,39 @@ async function loadEvidence(
           id: { in: pack.findingIds },
           organizationId: tenant.organizationId,
           workspaceId: tenant.workspaceId,
+          // Never ground generated content on a source that is ineligible as
+          // evidence — a blocked domain, an injection-quarantined page, or a
+          // duplicate whose original already carries the evidence (ADR-0030).
+          source: { evidenceEligible: true },
         },
         select: {
           id: true,
           summary: true,
           excerpt: true,
-          source: { select: { url: true, title: true, publisher: true } },
+          source: {
+            select: {
+              url: true,
+              title: true,
+              publisher: true,
+              snippetOnly: true,
+              credibilityScore: true,
+            },
+          },
         },
-        take: 12,
+        // Over-fetch so the ranking below has something to choose from.
+        take: 40,
       })
     : [];
+
+  // Prefer fully-retrieved, more credible evidence. Snippet-only findings are
+  // real but weaker, so they fill remaining slots rather than displacing an
+  // article we actually read.
+  const rankedFindings = [...findingRows]
+    .sort((a, b) => {
+      if (a.source.snippetOnly !== b.source.snippetOnly) return a.source.snippetOnly ? 1 : -1;
+      return (b.source.credibilityScore ?? 0.5) - (a.source.credibilityScore ?? 0.5);
+    })
+    .slice(0, 12);
 
   const citationRows = pack.citationIds.length
     ? await prisma.citation.findMany({
@@ -76,7 +99,7 @@ async function loadEvidence(
       })
     : [];
 
-  const findings: GroundingFinding[] = findingRows.map((f) => ({
+  const findings: GroundingFinding[] = rankedFindings.map((f) => ({
     id: f.id,
     summary: f.summary,
     excerpt: f.excerpt,

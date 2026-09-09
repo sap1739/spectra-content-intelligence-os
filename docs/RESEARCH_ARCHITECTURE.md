@@ -77,3 +77,34 @@ expressions evaluated in UTC; each occurrence creates a `ResearchRun` with
 Providers must be used within their terms of service; per-source copyright metadata is
 retained; snapshots are stored for verification, not republication. Trusted/blocked domain
 lists are user-controlled per vertical. See [RESEARCH_PROVIDER_STRATEGY.md](RESEARCH_PROVIDER_STRATEGY.md).
+
+## Research quality controls (Phase 5F, ADR-0030)
+
+**robots.txt is consulted before every discovered-page fetch.** `RobotsGateway` fetches, parses
+and caches rules per origin. A disallowed page is never fetched — it is kept as snippet-only with
+the site's own rule as the reason, and there is no override. When robots.txt cannot be retrieved
+the decision is recorded as `UNAVAILABLE`, never `ALLOWED`: we proceed under convention but did
+not verify permission. Feed items are `NOT_CHECKED` because the publisher supplied that content
+through their own feed.
+
+**Snippet-only sources are weaker evidence, everywhere.** `snippetOnly` is a first-class column
+and is applied in trend scoring (weighted component averages plus a discounted effective source
+count), in evidence selection for generation (fully-retrieved sources rank first), and in the
+API/UI (explicit badge plus the specific reason the page was not retrieved). They remain
+_eligible_ — a snippet is real evidence of a source's gist, just not of its full contents.
+
+**Freshness decay is configurable and labelled.** `evaluateFreshness` returns a score and a
+`StalenessStatus`. Evergreen domains (standards, legislation, docs) hold a steady score rather
+than decaying into invisibility. An undated source is `UNKNOWN` — uncertain, not certainly old.
+
+**Domain credibility is layered:** workspace `DomainPolicy` (with an explicit numeric override and
+evergreen flag) beats the vertical's trusted/blocked lists, which beat a neutral default. BLOCKED
+beats TRUSTED. Blocked domains are counted and reported rather than silently skipped, and can
+never become evidence.
+
+**Fetching is bounded and polite.** `FetchScheduler` caps total in-flight fetches and spaces
+requests per host, honouring `Crawl-delay`. Per-run fetch budgets and pre-flight budget
+enforcement (ADR-0026/0028/0029) are unchanged and still run before any paid operation.
+
+**Runs report what they could not do**: `robotsBlocked`, `snippetOnly`, `blockedDomainRejected`,
+`evidenceEligible` and `duplicateClusters`, plus `GET …/runs/:id/quality` for per-source detail.

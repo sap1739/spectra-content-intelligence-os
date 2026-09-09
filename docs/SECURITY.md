@@ -97,3 +97,19 @@ content, sensitive prompt content. Redaction is unit-tested.
 
 Security issues: open a private GitHub security advisory on the repository. Do not file
 public issues for vulnerabilities.
+
+## 9. Crawler conduct (Phase 5F, ADR-0030)
+
+Discovered pages are fetched from sites we have no relationship with, so the pipeline asks before
+it crawls:
+
+- **robots.txt is checked before every discovered-page fetch**, and a disallowed page is never
+  retrieved. There is no bypass or override path.
+- Failure to retrieve robots.txt is recorded as `UNAVAILABLE`, not `ALLOWED` — proceeding under
+  convention is not the same as having permission, and the record says which happened.
+- Fetching is bounded: total in-flight fetches are capped and requests to one host are spaced,
+  honouring `Crawl-delay`. A run cannot hammer a single site.
+- SSRF protection (`safeFetch`: DNS resolution checks, redirect caps, byte limits, timeouts)
+  applies to robots.txt retrieval exactly as it does to page fetches.
+- The robots cache stores only public crawl rules, keyed by origin, and holds no tenant data — it
+  is deliberately shared across tenants because it describes the remote site, not any workspace.

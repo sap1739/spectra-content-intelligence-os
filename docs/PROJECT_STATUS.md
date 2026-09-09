@@ -1,7 +1,7 @@
 # SpectraContent Intelligence OS — Project Status
 
 **Snapshot date:** 2026-09-09 · **Branch:** `main`
-**Status:** Phases 1–4 complete · Phase 5 in progress (5A–5E.2 shipped)
+**Status:** Phases 1–4 complete · Phase 5 in progress (5A–5F shipped)
 
 > This document is a factual, audited snapshot intended as context for planning further work.
 > Every number below was measured from the repository, not estimated.
@@ -189,6 +189,14 @@ standards, health/readiness endpoints, OpenAPI at `/docs`.
   scan, snapshotting, scoring, embedding). Discovered URLs are fetched through the existing
   `safeFetch`; failed fetches keep the snippet and mark `snippetOnly`. Provenance records the
   _query_ that found a source.
+- **5F:** **Research quality hardening.** robots.txt is consulted before every discovered-page
+  fetch (disallowed pages are never fetched, kept snippet-only with the site's own rule as the
+  reason; an unretrievable robots.txt records `UNAVAILABLE`, never `ALLOWED`). Snippet-only
+  evidence is down-weighted in trend scoring, ranked below fully-retrieved sources in generation,
+  and badged in the UI — weaker, but still eligible. Configurable freshness decay with staleness
+  labels and evergreen domains. Layered domain credibility (workspace policy → vertical lists →
+  neutral) where BLOCKED beats TRUSTED and blocked domains can never be evidence. Syndication no
+  longer inflates source diversity. Runs report what they could not do (ADR-0030).
 - **5E.2:** **Transactional reservations.** The budget decision and the reservation write are now
   one transaction, serialized by a PostgreSQL advisory lock keyed on `organizationId`, so
   concurrent operations cannot all pass on the last remaining allowance. Verified against real

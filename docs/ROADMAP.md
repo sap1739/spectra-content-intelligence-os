@@ -200,6 +200,22 @@ weakest link in the differentiator: research and evidence quality.
   failure after spend, retry, cancellation and crash-then-expiry. Proven against real PostgreSQL:
   10 concurrent reserves against room for one yield exactly one winner — and the test fails
   (7 winners) with the lock removed (ADR-0029).
-- Next: content extraction for non-HTML sources; fact verification; hybrid retrieval tuning +
-  reranking; down-weighting snippet-only evidence in trend scoring; an approval workflow behind
-  the existing `REQUIRES_APPROVAL` decision.
+- ✅ **Increment F — research quality hardening.** The pipeline could ingest broadly but could not
+  distinguish well-sourced from thinly-sourced. Now: **robots.txt is consulted before every
+  discovered-page fetch** (a disallowed page is never fetched, kept snippet-only with the site's
+  own rule as the reason, no override; a robots.txt we cannot retrieve is recorded `UNAVAILABLE`,
+  never `ALLOWED`, because proceeding under convention is not the same as having permission).
+  **Snippet-only evidence is now visibly weaker**: down-weighted in trend scoring (weighted
+  averages plus a discounted effective source count, so snippets alone cannot verify a trend),
+  ranked below fully-retrieved sources in generation evidence selection, and badged in the UI —
+  but still eligible, because a snippet is real evidence of a source's gist. **Freshness decay is
+  configurable and labelled** (`FRESH`/`AGING`/`STALE`/`EVERGREEN`/`UNKNOWN`), with evergreen
+  domains held steady and undated sources reported as uncertain rather than old. **Domain
+  credibility is layered** (workspace policy with numeric overrides → vertical lists → neutral),
+  BLOCKED beats TRUSTED, and blocked domains are counted and reported rather than silently
+  dropped. **Syndication no longer inflates diversity** — clusters count once, and URL
+  canonicalization was broadened so one article from three channels is one source. Fetching is
+  bounded and per-host polite. Runs report what they could NOT do (ADR-0030).
+- Next: content extraction for non-HTML sources (PDFs still fall back to snippet-only); fact
+  verification / claim corroboration; hybrid retrieval tuning + reranking; an approval workflow
+  behind the existing `REQUIRES_APPROVAL` decision.

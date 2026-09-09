@@ -119,6 +119,14 @@ export const researchRunStatsSchema = z.object({
   findingsExtracted: z.number().int().nonnegative().default(0),
   duplicatesRemoved: z.number().int().nonnegative().default(0),
   claimsExtracted: z.number().int().nonnegative().default(0),
+  // Phase 5F quality counters (ADR-0030). A run reports what it could NOT do
+  // as prominently as what it could — a thorough-looking run that was mostly
+  // robots-blocked must not read like a thorough run.
+  robotsBlocked: z.number().int().nonnegative().default(0),
+  snippetOnly: z.number().int().nonnegative().default(0),
+  blockedDomainRejected: z.number().int().nonnegative().default(0),
+  evidenceEligible: z.number().int().nonnegative().default(0),
+  duplicateClusters: z.number().int().nonnegative().default(0),
 });
 export type ResearchRunStats = z.infer<typeof researchRunStatsSchema>;
 

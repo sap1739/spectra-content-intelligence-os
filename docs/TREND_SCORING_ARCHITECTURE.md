@@ -55,3 +55,23 @@ Configs are stored per tenant (fallback to the shipped `spectra-default@1.0.0`),
 immutably: editing creates a new version. Vertical `relevanceCriteria` weights feed the
 `brandRelevance`/`audienceRelevance` component producers. Score recomputation is a queued job
 that never mutates historical `TrendScoreResult`s — new results append.
+
+## Evidence weighting (Phase 5F, ADR-0030)
+
+Two corrections to how findings feed the scoring engine:
+
+- **Snippet-only findings are down-weighted**, not dropped. Component averages
+  (`freshness`, `sourceCredibility`) are weighted, with snippet-only findings at
+  `SNIPPET_ONLY_CONFIDENCE_FACTOR` (0.4). The _effective source count_ used against
+  `minimumSourceCount` is discounted the same way, so a trend supported only by search snippets
+  cannot reach the verification threshold on volume alone.
+- **Syndication no longer inflates `sourceDiversity`.** Diversity counts duplicate _clusters_
+  rather than rows: one wire story republished by ten outlets is one corroboration, not ten.
+  Combined with the broadened URL canonicalization, the same article arriving via newsletter,
+  social share and search no longer reads as three independent publishers.
+
+Only evidence-eligible findings are scored at all — blocked domains, injection-quarantined
+sources and duplicates are excluded upstream, with this as the safety net.
+
+Scores for snippet-heavy or syndicated topics are therefore lower than before 5F. That is the
+correction; the previous numbers overstated the evidence.

@@ -200,4 +200,74 @@ export class ResearchRunsService {
     });
     return project;
   }
+
+  /**
+   * Per-source quality detail for one run (ADR-0030).
+   *
+   * Reports what the run could NOT do — robots-blocked, snippet-only, blocked
+   * domains, duplicates — as prominently as what it could, so a partial run is
+   * never mistaken for a thorough one.
+   */
+  async quality(tenant: TenantContext, projectId: string, runId: string) {
+    await this.assertProject(tenant, projectId);
+    const scope = {
+      organizationId: tenant.organizationId,
+      workspaceId: tenant.workspaceId as string,
+    };
+    const run = await this.prisma.client.researchRun.findFirst({
+      where: { id: runId, projectId, ...scope },
+      select: { id: true, status: true, stats: true, failureReason: true },
+    });
+    if (!run) throw new TenantIsolationError();
+
+    const sources = await this.prisma.client.researchSource.findMany({
+      where: { ...scope, runId, deletedAt: null },
+      orderBy: [{ evidenceEligible: 'desc' }, { credibilityScore: 'desc' }],
+      take: 200,
+      select: {
+        id: true,
+        url: true,
+        title: true,
+        publisher: true,
+        publishedAt: true,
+        retrievedAt: true,
+        category: true,
+        credibilityScore: true,
+        freshnessScore: true,
+        stalenessStatus: true,
+        snippetOnly: true,
+        robotsDecision: true,
+        robotsCheckedAt: true,
+        evidenceEligible: true,
+        evidenceExclusionReason: true,
+        diversityWeight: true,
+        duplicateOfSourceId: true,
+        duplicateClusterKey: true,
+        processingStatus: true,
+        metadata: true,
+      },
+    });
+
+    // Near-duplicate clusters, so an operator can see which "distinct" sources
+    // are actually the same syndicated story.
+    const clusters = new Map<string, { key: string; size: number; sourceIds: string[] }>();
+    for (const s of sources) {
+      const key = s.duplicateClusterKey ?? s.duplicateOfSourceId;
+      if (!key) continue;
+      const entry = clusters.get(key) ?? { key, size: 0, sourceIds: [] };
+      entry.size += 1;
+      entry.sourceIds.push(s.id);
+      clusters.set(key, entry);
+    }
+
+    return {
+      run,
+      sources,
+      duplicateClusters: [...clusters.values()].filter((c) => c.size > 1),
+      note:
+        'Counts describe what this run actually retrieved. Robots-blocked and snippet-only sources ' +
+        'are kept with a truthful reason and weighted below fully-retrieved sources; they are never ' +
+        'presented as equivalent evidence.',
+    };
+  }
 }

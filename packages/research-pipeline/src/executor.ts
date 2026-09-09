@@ -23,17 +23,22 @@ import {
 } from '@spectra/metering';
 
 import { candidatesFromFeed, candidatesFromSearch, type CandidateItem } from './discovery';
+import { FetchScheduler } from './fetch-scheduler';
+import {
+  SNIPPET_ONLY_CONFIDENCE_FACTOR,
+  diversityWeightFor,
+  evaluateDomain,
+  evaluateEligibility,
+  evaluateFreshness,
+  type DomainPolicyEntry,
+  type FreshnessDecayConfig,
+} from './quality';
+import { RobotsGateway } from './robots';
 import { HtmlExtractionProvider } from './extraction';
 import { sha256Hex, titleKey, urlHash } from './hashing';
 import { FirstPartyRssProvider } from './rss';
 import { assertSafeUrl, type SafeFetchOptions } from './safe-fetch';
-import {
-  credibilityScore,
-  domainOf,
-  freshnessScore,
-  sourceDiversityScore,
-  velocityScore,
-} from './signals';
+import { sourceDiversityScore, velocityScore } from './signals';
 
 export const PIPELINE_VERSION = 'rss-pipeline/1.0.0';
 const DEFAULT_MAX_PAGE_FETCHES = 100;
@@ -62,6 +67,14 @@ export interface PipelineDeps {
   usage?: UsageRecorder;
   /** Hard ceiling on pages fetched per run (default 100). */
   maxPageFetchesPerRun?: number;
+  /** Simultaneous page fetches across hosts (default 4). */
+  fetchConcurrency?: number;
+  /** Minimum gap between requests to one host (default 1000ms). */
+  perDomainDelayMs?: number;
+  /** Overrides for freshness decay (ADR-0030). */
+  freshnessConfig?: Partial<FreshnessDecayConfig>;
+  /** Disables robots.txt checking. Test-only; never in production. */
+  skipRobots?: boolean;
   now?: () => Date;
 }
 
@@ -91,6 +104,11 @@ function emptyStats(): ResearchRunStats {
     findingsExtracted: 0,
     duplicatesRemoved: 0,
     claimsExtracted: 0,
+    robotsBlocked: 0,
+    snippetOnly: 0,
+    blockedDomainRejected: 0,
+    evidenceEligible: 0,
+    duplicateClusters: 0,
   };
 }
 
@@ -137,6 +155,19 @@ export async function executeResearchRun(
   const excludedKeywords = vertical?.excludedKeywords ?? [];
   const trustedDomains = vertical?.trustedDomains ?? [];
   const blockedDomains = (vertical?.blockedDomains ?? []).map((d) => d.toLowerCase());
+  // Workspace-level domain policy layers over the vertical's lists and can
+  // carry an explicit credibility number and an evergreen flag (ADR-0030).
+  const domainPolicies: DomainPolicyEntry[] = (
+    await deps.prisma.domainPolicy.findMany({
+      where: { organizationId: tenant.organizationId, workspaceId: tenant.workspaceId },
+      select: { domain: true, stance: true, credibilityOverride: true, evergreen: true },
+    })
+  ).map((p) => ({
+    domain: p.domain,
+    stance: p.stance,
+    credibilityOverride: p.credibilityOverride,
+    evergreen: p.evergreen,
+  }));
 
   // Re-check the budget at execution time: this job may have been queued before
   // the workspace hit its ceiling. Marked FAILED and returned WITHOUT throwing,
@@ -246,6 +277,24 @@ export async function executeResearchRun(
         usage,
         resourceId: run.id,
         maxPageFetches: deps.maxPageFetchesPerRun ?? DEFAULT_MAX_PAGE_FETCHES,
+        // Ask robots.txt before every discovered-page fetch (ADR-0030).
+        // `skipRobots` exists only so fixture servers in tests need not serve
+        // a robots.txt; it must never be set in production.
+        ...(deps.skipRobots
+          ? {}
+          : {
+              robots: new RobotsGateway({
+                prisma: deps.prisma,
+                ...(deps.fetchOptions ? { fetchOptions: deps.fetchOptions } : {}),
+                logger,
+              }),
+            }),
+        scheduler: new FetchScheduler({
+          ...(deps.fetchConcurrency !== undefined ? { concurrency: deps.fetchConcurrency } : {}),
+          ...(deps.perDomainDelayMs !== undefined
+            ? { perDomainDelayMs: deps.perDomainDelayMs }
+            : {}),
+        }),
       });
       candidates.push(...discovery.candidates);
       stats.queriesExecuted += discovery.executed;
@@ -264,11 +313,20 @@ export async function executeResearchRun(
           } catch {
             continue; // hostile/invalid item link — skip silently
           }
-          const domain = domainOf(candidate.url);
-          if (blockedDomains.some((b) => domain === b || domain.endsWith(`.${b}`))) {
+          // Workspace policy beats vertical list; BLOCKED beats TRUSTED.
+          const domainVerdict = evaluateDomain(candidate.url, {
+            trustedDomains,
+            blockedDomains,
+            policies: domainPolicies,
+          });
+          const domain = domainVerdict.domain;
+          stats.sourcesDiscovered += 1;
+          if (domainVerdict.stance === 'BLOCKED') {
+            // Counted and reported, not silently dropped: an operator must be
+            // able to see that their block list is what removed these.
+            stats.blockedDomainRejected += 1;
             continue;
           }
-          stats.sourcesDiscovered += 1;
 
           // Exact duplicate: URL already ingested in this workspace.
           const uHash = urlHash(candidate.url);
@@ -299,9 +357,15 @@ export async function executeResearchRun(
 
           const publishedAt = candidate.publishedAt ? new Date(candidate.publishedAt) : null;
           const contentHash = sha256Hex(text || candidate.url);
-          const credibility = credibilityScore(domain, trustedDomains);
-          const freshness = freshnessScore(publishedAt, now());
+          const credibility = domainVerdict.credibility;
+          const freshnessResult = evaluateFreshness(publishedAt, now(), {
+            evergreen: domainVerdict.evergreen,
+            ...(deps.freshnessConfig ? { config: deps.freshnessConfig } : {}),
+          });
+          const freshness = freshnessResult.score;
           const blocked = extracted.injectionRisk?.disposition === 'BLOCK';
+          if (candidate.robotsDecision === 'DISALLOWED') stats.robotsBlocked += 1;
+          if (candidate.snippetOnly) stats.snippetOnly += 1;
 
           // Near-duplicates: identical extracted content anywhere in the
           // workspace, or same normalized title within this run.
@@ -316,6 +380,15 @@ export async function executeResearchRun(
           });
           const nearDupOfId =
             existingByContent?.id ?? (tKey ? (seenTitleKeys.get(tKey) ?? null) : null);
+
+          const eligibility = evaluateEligibility({
+            stance: domainVerdict.stance,
+            snippetOnly: candidate.snippetOnly,
+            robotsDecision: candidate.robotsDecision,
+            injectionBlocked: blocked,
+            isDuplicate: nearDupOfId !== null,
+          });
+          if (eligibility.eligible && !blocked && !nearDupOfId) stats.evidenceEligible += 1;
 
           const source = await deps.prisma.researchSource.create({
             data: {
@@ -347,8 +420,30 @@ export async function executeResearchRun(
                 // built from it must never look like one from the full article.
                 snippetOnly: candidate.snippetOnly,
               },
-              processingStatus: blocked ? 'SKIPPED' : nearDupOfId ? 'DEDUPLICATED' : 'EXTRACTED',
-              metadata: blocked ? { injectionRiskLevel: extracted.injectionRisk?.riskLevel } : {},
+              snippetOnly: candidate.snippetOnly,
+              robotsDecision: candidate.robotsDecision,
+              robotsCheckedAt: candidate.robotsDecision === 'NOT_CHECKED' ? null : now(),
+              stalenessStatus: freshnessResult.status,
+              evidenceEligible: eligibility.eligible,
+              evidenceExclusionReason: eligibility.reason,
+              diversityWeight: nearDupOfId ? diversityWeightFor(2) : 1,
+              processingStatus:
+                candidate.robotsDecision === 'DISALLOWED'
+                  ? 'ROBOTS_BLOCKED'
+                  : blocked
+                    ? 'SKIPPED'
+                    : nearDupOfId
+                      ? 'DEDUPLICATED'
+                      : 'EXTRACTED',
+              metadata: {
+                ...(blocked ? { injectionRiskLevel: extracted.injectionRisk?.riskLevel } : {}),
+                ...(candidate.fetchNote ? { fetchNote: candidate.fetchNote } : {}),
+                domainStance: domainVerdict.stance,
+                domainVerdictSource: domainVerdict.source,
+                ...(freshnessResult.ageDays !== null
+                  ? { ageDays: Math.round(freshnessResult.ageDays * 10) / 10 }
+                  : {}),
+              },
             },
           });
           if (tKey && !nearDupOfId) seenTitleKeys.set(tKey, source.id);
@@ -426,7 +521,13 @@ export async function executeResearchRun(
           });
           await deps.prisma.researchSource.update({
             where: { id: source.id },
-            data: { processingStatus: 'ANALYZED' },
+            // Keep the more specific terminal status: a source we were not
+            // allowed to fetch is ROBOTS_BLOCKED even though we analysed its
+            // snippet. Overwriting it would hide why the text is thin.
+            data: {
+              processingStatus:
+                candidate.robotsDecision === 'DISALLOWED' ? 'ROBOTS_BLOCKED' : 'ANALYZED',
+            },
           });
           stats.findingsExtracted += 1;
 
@@ -589,7 +690,18 @@ export async function executeResearchRun(
           freshnessScore: true,
           sourceId: true,
           createdAt: true,
-          source: { select: { publishedAt: true, publisher: true } },
+          source: {
+            select: {
+              publishedAt: true,
+              publisher: true,
+              // 5F quality inputs: a snippet-only or syndicated source must not
+              // contribute like a fully-retrieved, independent one (ADR-0030).
+              snippetOnly: true,
+              duplicateClusterKey: true,
+              duplicateOfSourceId: true,
+              evidenceEligible: true,
+            },
+          },
         },
       });
 
@@ -598,13 +710,52 @@ export async function executeResearchRun(
         const topicFindings = findings.filter((f) => f.topics.includes(keyword));
         if (topicFindings.length === 0) continue;
 
-        const distinctSources = new Set(topicFindings.map((f) => f.sourceId));
-        const publishers = new Set(topicFindings.map((f) => f.source.publisher ?? 'unknown'));
-        const observedAt = (f: (typeof topicFindings)[number]) =>
-          f.source.publishedAt ?? f.createdAt;
-        const recentCount = topicFindings.filter((f) => observedAt(f) >= recentStart).length;
-        const avg = (values: number[]) =>
-          values.length === 0 ? 0 : values.reduce((a, b) => a + b, 0) / values.length;
+        // Only evidence-eligible findings feed a trend score. Blocked domains
+        // and duplicates are already excluded upstream; this is the safety net.
+        const scoreable = topicFindings.filter((f) => f.source.evidenceEligible);
+        if (scoreable.length === 0) continue;
+
+        const distinctSources = new Set(scoreable.map((f) => f.sourceId));
+
+        // Syndication-aware diversity: one wire story republished by ten outlets
+        // is ONE corroboration, not ten. Cluster members collapse to a single
+        // unit before publishers are counted, so re-publication cannot inflate
+        // confidence.
+        const diversityUnits = new Set(
+          scoreable.map(
+            (f) =>
+              f.source.duplicateClusterKey ??
+              f.source.duplicateOfSourceId ??
+              `publisher:${f.source.publisher ?? 'unknown'}`,
+          ),
+        );
+
+        const observedAt = (f: (typeof scoreable)[number]) => f.source.publishedAt ?? f.createdAt;
+        const recentCount = scoreable.filter((f) => observedAt(f) >= recentStart).length;
+
+        // Snippet-only findings carry real but weaker evidence, so they are
+        // weighted down rather than dropped — an average that treats a snippet
+        // like a full article overstates what we actually read.
+        const weightOf = (f: (typeof scoreable)[number]) =>
+          f.source.snippetOnly ? SNIPPET_ONLY_CONFIDENCE_FACTOR : 1;
+        const weightedAvg = (pick: (f: (typeof scoreable)[number]) => number) => {
+          let num = 0;
+          let den = 0;
+          for (const f of scoreable) {
+            const w = weightOf(f);
+            num += pick(f) * w;
+            den += w;
+          }
+          return den === 0 ? 0 : num / den;
+        };
+        // Effective source count also discounts snippets, so a trend supported
+        // only by snippets does not reach the verification threshold on volume.
+        const effectiveSourceCount = Math.round(
+          [...distinctSources].reduce((sum, id) => {
+            const f = scoreable.find((x) => x.sourceId === id);
+            return sum + (f ? weightOf(f) : 0);
+          }, 0),
+        );
 
         const topicKey = titleKey(keyword).replace(/ /g, '-');
         let candidate = await deps.prisma.trendCandidate.findFirst({
@@ -635,18 +786,18 @@ export async function executeResearchRun(
           {
             trendCandidateId: candidate.id,
             components: {
-              freshness: avg(topicFindings.map((f) => f.freshnessScore ?? 0)),
-              velocity: velocityScore(recentCount, topicFindings.length),
-              sourceDiversity: sourceDiversityScore(publishers.size, topicFindings.length),
-              sourceCredibility: avg(topicFindings.map((f) => f.credibilityScore ?? 0.5)),
+              freshness: weightedAvg((f) => f.freshnessScore ?? 0),
+              velocity: velocityScore(recentCount, scoreable.length),
+              sourceDiversity: sourceDiversityScore(diversityUnits.size, scoreable.length),
+              sourceCredibility: weightedAvg((f) => f.credibilityScore ?? 0.5),
             },
-            sourceCount: distinctSources.size,
+            sourceCount: effectiveSourceCount,
           },
           now,
         );
 
         const config = deps.scoringConfig ?? DEFAULT_TREND_SCORING_CONFIG;
-        const canVerify = distinctSources.size >= config.minimumSourceCount;
+        const canVerify = effectiveSourceCount >= config.minimumSourceCount;
         const nextState =
           candidate.state === 'UNVERIFIED' &&
           canVerify &&

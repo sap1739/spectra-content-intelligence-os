@@ -54,6 +54,7 @@ model User {
   workspaceBudgets      WorkspaceBudget[]
   organizationBudgets   OrganizationBudget[]
   budgetOperationLimits BudgetOperationLimit[]
+  domainPolicies        DomainPolicy[]
 
   @@index([status])
   @@map("users")
@@ -105,6 +106,7 @@ model Organization {
   workspaceBudgets      WorkspaceBudget[]
   organizationBudget    OrganizationBudget?
   budgetOperationLimits BudgetOperationLimit[]
+  domainPolicies        DomainPolicy[]
   budgetReservations    BudgetReservation[]
   invitations           Invitation[]
   trendWatchlists       TrendWatchlist[]
@@ -230,6 +232,7 @@ model Workspace {
   usageEvents           UsageEvent[]
   workspaceBudget       WorkspaceBudget?
   budgetOperationLimits BudgetOperationLimit[]
+  domainPolicies        DomainPolicy[]
   budgetReservations    BudgetReservation[]
 
   @@unique([organizationId, slug])
@@ -462,38 +465,78 @@ enum SourceProcessingStatus {
   ANALYZED
   FAILED
   SKIPPED
+  /// robots.txt disallowed the fetch. Kept, never fetched, never pretended fetched.
+  ROBOTS_BLOCKED
+  /// The domain is blocked for this workspace/vertical; ineligible as evidence.
+  BLOCKED_DOMAIN
+}
+
+/// Outcome of the robots.txt check for a source (ADR-0030).
+enum RobotsDecision {
+  ALLOWED
+  DISALLOWED
+  /// robots.txt could not be retrieved. We proceed, and record that we did not
+  /// actually verify permission — "unavailable" is not "allowed".
+  UNAVAILABLE
+  /// No fetch was attempted (feed item, snippet-only by configuration).
+  NOT_CHECKED
+}
+
+/// How much age has eroded confidence in a source (ADR-0030).
+enum StalenessStatus {
+  FRESH
+  AGING
+  STALE
+  /// Reference material whose value does not decay with age.
+  EVERGREEN
+  /// No publication date was stated — decay cannot be computed honestly.
+  UNKNOWN
 }
 
 model ResearchSource {
-  id                  String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId      String                 @db.Uuid
-  workspaceId         String                 @db.Uuid
-  projectId           String                 @db.Uuid
-  runId               String?                @db.Uuid
-  url                 String
-  canonicalUrl        String?
+  id                      String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId          String                 @db.Uuid
+  workspaceId             String                 @db.Uuid
+  projectId               String                 @db.Uuid
+  runId                   String?                @db.Uuid
+  url                     String
+  canonicalUrl            String?
   /// SHA-256 of the normalized URL — exact-duplicate detection per workspace.
-  urlHash             String
-  title               String?
-  publisher           String?
-  author              String?
-  publishedAt         DateTime?              @db.Timestamptz(6)
-  retrievedAt         DateTime               @db.Timestamptz(6)
-  language            String?
-  geography           String?
-  category            SourceCategory         @default(WEB)
-  credibilityScore    Float?
-  freshnessScore      Float?
-  duplicateOfSourceId String?                @db.Uuid
-  duplicateClusterKey String?
+  urlHash                 String
+  title                   String?
+  publisher               String?
+  author                  String?
+  publishedAt             DateTime?              @db.Timestamptz(6)
+  retrievedAt             DateTime               @db.Timestamptz(6)
+  language                String?
+  geography               String?
+  category                SourceCategory         @default(WEB)
+  credibilityScore        Float?
+  freshnessScore          Float?
+  duplicateOfSourceId     String?                @db.Uuid
+  duplicateClusterKey     String?
   /// SHA-256 of extracted content — near-duplicate clustering input.
-  contentHash         String?
+  contentHash             String?
   /// { license?, rightsHolder?, attributionRequired?, usageNotes? }
-  copyright           Json?
+  copyright               Json?
   /// { providerId, providerKind, requestRef?, retrievedAt, pipelineVersion? }
-  provenance          Json
-  processingStatus    SourceProcessingStatus @default(DISCOVERED)
-  metadata            Json                   @default("{}")
+  provenance              Json
+  /// TRUE when the body is a search snippet because the page was not fetched
+  /// (blocked by robots, unreachable, or budget-capped). Promoted from
+  /// provenance JSON to a column so evidence selection can filter on it.
+  snippetOnly             Boolean                @default(false)
+  robotsDecision          RobotsDecision         @default(NOT_CHECKED)
+  robotsCheckedAt         DateTime?              @db.Timestamptz(6)
+  /// Why this source is or is not usable as evidence — always populated.
+  evidenceEligible        Boolean                @default(true)
+  evidenceExclusionReason String?
+  stalenessStatus         StalenessStatus        @default(UNKNOWN)
+  /// Distinct-publisher weight for diversity: 1 for an original, <1 for a
+  /// member of a syndication cluster so re-runs of one story do not read as
+  /// independent corroboration.
+  diversityWeight         Float                  @default(1)
+  processingStatus        SourceProcessingStatus @default(DISCOVERED)
+  metadata                Json                   @default("{}")
 
   createdAt DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt DateTime  @updatedAt @db.Timestamptz(6)
@@ -1558,4 +1601,62 @@ enum ReservationStatus {
   RECONCILED
   /// Work never ran (failed/refused); allowance returned.
   RELEASED
+}
+
+/// Workspace-level source policy for one domain (ADR-0030).
+///
+/// Verticals already carry trusted/blocked domain lists; this adds a
+/// workspace-wide layer plus an explicit numeric credibility override, so an
+/// operator can say "we trust this regulator at 0.95" rather than only
+/// "trusted / not trusted".
+model DomainPolicy {
+  id                  String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId      String       @db.Uuid
+  workspaceId         String       @db.Uuid
+  /// Registrable host, lower-cased, no leading "www." — matches subdomains.
+  domain              String
+  stance              DomainStance @default(NEUTRAL)
+  /// Explicit credibility in [0,1]. NULL = derive from stance.
+  credibilityOverride Float?
+  /// Content here does not decay with age (standards, legislation, docs).
+  evergreen           Boolean      @default(false)
+  note                String?
+  updatedById         String?      @db.Uuid
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  updatedBy    User?        @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, domain])
+  @@index([organizationId, stance])
+  @@map("domain_policies")
+}
+
+enum DomainStance {
+  TRUSTED
+  NEUTRAL
+  /// Never usable as evidence unless an operator explicitly overrides.
+  BLOCKED
+}
+
+/// Cached robots.txt decision per host, so one run does not re-fetch robots.txt
+/// for every page and repeat runs stay polite (ADR-0030).
+model RobotsCacheEntry {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Scheme + host + port, e.g. "https://example.com".
+  origin            String   @unique
+  /// Raw rules for our user-agent, already parsed into path prefixes.
+  disallow          String[] @default([])
+  allow             String[] @default([])
+  crawlDelaySeconds Int?
+  /// FALSE when robots.txt could not be retrieved — recorded, not assumed.
+  retrieved         Boolean  @default(true)
+  fetchedAt         DateTime @default(now()) @db.Timestamptz(6)
+  expiresAt         DateTime @db.Timestamptz(6)
+
+  @@index([expiresAt])
+  @@map("robots_cache_entries")
 }
