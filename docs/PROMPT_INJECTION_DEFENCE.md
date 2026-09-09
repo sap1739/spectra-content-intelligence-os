@@ -62,3 +62,17 @@ publication. Uploaded internal documents receive the same treatment as external 
 assessor versioning, boundary uniqueness and collision avoidance. Phase 2 adds a red-team
 corpus executed in CI against the scanner and, more importantly, against the full prompt
 assembly path.
+
+## Extracted documents (Phase 5G, ADR-0031)
+
+Document text is treated exactly like scraped web content: `scanForPromptInjection` runs on every
+extracted document, and the text is wrapped by `wrapUntrustedContent()` before it can reach a
+prompt.
+
+**A PDF is not more trustworthy than a web page.** If anything it is a more convenient carrier for
+hidden instructions — text can be visually concealed, placed in metadata, or buried on a page a
+human reviewer will not read. A document whose scan returns a `BLOCK` disposition is quarantined
+and never used as evidence, identically to a hostile web page.
+
+Parser error messages are deliberately **not** passed through: they can echo document content, and
+extracted private document text must never reach logs.

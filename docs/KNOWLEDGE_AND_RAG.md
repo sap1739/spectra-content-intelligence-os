@@ -64,3 +64,17 @@ collection so mixed-dimension corruption is impossible.
 All retrieved/uploaded text passes the prompt-injection scanner and is wrapped via
 `wrapUntrustedContent` before any LLM sees it — see
 [PROMPT_INJECTION_DEFENCE.md](PROMPT_INJECTION_DEFENCE.md).
+
+## Extracted documents in the knowledge base (Phase 5G, ADR-0031)
+
+Extracted document text flows into the existing chunking, embedding and `document_chunks` path —
+no separate store. That means embedding-collection pairing (ADR-0023), tenant isolation and budget
+pre-flight (ADR-0028) apply to document text exactly as they do to web content; embeddings are
+generated only after a pre-flight allows them.
+
+What documents add is **anchors**: each chunk can be traced to a page (PDF), a section
+(DOCX/Markdown) or a line range (text), so retrieval can cite a location inside a long document
+rather than the document as a whole.
+
+Documents are never extracted across tenants: extraction is invoked with the run's tenant scope,
+and chunks are written under that workspace only.

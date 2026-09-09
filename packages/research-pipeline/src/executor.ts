@@ -12,7 +12,7 @@ import {
   canTransitionTrend,
 } from '@spectra/trend-core';
 
-import type { ResearchProviderRegistry } from '@spectra/research-core';
+import type { DocumentExtractionProvider, ResearchProviderRegistry } from '@spectra/research-core';
 
 import {
   NoopUsageRecorder,
@@ -75,6 +75,11 @@ export interface PipelineDeps {
   freshnessConfig?: Partial<FreshnessDecayConfig>;
   /** Disables robots.txt checking. Test-only; never in production. */
   skipRobots?: boolean;
+  /**
+   * Turns discovered PDF/DOCX/TXT bytes into anchored text (ADR-0031).
+   * Omitted => documents stay snippet-only, as before 5G.
+   */
+  documentExtractor?: DocumentExtractionProvider;
   now?: () => Date;
 }
 
@@ -106,6 +111,8 @@ function emptyStats(): ResearchRunStats {
     claimsExtracted: 0,
     robotsBlocked: 0,
     snippetOnly: 0,
+    documentsExtracted: 0,
+    documentExtractionFailures: 0,
     blockedDomainRejected: 0,
     evidenceEligible: 0,
     duplicateClusters: 0,
@@ -289,6 +296,7 @@ export async function executeResearchRun(
                 logger,
               }),
             }),
+        ...(deps.documentExtractor ? { documentExtractor: deps.documentExtractor } : {}),
         scheduler: new FetchScheduler({
           ...(deps.fetchConcurrency !== undefined ? { concurrency: deps.fetchConcurrency } : {}),
           ...(deps.perDomainDelayMs !== undefined
@@ -366,6 +374,23 @@ export async function executeResearchRun(
           const blocked = extracted.injectionRisk?.disposition === 'BLOCK';
           if (candidate.robotsDecision === 'DISALLOWED') stats.robotsBlocked += 1;
           if (candidate.snippetOnly) stats.snippetOnly += 1;
+          if (candidate.document) {
+            stats.documentsExtracted += candidate.document.failureCode ? 0 : 1;
+            stats.documentExtractionFailures += candidate.document.failureCode ? 1 : 0;
+            // Counter-only metering so per-kind limits can bound extraction
+            // volume; it is first-party work with no vendor charge.
+            await usage.record(tenant, {
+              kind: 'DOCUMENT_EXTRACTION',
+              provider: 'first-party',
+              model: candidate.document.documentType,
+              requests: 1,
+              resourceType: 'RESEARCH_RUN',
+              resourceId: run.id,
+              metadata: candidate.document.failureCode
+                ? { failureCode: candidate.document.failureCode }
+                : { pageCount: candidate.document.pageCount },
+            });
+          }
 
           // Near-duplicates: identical extracted content anywhere in the
           // workspace, or same normalized title within this run.
@@ -421,6 +446,11 @@ export async function executeResearchRun(
                 snippetOnly: candidate.snippetOnly,
               },
               snippetOnly: candidate.snippetOnly,
+              // Document provenance (ADR-0031): type, page count, and the
+              // failure code when extraction was attempted and did not work.
+              documentType: candidate.document?.documentType ?? null,
+              documentPageCount: candidate.document?.pageCount ?? null,
+              extractionFailureCode: candidate.document?.failureCode ?? null,
               robotsDecision: candidate.robotsDecision,
               robotsCheckedAt: candidate.robotsDecision === 'NOT_CHECKED' ? null : now(),
               stalenessStatus: freshnessResult.status,

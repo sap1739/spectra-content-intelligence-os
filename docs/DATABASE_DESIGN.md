@@ -232,7 +232,27 @@ thin.
 site, not any workspace, and the row holds only public crawl rules. `retrieved: false` records a
 failed retrieval explicitly and is cached far more briefly than a success.
 
-## 11. Future entities
+## 11. Phase 5G document extraction
+
+`research_sources` gained document columns (ADR-0031):
+
+- `documentType` (`ExtractedDocumentType`) — PDF/DOCX/TXT/MARKDOWN, set only when the source is a
+  document rather than a web page.
+- `documentPageCount` — pages actually extracted.
+- `extractionFailureCode` (`DocumentExtractionFailureCode`) — populated **only** when extraction
+  was attempted and failed: `UNSUPPORTED_MIME`, `FILE_TOO_LARGE`, `ENCRYPTED`, `CORRUPT`,
+  `NO_TEXT_LAYER`, `PARSER_ERROR`. A document source is therefore never silently thin; the source
+  stays `snippetOnly` and the code says why.
+
+`citations` gained anchors so a claim can be traced inside a document rather than merely to it:
+`anchorKind` (`DocumentAnchorKind`: PAGE/SECTION/LINE/CHARACTER_RANGE), `pageNumber` (1-based,
+PDF), `sectionOrder` (0-based, DOCX/Markdown) and `anchorLabel` (display form, e.g. "p. 12").
+These are NULL for web-page citations, which have no internal structure.
+
+No new tables: extracted text flows into the existing `document_chunks` and snapshot storage, so
+tenant isolation, embedding-collection pairing and budget pre-flight all apply unchanged.
+
+## 12. Future entities
 
 Remaining contract-only entities (angles, publications, workspace budgets, knowledge
 documents) are documented in [DOMAIN_MODEL.md](DOMAIN_MODEL.md) §6 and materialize in later

@@ -108,3 +108,20 @@ enforcement (ADR-0026/0028/0029) are unchanged and still run before any paid ope
 
 **Runs report what they could not do**: `robotsBlocked`, `snippetOnly`, `blockedDomainRejected`,
 `evidenceEligible` and `duplicateClusters`, plus `GET …/runs/:id/quality` for per-source detail.
+
+## Document extraction (Phase 5G, ADR-0031)
+
+Discovered sources are not always web pages. PDFs, DOCX, TXT and Markdown are extracted into real
+text through the `DocumentExtractionProvider` port rather than falling back to a search snippet.
+
+The provider is selected by the served `Content-Type`, falling back to the filename extension —
+never by sniffing bytes, which would mean parsing something the source never claimed it was. MIME
+and per-type size limits are enforced **before** any parser touches the data.
+
+Extraction runs inside the same discovery path as web pages, so it inherits the SSRF guard,
+robots.txt compliance (ADR-0030), per-run fetch budget, per-host throttling and metering
+(`DOCUMENT_EXTRACTION`, counter-only). A successfully extracted document is no longer
+`snippetOnly`; a failed one keeps the snippet and records a typed failure code.
+
+**No OCR.** A scanned PDF with no text layer fails `NO_TEXT_LAYER` and says OCR was not attempted.
+Guessing at image text would manufacture evidence.

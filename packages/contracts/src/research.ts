@@ -123,6 +123,8 @@ export const researchRunStatsSchema = z.object({
   // as prominently as what it could — a thorough-looking run that was mostly
   // robots-blocked must not read like a thorough run.
   robotsBlocked: z.number().int().nonnegative().default(0),
+  documentsExtracted: z.number().int().nonnegative().default(0),
+  documentExtractionFailures: z.number().int().nonnegative().default(0),
   snippetOnly: z.number().int().nonnegative().default(0),
   blockedDomainRejected: z.number().int().nonnegative().default(0),
   evidenceEligible: z.number().int().nonnegative().default(0),

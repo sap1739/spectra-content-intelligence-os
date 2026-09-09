@@ -14,6 +14,9 @@ import {
 import { S3ObjectStorageProvider } from '@spectra/storage';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { FirstPartyDocumentExtractor } from '@spectra/document-extract';
+import { buildImageOnlyPdf, buildPdf } from '@spectra/document-extract';
+
 import { executeResearchRun } from '../src/executor';
 
 /**
@@ -85,6 +88,21 @@ describe('search-driven research runs (integration)', () => {
             '<p>Enterprise adoption of AI testing grew 40% in 2026 across large organisations.</p>' +
             '</article></body></html>',
         );
+        return;
+      }
+      if (path === '/report.pdf') {
+        res.setHeader('content-type', 'application/pdf');
+        res.end(
+          buildPdf(['Adoption of AI testing grew 40 percent in 2026.', 'Page two: methodology.'], {
+            title: 'Adoption Report',
+            author: 'Analyst',
+          }),
+        );
+        return;
+      }
+      if (path === '/scanned.pdf') {
+        res.setHeader('content-type', 'application/pdf');
+        res.end(buildImageOnlyPdf(2));
         return;
       }
       if (path === '/article-3') {
@@ -498,6 +516,94 @@ describe('search-driven research runs (integration)', () => {
       where: { organizationId: orgId, workspaceId },
       data: { blockedDomains: [] },
     });
+  }, 30_000);
+
+  it('extracts a discovered PDF into real text with page anchors, not a snippet', async () => {
+    const stub = new StubWebSearch(
+      (base) => [
+        {
+          url: `${base}/report.pdf`,
+          title: 'Adoption Report',
+          snippet: 'tiny snippet',
+          category: 'WEB',
+        },
+      ],
+      baseUrl,
+    );
+    const registry = new ResearchProviderRegistry();
+    registry.register(stub);
+
+    const runId = await newRun({ feedUrls: [], searchQueries: ['adoption report'] });
+    const outcome = await executeResearchRun(
+      {
+        prisma,
+        storage: storage(),
+        logger,
+        providerRegistry: registry,
+        fetchOptions: FETCH_OPTIONS,
+        skipRobots: true,
+        documentExtractor: new FirstPartyDocumentExtractor(),
+      },
+      { runId },
+    );
+
+    expect(outcome.stats.documentsExtracted).toBe(1);
+
+    const source = await prisma.researchSource.findFirst({
+      where: { organizationId: orgId, workspaceId, runId },
+    });
+    // The whole point of 5G: a PDF is no longer stuck as snippet-only.
+    expect(source?.snippetOnly).toBe(false);
+    expect(source?.documentType).toBe('PDF');
+    expect(source?.documentPageCount).toBe(2);
+    expect(source?.extractionFailureCode).toBeNull();
+    // Real document metadata, not the search result's guess.
+    expect(source?.title).toBe('Adoption Report');
+
+    const finding = await prisma.researchFinding.findFirst({
+      where: { organizationId: orgId, workspaceId, runId },
+    });
+    // Body came from the PDF text layer, not the 'tiny snippet' string.
+    expect(finding?.excerpt ?? '').toMatch(/40 percent|methodology/i);
+  }, 30_000);
+
+  it('records an honest failure for a scanned PDF instead of empty success', async () => {
+    const stub = new StubWebSearch(
+      (base) => [
+        {
+          url: `${base}/scanned.pdf`,
+          title: 'Scanned',
+          snippet: 'only the snippet exists',
+          category: 'WEB',
+        },
+      ],
+      baseUrl,
+    );
+    const registry = new ResearchProviderRegistry();
+    registry.register(stub);
+
+    const runId = await newRun({ feedUrls: [], searchQueries: ['scanned doc'] });
+    const outcome = await executeResearchRun(
+      {
+        prisma,
+        storage: storage(),
+        logger,
+        providerRegistry: registry,
+        fetchOptions: FETCH_OPTIONS,
+        skipRobots: true,
+        documentExtractor: new FirstPartyDocumentExtractor(),
+      },
+      { runId },
+    );
+
+    expect(outcome.stats.documentExtractionFailures).toBe(1);
+    const source = await prisma.researchSource.findFirst({
+      where: { organizationId: orgId, workspaceId, runId },
+    });
+    // Kept, snippet-only, and says WHY — never silently empty.
+    expect(source?.snippetOnly).toBe(true);
+    expect(source?.extractionFailureCode).toBe('NO_TEXT_LAYER');
+    expect(String((source?.metadata as Record<string, unknown>)['fetchNote'])).toMatch(/OCR/i);
   }, 30_000);
 
   it('refuses a search-only plan when no provider is configured', async () => {

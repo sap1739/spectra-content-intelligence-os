@@ -236,6 +236,10 @@ export class ResearchRunsService {
         freshnessScore: true,
         stalenessStatus: true,
         snippetOnly: true,
+        // Document extraction status (Phase 5G, ADR-0031).
+        documentType: true,
+        documentPageCount: true,
+        extractionFailureCode: true,
         robotsDecision: true,
         robotsCheckedAt: true,
         evidenceEligible: true,

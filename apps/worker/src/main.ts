@@ -9,6 +9,7 @@ import { ResearchProviderRegistry } from '@spectra/research-core';
 import { loadEnv, storageEnvSchema, workerEnvSchema } from '@spectra/config';
 import { executeContentDraft } from '@spectra/content-pipeline';
 import { createPrismaClient } from '@spectra/database';
+import { FirstPartyDocumentExtractor } from '@spectra/document-extract';
 import { createLogger, withCorrelation } from '@spectra/logging';
 import { PrismaUsageRecorder, expireStaleReservations } from '@spectra/metering';
 import {
@@ -102,6 +103,10 @@ async function main(): Promise<void> {
   // One ledger for every metered operation this worker performs (Phase 5D).
   const usage = new PrismaUsageRecorder(prisma, logger);
 
+  // Document extraction (Phase 5G): first-party, no external service, so it is
+  // always available — discovered PDFs/DOCX/TXT stop being snippet-only.
+  const documentExtractor = new FirstPartyDocumentExtractor();
+
   // Discovery providers (Phase 5C). Registered only when configured, so the
   // pipeline's `listByKind` answers "what can actually run". Unconfigured means
   // runs use their own feeds and a search-only plan fails loudly rather than
@@ -128,7 +133,15 @@ async function main(): Promise<void> {
         'Research run started',
       );
       const outcome = await executeResearchRun(
-        { prisma, storage, embedder, providerRegistry, usage, logger: jobLogger },
+        {
+          prisma,
+          storage,
+          embedder,
+          providerRegistry,
+          documentExtractor,
+          usage,
+          logger: jobLogger,
+        },
         {
           runId: envelope.payload.runId,
           signal: context.signal,
@@ -177,7 +190,15 @@ async function main(): Promise<void> {
       });
       jobLogger.info({ projectId, runId: run.id }, 'Scheduled research run created');
       return executeResearchRun(
-        { prisma, storage, embedder, providerRegistry, usage, logger: jobLogger },
+        {
+          prisma,
+          storage,
+          embedder,
+          providerRegistry,
+          documentExtractor,
+          usage,
+          logger: jobLogger,
+        },
         {
           runId: run.id,
           signal: context.signal,

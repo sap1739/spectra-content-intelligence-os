@@ -192,6 +192,9 @@ export interface RunQualitySource {
   freshnessScore: number | null;
   stalenessStatus: string;
   snippetOnly: boolean;
+  documentType: 'PDF' | 'DOCX' | 'TXT' | 'MARKDOWN' | null;
+  documentPageCount: number | null;
+  extractionFailureCode: string | null;
   robotsDecision: string;
   evidenceEligible: boolean;
   evidenceExclusionReason: string | null;

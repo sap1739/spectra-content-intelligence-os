@@ -18,6 +18,7 @@
     "@spectra/config": "workspace:*",
     "@spectra/content-pipeline": "workspace:*",
     "@spectra/database": "workspace:*",
+    "@spectra/document-extract": "workspace:*",
     "@spectra/logging": "workspace:*",
     "@spectra/metering": "workspace:*",
     "@spectra/observability": "workspace:*",

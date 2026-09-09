@@ -1,5 +1,9 @@
 import type { SourceCategory, TenantScope } from '@spectra/contracts';
 import type {
+  DocumentCitationAnchor,
+  DocumentExtractionFailureCode,
+  DocumentExtractionProvider,
+  ExtractableDocumentType,
   DiscoveredSource,
   NewsSearchProvider,
   ResearchProviderRegistry,
@@ -43,8 +47,20 @@ export interface CandidateItem {
   snippetOnly: boolean;
   /** Outcome of the robots.txt check, when one was performed (ADR-0030). */
   robotsDecision: RobotsDecision;
+  /** Set when the fetched bytes were a document we extracted (ADR-0031). */
+  document?: ExtractedDocumentInfo;
   /** Why this candidate is snippet-only / was not fetched. Always specific. */
   fetchNote: string | null;
+}
+
+/** What a successful (or failed) document extraction contributed. */
+export interface ExtractedDocumentInfo {
+  documentType: ExtractableDocumentType;
+  pageCount: number | null;
+  anchors: DocumentCitationAnchor[];
+  warnings: string[];
+  /** Set only when extraction was attempted and failed. */
+  failureCode?: DocumentExtractionFailureCode;
 }
 
 export interface DiscoveryOutcome {
@@ -96,6 +112,8 @@ export interface SearchDiscoveryOptions {
   robots?: RobotsGateway;
   /** Bounds concurrency and spaces requests per host. */
   scheduler?: FetchScheduler;
+  /** Turns PDF/DOCX/TXT bytes into anchored text (ADR-0031). */
+  documentExtractor?: DocumentExtractionProvider;
   /** Records real provider spend; omitted means no ledger. */
   usage?: UsageRecorder;
   /** Stamped on ledger rows so spend is attributable to the run. */
@@ -268,11 +286,57 @@ async function toCandidate(
       ? await options.scheduler.run(source.url, run, crawlDelaySeconds)
       : await run();
     const contentType = result.contentType.toLowerCase();
-    if (!contentType.includes('html') && !contentType.includes('text')) {
-      // Binary/PDF — snippet stands until a document extractor exists.
+    // A document rather than a web page: extract it properly (ADR-0031). This
+    // is what stops PDFs/DOCX from being permanently snippet-only.
+    if (options.documentExtractor?.supports(result.contentType, filenameFromUrl(source.url))) {
+      const extraction = await options.documentExtractor.extract(
+        {
+          bytes: result.body,
+          mimeType: result.contentType,
+          sourceRef: source.url,
+          ...(filenameFromUrl(source.url) ? { filename: filenameFromUrl(source.url) } : {}),
+        },
+        options.tenant,
+      );
+      if (extraction.ok) {
+        const doc = extraction.document;
+        return {
+          ...base,
+          // Real extracted text: no longer snippet-only.
+          rawHtml: doc.text,
+          snippetOnly: false,
+          title: doc.metadata.title ?? base.title,
+          author: doc.metadata.author ?? base.author,
+          publishedAt: doc.metadata.createdAt ?? base.publishedAt,
+          fetchNote: doc.warnings.length > 0 ? doc.warnings.join(' ') : null,
+          document: {
+            documentType: doc.documentType,
+            pageCount: doc.metadata.pageCount ?? null,
+            anchors: doc.anchors,
+            warnings: doc.warnings,
+          },
+        };
+      }
+      // Extraction failed — keep the source with the specific reason. The
+      // snippet stands, and the failure code is recorded so the UI can say
+      // exactly why the document's text is absent.
       return {
         ...base,
-        fetchNote: `The page is ${result.contentType || 'a non-text document'}; no extractor exists for it yet, so only the search snippet is held.`,
+        fetchNote: extraction.failure.message,
+        document: {
+          documentType: 'PDF',
+          pageCount: null,
+          anchors: [],
+          warnings: [],
+          failureCode: extraction.failure.code,
+        },
+      };
+    }
+
+    if (!contentType.includes('html') && !contentType.includes('text')) {
+      return {
+        ...base,
+        fetchNote: `The page is ${result.contentType || 'a non-text document'}, which no extractor supports; only the search snippet is held.`,
       };
     }
     const html = result.body.toString('utf8');
@@ -309,4 +373,14 @@ async function toCandidate(
 /** "brave-web-search" => "brave"; keeps ledger provider names vendor-level. */
 function providerNameOf(providerId: string): string {
   return providerId.split('-')[0] ?? providerId;
+}
+
+/** Filename from a URL path, used only for MIME fallback and labels. */
+function filenameFromUrl(rawUrl: string): string | undefined {
+  try {
+    const last = new URL(rawUrl).pathname.split('/').filter(Boolean).pop();
+    return last && last.includes('.') ? last : undefined;
+  } catch {
+    return undefined;
+  }
 }

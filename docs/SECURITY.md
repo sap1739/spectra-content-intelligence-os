@@ -113,3 +113,26 @@ it crawls:
   applies to robots.txt retrieval exactly as it does to page fetches.
 - The robots cache stores only public crawl rules, keyed by origin, and holds no tenant data — it
   is deliberately shared across tenants because it describes the remote site, not any workspace.
+
+## 10. Document handling **[P1]**
+
+Document extraction (ADR-0031) accepts untrusted binary input, so its defences are layered:
+
+- **Limits before parsers.** A MIME allow-list (PDF, DOCX, TXT, Markdown) and per-type size caps
+  are enforced before any bytes reach a parser — the parser is the largest attack surface here.
+  Legacy binary `.doc` is rejected explicitly rather than fed to the OOXML parser.
+- **Path traversal.** Filenames are stripped of every directory component and of control
+  characters before being used in labels or logs, so a crafted name such as `../../etc/passwd`
+  can never become a path segment.
+- **SSRF.** Documents are fetched through the same `safeFetch` as web pages (DNS resolution
+  checks, redirect caps, byte limits, timeouts). Document links are not followed.
+- **Prompt injection.** Extracted text is scanned and wrapped as untrusted content (see
+  PROMPT_INJECTION_DEFENCE.md).
+- **Logging.** Extracted document text is never logged. Parser error messages are replaced with
+  generic ones because they can echo document content.
+- **Tenancy.** Extraction is invoked with the run's tenant scope; extracted text and chunks are
+  written under that workspace only and never cross tenants.
+
+Remaining gap: the third-party parsers (`unpdf`, `mammoth`) are not sandboxed. Size and MIME
+limits bound the exposure; process isolation would be the next hardening step if untrusted
+document volume grows.

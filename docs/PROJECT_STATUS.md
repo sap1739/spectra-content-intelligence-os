@@ -1,7 +1,7 @@
 # SpectraContent Intelligence OS — Project Status
 
 **Snapshot date:** 2026-09-09 · **Branch:** `main`
-**Status:** Phases 1–4 complete · Phase 5 in progress (5A–5F shipped)
+**Status:** Phases 1–4 complete · Phase 5 in progress (5A–5G shipped)
 
 > This document is a factual, audited snapshot intended as context for planning further work.
 > Every number below was measured from the repository, not estimated.
@@ -189,6 +189,11 @@ standards, health/readiness endpoints, OpenAPI at `/docs`.
   scan, snapshotting, scoring, embedding). Discovered URLs are fetched through the existing
   `safeFetch`; failed fetches keep the snippet and mark `snippetOnly`. Provenance records the
   _query_ that found a source.
+- **5G:** **Document extraction.** PDF/DOCX/TXT/Markdown become anchored evidence via a
+  `DocumentExtractionProvider` port (`@spectra/document-extract`, using pdf.js + mammoth).
+  Page/section/line citation anchors, MIME + size limits enforced before parsing, mandatory
+  prompt-injection scanning of extracted text, and typed failure codes surfaced in the UI. No OCR:
+  a scanned PDF fails honestly rather than producing guessed text (ADR-0031).
 - **5F:** **Research quality hardening.** robots.txt is consulted before every discovered-page
   fetch (disallowed pages are never fetched, kept snippet-only with the site's own rule as the
   reason; an unretrievable robots.txt records `UNAVAILABLE`, never `ALLOWED`). Snippet-only

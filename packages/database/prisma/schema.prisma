@@ -494,11 +494,11 @@ enum StalenessStatus {
 }
 
 model ResearchSource {
-  id                      String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId          String                 @db.Uuid
-  workspaceId             String                 @db.Uuid
-  projectId               String                 @db.Uuid
-  runId                   String?                @db.Uuid
+  id                      String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId          String                         @db.Uuid
+  workspaceId             String                         @db.Uuid
+  projectId               String                         @db.Uuid
+  runId                   String?                        @db.Uuid
   url                     String
   canonicalUrl            String?
   /// SHA-256 of the normalized URL — exact-duplicate detection per workspace.
@@ -506,14 +506,14 @@ model ResearchSource {
   title                   String?
   publisher               String?
   author                  String?
-  publishedAt             DateTime?              @db.Timestamptz(6)
-  retrievedAt             DateTime               @db.Timestamptz(6)
+  publishedAt             DateTime?                      @db.Timestamptz(6)
+  retrievedAt             DateTime                       @db.Timestamptz(6)
   language                String?
   geography               String?
-  category                SourceCategory         @default(WEB)
+  category                SourceCategory                 @default(WEB)
   credibilityScore        Float?
   freshnessScore          Float?
-  duplicateOfSourceId     String?                @db.Uuid
+  duplicateOfSourceId     String?                        @db.Uuid
   duplicateClusterKey     String?
   /// SHA-256 of extracted content — near-duplicate clustering input.
   contentHash             String?
@@ -524,19 +524,25 @@ model ResearchSource {
   /// TRUE when the body is a search snippet because the page was not fetched
   /// (blocked by robots, unreachable, or budget-capped). Promoted from
   /// provenance JSON to a column so evidence selection can filter on it.
-  snippetOnly             Boolean                @default(false)
-  robotsDecision          RobotsDecision         @default(NOT_CHECKED)
-  robotsCheckedAt         DateTime?              @db.Timestamptz(6)
+  snippetOnly             Boolean                        @default(false)
+  /// Set when this source is a document rather than a web page (ADR-0031).
+  documentType            ExtractedDocumentType?
+  documentPageCount       Int?
+  /// Populated ONLY when extraction was attempted and failed — the code says
+  /// why, so a document source is never silently thin.
+  extractionFailureCode   DocumentExtractionFailureCode?
+  robotsDecision          RobotsDecision                 @default(NOT_CHECKED)
+  robotsCheckedAt         DateTime?                      @db.Timestamptz(6)
   /// Why this source is or is not usable as evidence — always populated.
-  evidenceEligible        Boolean                @default(true)
+  evidenceEligible        Boolean                        @default(true)
   evidenceExclusionReason String?
-  stalenessStatus         StalenessStatus        @default(UNKNOWN)
+  stalenessStatus         StalenessStatus                @default(UNKNOWN)
   /// Distinct-publisher weight for diversity: 1 for an original, <1 for a
   /// member of a syndication cluster so re-runs of one story do not read as
   /// independent corroboration.
-  diversityWeight         Float                  @default(1)
-  processingStatus        SourceProcessingStatus @default(DISCOVERED)
-  metadata                Json                   @default("{}")
+  diversityWeight         Float                          @default(1)
+  processingStatus        SourceProcessingStatus         @default(DISCOVERED)
+  metadata                Json                           @default("{}")
 
   createdAt DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt DateTime  @updatedAt @db.Timestamptz(6)
@@ -695,23 +701,32 @@ model ExtractedClaim {
 /// First-class citation: finding ↔ source (+snapshot) with a byte locator.
 /// The audit anchor behind every statement (ADR-0011).
 model Citation {
-  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String    @db.Uuid
-  workspaceId    String    @db.Uuid
-  projectId      String    @db.Uuid
-  findingId      String    @db.Uuid
-  sourceId       String    @db.Uuid
-  snapshotId     String?   @db.Uuid
-  claimId        String?   @db.Uuid
+  id             String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String              @db.Uuid
+  workspaceId    String              @db.Uuid
+  projectId      String              @db.Uuid
+  findingId      String              @db.Uuid
+  sourceId       String              @db.Uuid
+  snapshotId     String?             @db.Uuid
+  claimId        String?             @db.Uuid
   url            String
   title          String?
   publisher      String?
-  publishedAt    DateTime? @db.Timestamptz(6)
-  retrievedAt    DateTime  @db.Timestamptz(6)
+  publishedAt    DateTime?           @db.Timestamptz(6)
+  retrievedAt    DateTime            @db.Timestamptz(6)
   excerpt        String?
   startOffset    Int?
   endOffset      Int?
-  createdAt      DateTime  @default(now()) @db.Timestamptz(6)
+  /// Where inside a document this citation points (Phase 5G, ADR-0031).
+  /// NULL for web-page citations, which have no internal structure.
+  anchorKind     DocumentAnchorKind?
+  /// 1-based page (PDF).
+  pageNumber     Int?
+  /// 0-based section index (DOCX/Markdown).
+  sectionOrder   Int?
+  /// Display form, e.g. "p. 12" or "§ Methodology".
+  anchorLabel    String?
+  createdAt      DateTime            @default(now()) @db.Timestamptz(6)
 
   project ResearchProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
   finding ResearchFinding @relation(fields: [findingId], references: [id], onDelete: Cascade)
@@ -1659,4 +1674,32 @@ model RobotsCacheEntry {
 
   @@index([expiresAt])
   @@map("robots_cache_entries")
+}
+
+/// Document formats the pipeline can extract (Phase 5G, ADR-0031).
+enum ExtractedDocumentType {
+  PDF
+  DOCX
+  TXT
+  MARKDOWN
+}
+
+/// Where a citation points inside an extracted document.
+enum DocumentAnchorKind {
+  PAGE
+  SECTION
+  LINE
+  CHARACTER_RANGE
+}
+
+/// Why a document could not be turned into evidence. Recorded rather than
+/// silently degrading the source to an unexplained snippet.
+enum DocumentExtractionFailureCode {
+  UNSUPPORTED_MIME
+  FILE_TOO_LARGE
+  ENCRYPTED
+  CORRUPT
+  /// Scanned images with no text layer. OCR is deliberately not performed.
+  NO_TEXT_LAYER
+  PARSER_ERROR
 }

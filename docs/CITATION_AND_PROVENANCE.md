@@ -73,3 +73,16 @@ Publication date and retrieval date are both preserved and distinct: `publishedA
 
 A citation built from a snippet-only source is still a real citation to a real URL — but the
 record says it is snippet-derived, and downstream weighting treats it accordingly.
+
+## Document citation anchors (Phase 5G, ADR-0031)
+
+A citation into a document carries a locator, not just a URL. `Citation` gained `anchorKind`
+(PAGE / SECTION / LINE / CHARACTER_RANGE), `pageNumber`, `sectionOrder` and `anchorLabel`
+(e.g. `p. 12`, `§ Methodology`).
+
+Every anchor also carries a character range into the extracted text, so the exact passage can be
+re-read and verified. Both are stored deliberately: the character range is precise but tied to a
+parser version, while the page or section number stays meaningful if the text is ever re-extracted.
+
+Web-page citations leave these fields NULL — they have no internal structure, and inventing one
+would imply precision that does not exist.

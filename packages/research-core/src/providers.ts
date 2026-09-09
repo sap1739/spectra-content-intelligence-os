@@ -26,6 +26,8 @@ export const RESEARCH_PROVIDER_KINDS = [
   'document-research',
   'internal-knowledge',
   'content-extraction',
+  /** Turns PDF/DOCX/TXT bytes into anchored text (Phase 5G). */
+  'document-extraction',
   'fact-verification',
 ] as const;
 export type ResearchProviderKind = (typeof RESEARCH_PROVIDER_KINDS)[number];
@@ -165,6 +167,142 @@ export interface ExtractedContent {
 export interface ContentExtractionProvider extends ProviderIdentity {
   readonly kind: 'content-extraction';
   extract(input: ExtractionInput, tenant: TenantScope): Promise<ExtractedContent>;
+}
+
+// ---------------------------------------------------------------------------
+// Document extraction (Phase 5G — ADR-0031)
+// ---------------------------------------------------------------------------
+
+/** Document formats the pipeline can turn into evidence. */
+export type ExtractableDocumentType = 'PDF' | 'DOCX' | 'TXT' | 'MARKDOWN';
+
+/** Where a citation points inside a document. */
+export type DocumentAnchorKind = 'PAGE' | 'SECTION' | 'LINE' | 'CHARACTER_RANGE';
+
+/**
+ * A precise, re-locatable position inside an extracted document.
+ *
+ * The whole point of extracting a PDF rather than keeping a snippet is that a
+ * claim can be traced back to the page it came from. An anchor always carries a
+ * character range (so the exact text can be re-read) plus the human-meaningful
+ * locator for its document type.
+ */
+export interface DocumentCitationAnchor {
+  kind: DocumentAnchorKind;
+  /** 1-based, PDF only. */
+  pageNumber?: number;
+  /** 0-based section index, DOCX/Markdown. */
+  sectionOrder?: number;
+  /** 1-based inclusive line range, plain text. */
+  lineStart?: number;
+  lineEnd?: number;
+  /** Offsets into `ExtractedDocument.text`; always present. */
+  charStart: number;
+  charEnd: number;
+  /** Display form, e.g. "p. 12" or "§ Methodology". */
+  label: string;
+}
+
+export interface ExtractedPage {
+  /** 1-based. */
+  pageNumber: number;
+  text: string;
+  charStart: number;
+  charEnd: number;
+}
+
+export interface ExtractedSection {
+  /** 0-based position in reading order. */
+  order: number;
+  heading?: string;
+  /** 1 = top-level heading. Absent for body-only sections. */
+  level?: number;
+  text: string;
+  charStart: number;
+  charEnd: number;
+}
+
+export interface ExtractedDocumentMetadata {
+  title?: string;
+  author?: string;
+  /** ISO-8601 UTC, when the document states one. */
+  createdAt?: string;
+  modifiedAt?: string;
+  pageCount?: number;
+  mimeType: string;
+  sizeBytes: number;
+  /** Producing application, when stated (PDF Producer/Creator). */
+  producer?: string;
+  language?: string;
+}
+
+export interface ExtractedDocument {
+  documentType: ExtractableDocumentType;
+  /** Full plain text; anchors index into this string. */
+  text: string;
+  /** PDFs only; empty for formats without pagination. */
+  pages: ExtractedPage[];
+  /** DOCX/Markdown; empty when the format has no section structure. */
+  sections: ExtractedSection[];
+  metadata: ExtractedDocumentMetadata;
+  /** Ready-made anchors, one per page or section. */
+  anchors: DocumentCitationAnchor[];
+  /** MANDATORY: extracted document text is untrusted external content. */
+  injectionRisk?: PromptInjectionRisk;
+  /**
+   * Non-fatal problems (e.g. some pages yielded no text). The document is still
+   * usable; the warnings say what is missing so partial extraction is never
+   * presented as complete.
+   */
+  warnings: string[];
+}
+
+export type DocumentExtractionFailureCode =
+  | 'UNSUPPORTED_MIME'
+  | 'FILE_TOO_LARGE'
+  | 'ENCRYPTED'
+  | 'CORRUPT'
+  | 'NO_TEXT_LAYER'
+  | 'PARSER_ERROR';
+
+/**
+ * A truthful extraction failure. Returned, not thrown, so the pipeline can keep
+ * the source with an honest reason rather than dropping it or silently
+ * degrading it to a snippet with no explanation.
+ */
+export interface DocumentExtractionFailure {
+  code: DocumentExtractionFailureCode;
+  /** Operator-facing, specific. */
+  message: string;
+  mimeType?: string;
+  sizeBytes?: number;
+}
+
+export interface DocumentExtractionInput {
+  bytes: Uint8Array;
+  /** Content-Type as served, or inferred from the filename. */
+  mimeType: string;
+  /** Origin URL or an object-storage reference. Recorded as provenance. */
+  sourceRef: string;
+  /** Original filename, when known. */
+  filename?: string;
+}
+
+export type DocumentExtractionResult =
+  { ok: true; document: ExtractedDocument } | { ok: false; failure: DocumentExtractionFailure };
+
+/**
+ * Turns document bytes into anchored, injection-scanned text.
+ *
+ * Implementations MUST enforce their own MIME and size limits and MUST run the
+ * prompt-injection scan — extracted document text reaches prompts exactly like
+ * scraped web content and is no more trustworthy.
+ */
+export interface DocumentExtractionProvider extends ProviderIdentity {
+  readonly kind: 'document-extraction';
+  /** Whether this provider will attempt the given type at all. */
+  supports(mimeType: string, filename?: string): boolean;
+  extract(input: DocumentExtractionInput, tenant: TenantScope): Promise<DocumentExtractionResult>;
 }
 
 export interface VerificationEvidence {

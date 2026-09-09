@@ -228,6 +228,20 @@ function RunQualityPanel({
                 <div className="mt-1 flex flex-wrap items-center gap-1">
                   <Badge variant={robots!.variant}>{robots!.text}</Badge>
                   {s.snippetOnly ? <Badge variant="warning">snippet-only</Badge> : null}
+                  {/* Document extraction status (ADR-0031): a successfully
+                      extracted PDF shows its page count; a failed one shows the
+                      reason rather than looking like an ordinary thin page. */}
+                  {s.documentType && !s.extractionFailureCode ? (
+                    <Badge variant="success">
+                      {s.documentType.toLowerCase()}
+                      {s.documentPageCount ? ` · ${s.documentPageCount}p` : ''}
+                    </Badge>
+                  ) : null}
+                  {s.extractionFailureCode ? (
+                    <Badge variant="destructive">
+                      extraction: {s.extractionFailureCode.toLowerCase().replace(/_/g, ' ')}
+                    </Badge>
+                  ) : null}
                   <Badge variant={STALENESS_VARIANT[s.stalenessStatus] ?? 'muted'}>
                     {s.stalenessStatus.toLowerCase()}
                   </Badge>
