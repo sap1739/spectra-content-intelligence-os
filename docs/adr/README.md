@@ -28,6 +28,7 @@
 | [0024](0024-brave-search-discovery.md)          | Brave Search: live web/news discovery behind the research ports      | Accepted             |
 | [0025](0025-search-driven-research-runs.md)     | Search-driven research runs: one ingest path for feeds + search      | Accepted             |
 | [0026](0026-usage-metering.md)                  | Usage metering: measured spend, estimated cost, capped runs          | Accepted             |
+| [0027](0027-workspace-budgets.md)               | Workspace budgets: pre-flight enforcement on an estimate             | Accepted             |
 
 New significant decisions require a new ADR (`NNNN-kebab-title.md`) using the
 Context / Decision / Rationale / Consequences structure.

@@ -10,6 +10,11 @@ export interface ProblemDetails {
   correlationId?: string;
   /** Field-level validation issues, when applicable. */
   errors?: Array<{ path: string; message: string }>;
+  /**
+   * Budget decision attached to a `budget-exceeded` refusal, so the client can
+   * show what limit was hit and how much of it was estimated.
+   */
+  budget?: unknown;
 }
 
 export const PROBLEM_CONTENT_TYPE = 'application/problem+json';

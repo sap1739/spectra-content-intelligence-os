@@ -1,7 +1,7 @@
 import type { TextGenerationProvider } from '@spectra/ai-core';
 import type { SpectraPrismaClient } from '@spectra/database';
 import type { Logger } from '@spectra/logging';
-import type { UsageRecorder } from '@spectra/metering';
+import { evaluateBudget, type UsageRecorder } from '@spectra/metering';
 
 import { validateCitations } from './citations';
 import { generateDraft } from './generator';
@@ -124,6 +124,22 @@ export async function executeContentDraft(
     organizationId: draft.organizationId,
     workspaceId: draft.workspaceId,
   };
+  // Re-check at execution time: this job may have been queued before the
+  // workspace hit its ceiling. Recorded as FAILED without throwing — retrying
+  // cannot help until the limit is raised or the period rolls over.
+  const budget = await evaluateBudget(prisma, tenant, new Date());
+  if (budget.blocked) {
+    await prisma.contentDraft.update({
+      where: { id: draft.id },
+      data: { status: 'FAILED', failureReason: budget.reason },
+    });
+    logger?.warn(
+      { usedMicros: budget.usedMicros, limitMicros: budget.limitMicros },
+      'Draft generation refused — workspace budget exceeded',
+    );
+    return { status: 'FAILED', draftId: draft.id };
+  }
+
   const item = draft.contentItem;
 
   try {

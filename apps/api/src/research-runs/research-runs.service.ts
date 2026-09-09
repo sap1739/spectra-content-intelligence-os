@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { ScheduleResearchInput, StartResearchRunInput } from '@spectra/contracts';
 import { Prisma, type ResearchProject, type ResearchRun } from '@spectra/database';
 import { TenantIsolationError } from '@spectra/security';
+import { assertWithinBudget } from '@spectra/metering';
 import { JOB_NAMES } from '@spectra/workflow-core';
 
 import { AuditService } from '../infra/audit.service';
@@ -66,6 +67,14 @@ export class ResearchRunsService {
     correlationId?: string,
   ): Promise<ResearchRun> {
     await this.assertProject(tenant, projectId);
+
+    // Pre-flight: a research run spends on search, page fetches and embeddings.
+    // Refuse BEFORE creating the row and enqueueing, so an over-budget workspace
+    // never queues work it is not allowed to do.
+    await assertWithinBudget(this.prisma.client, {
+      organizationId: tenant.organizationId,
+      workspaceId: tenant.workspaceId as string,
+    });
 
     const run = await this.prisma.client.researchRun.create({
       data: {

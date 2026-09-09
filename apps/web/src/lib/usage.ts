@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api, type ApiError } from './api';
 
@@ -29,6 +29,24 @@ export interface UsageEventRow {
   occurredAt: string;
 }
 
+export type BudgetStatus = 'NOT_CONFIGURED' | 'OK' | 'WARN' | 'EXCEEDED';
+export type BudgetEnforcement = 'OFF' | 'WARN' | 'ENFORCE';
+
+export interface BudgetDecision {
+  status: BudgetStatus;
+  enforcement: BudgetEnforcement;
+  blocked: boolean;
+  periodStart: string;
+  periodEnd: string;
+  limitMicros: number | null;
+  usedMicros: number;
+  remainingMicros: number | null;
+  usedPercent: number | null;
+  unpricedEvents: number;
+  currency: string;
+  reason: string;
+}
+
 export interface UsageSummary {
   windowDays: number;
   since: string;
@@ -41,6 +59,7 @@ export interface UsageSummary {
   };
   byKind: UsageKindRow[];
   recent: UsageEventRow[];
+  budget: BudgetDecision;
   note: string;
 }
 
@@ -59,4 +78,29 @@ export function formatMicros(micros: number | null): string {
   if (micros === 0) return '$0.00';
   const dollars = micros / 1_000_000;
   return dollars < 0.01 ? `$${dollars.toFixed(4)}` : `$${dollars.toFixed(2)}`;
+}
+
+export function useBudget(workspaceId: string) {
+  return useQuery<BudgetDecision, ApiError>({
+    queryKey: ['budget', workspaceId],
+    queryFn: () => api.get<BudgetDecision>(`/v1/workspaces/${workspaceId}/budget`),
+    staleTime: 60_000,
+  });
+}
+
+export interface UpdateBudgetInput {
+  monthlyLimitMicros: number | null;
+  enforcement: BudgetEnforcement;
+  warnAtPercent: number;
+}
+
+export function useUpdateBudget(workspaceId: string) {
+  const qc = useQueryClient();
+  return useMutation<BudgetDecision, ApiError, UpdateBudgetInput>({
+    mutationFn: (input) => api.put<BudgetDecision>(`/v1/workspaces/${workspaceId}/budget`, input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['budget', workspaceId] });
+      void qc.invalidateQueries({ queryKey: ['usage', workspaceId] });
+    },
+  });
 }

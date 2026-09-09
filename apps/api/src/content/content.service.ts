@@ -14,6 +14,7 @@ import {
 } from '@spectra/contracts';
 import { moderateContent, type ModerationOutcome } from '@spectra/content-pipeline';
 import { TenantIsolationError } from '@spectra/security';
+import { assertWithinBudget } from '@spectra/metering';
 import { JOB_NAMES } from '@spectra/workflow-core';
 
 import { AiTextService } from '../infra/ai.service';
@@ -218,6 +219,13 @@ export class ContentService {
         'This content item is not grounded on an evidence pack. Attach research evidence before drafting.',
       );
     }
+
+    // Pre-flight: generation spends real tokens. Refuse before creating the
+    // draft row, so an over-budget workspace never queues a paid job.
+    await assertWithinBudget(this.prisma.client, {
+      organizationId: tenant.organizationId,
+      workspaceId: tenant.workspaceId as string,
+    });
 
     const draft = await this.prisma.client.contentDraft.create({
       data: {

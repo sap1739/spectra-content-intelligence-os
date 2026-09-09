@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { RATE_VERSION } from '@spectra/metering';
+import { RATE_VERSION, evaluateBudget } from '@spectra/metering';
 
 import { PrismaService } from '../prisma/prisma.service';
 import type { TenantContext } from '../auth/types';
@@ -22,7 +22,7 @@ export class UsageReportService {
       occurredAt: { gte: since },
     };
 
-    const [byKind, totals, unpriced, recent] = await Promise.all([
+    const [byKind, totals, unpriced, recent, budget] = await Promise.all([
       this.prisma.client.usageEvent.groupBy({
         by: ['kind'],
         where,
@@ -64,6 +64,12 @@ export class UsageReportService {
           occurredAt: true,
         },
       }),
+      // Budget status travels with usage so a client never has to infer whether
+      // a ceiling exists (it may legitimately be NOT_CONFIGURED).
+      evaluateBudget(this.prisma.client, {
+        organizationId: tenant.organizationId,
+        workspaceId: tenant.workspaceId as string,
+      }),
     ]);
 
     return {
@@ -86,6 +92,7 @@ export class UsageReportService {
         estimatedCostMicros: row._sum.estimatedCostMicros,
       })),
       recent,
+      budget,
       note:
         'Costs are ESTIMATES from a local rate table (' +
         RATE_VERSION +

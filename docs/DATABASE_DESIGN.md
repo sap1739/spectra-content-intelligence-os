@@ -136,6 +136,27 @@ Rows are written best-effort: a failed ledger insert is logged and swallowed rat
 the work being measured, so the table is a strong operational signal, not an audit-grade
 financial record.
 
+### 9.1 Workspace budgets (Phase 5E)
+
+| Table             | Purpose                             | Key constraints / indexes                  |
+| ----------------- | ----------------------------------- | ------------------------------------------ |
+| workspace_budgets | Per-workspace monthly spend ceiling | unique(workspaceId), index(organizationId) |
+
+One optional row per workspace: `monthlyLimitMicros` (NULL = no ceiling), `enforcement`
+(`OFF` / `WARN` / `ENFORCE`), and `warnAtPercent`. Org/workspace cascade; `updatedById` is
+`SetNull` so budget history survives user deletion.
+
+Evaluated against the summed `estimatedCostMicros` of `usage_events` in the current UTC calendar
+month. Two honesty rules apply (ADR-0027):
+
+- **"No budget" is `NOT_CONFIGURED`, never `OK`.** `OK` asserts a real ceiling was checked and
+  there is room under it; reporting that when nothing was configured is a false reassurance.
+- **Enforcement runs on an ESTIMATE.** Because unpriced events contribute nothing, every budget
+  decision carries `unpricedEvents` so under-counting travels with the number.
+
+Only `ENFORCE` blocks work; `WARN` and `OFF` report the same breach without refusing, so an
+operator can observe real spend before committing to a hard cap.
+
 ## 10. Future entities
 
 Remaining contract-only entities (angles, publications, workspace budgets, knowledge

@@ -6,7 +6,14 @@ import * as React from 'react';
 
 import { PageHeader } from '@/components/page-header';
 import { useWorkspace } from '@/lib/auth';
-import { formatMicros, useUsageSummary, type UsageSummary } from '@/lib/usage';
+import {
+  formatMicros,
+  useUpdateBudget,
+  useUsageSummary,
+  type BudgetDecision,
+  type UsageSummary,
+} from '@/lib/usage';
+import { Button, Input, Label } from '@spectra/ui';
 
 const KIND_LABEL: Record<string, string> = {
   AI_GENERATION: 'AI generation',
@@ -28,7 +35,116 @@ function Tile({ label, value, hint }: { label: string; value: string; hint?: str
   );
 }
 
-function Report({ data }: { data: UsageSummary }) {
+const BUDGET_VARIANT: Record<string, 'success' | 'warning' | 'destructive' | 'muted'> = {
+  OK: 'success',
+  WARN: 'warning',
+  EXCEEDED: 'destructive',
+  NOT_CONFIGURED: 'muted',
+};
+
+function BudgetCard({ budget, workspaceId }: { budget: BudgetDecision; workspaceId: string }) {
+  const update = useUpdateBudget(workspaceId);
+  const [limit, setLimit] = React.useState(
+    budget.limitMicros === null ? '' : String(budget.limitMicros / 1_000_000),
+  );
+  const [enforcement, setEnforcement] = React.useState<string>(budget.enforcement);
+  const parsed = limit.trim() === '' ? null : Number(limit);
+  const valid = parsed === null || (Number.isFinite(parsed) && parsed >= 0);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          Monthly budget
+          <Badge variant={BUDGET_VARIANT[budget.status] ?? 'secondary'}>{budget.status}</Badge>
+        </CardTitle>
+        <p className="text-xs text-muted-foreground">{budget.reason}</p>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        {budget.limitMicros !== null ? (
+          <div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className={
+                  budget.status === 'EXCEEDED'
+                    ? 'h-full bg-destructive'
+                    : budget.status === 'WARN'
+                      ? 'h-full bg-amber-500'
+                      : 'h-full bg-primary/80'
+                }
+                style={{ width: `${Math.min(100, budget.usedPercent ?? 0)}%` }}
+              />
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {formatMicros(budget.usedMicros)} of {formatMicros(budget.limitMicros)} used
+              {budget.usedPercent !== null ? ` (${budget.usedPercent}%)` : ''}
+            </p>
+          </div>
+        ) : null}
+
+        {budget.unpricedEvents > 0 ? (
+          <p className="text-xs text-muted-foreground">
+            {budget.unpricedEvents} metered event(s) this period had no known rate and contributed
+            nothing to this total — real spend is higher than shown.
+          </p>
+        ) : null}
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="budget-limit">Monthly limit ({budget.currency})</Label>
+            <Input
+              id="budget-limit"
+              inputMode="decimal"
+              value={limit}
+              onChange={(e) => setLimit(e.target.value)}
+              placeholder="Leave empty for no limit"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="budget-enforcement">When the limit is reached</Label>
+            <select
+              id="budget-enforcement"
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm"
+              value={enforcement}
+              onChange={(e) => setEnforcement(e.target.value)}
+            >
+              <option value="OFF">OFF — record only</option>
+              <option value="WARN">WARN — surface it, keep working</option>
+              <option value="ENFORCE">ENFORCE — refuse new paid work</option>
+            </select>
+          </div>
+        </div>
+
+        {update.isError ? (
+          <p role="alert" className="text-xs text-destructive">
+            {update.error.message}
+          </p>
+        ) : null}
+
+        <div>
+          <Button
+            disabled={!valid || update.isPending}
+            onClick={() =>
+              update.mutate({
+                monthlyLimitMicros: parsed === null ? null : Math.round(parsed * 1_000_000),
+                enforcement: enforcement as BudgetDecision['enforcement'],
+                warnAtPercent: 80,
+              })
+            }
+          >
+            {update.isPending ? 'Saving…' : 'Save budget'}
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Budgets are checked against estimated cost, so they are approximate. ENFORCE refuses new
+          research runs and draft generation with a clear reason; it never silently drops work.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function Report({ data, workspaceId }: { data: UsageSummary; workspaceId: string }) {
   return (
     <div className="flex flex-col gap-6">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -44,6 +160,8 @@ function Report({ data }: { data: UsageSummary }) {
           hint={data.totals.unpricedEvents > 0 ? 'Excluded from the estimate' : undefined}
         />
       </div>
+
+      <BudgetCard budget={data.budget} workspaceId={workspaceId} />
 
       <Card className="border-amber-500/40 bg-amber-500/5">
         <CardContent className="flex items-start gap-3 py-4">
@@ -180,7 +298,7 @@ export default function BillingPage() {
           description={usage.error.message}
         />
       ) : (
-        <Report data={usage.data} />
+        <Report data={usage.data} workspaceId={activeWorkspace.id} />
       )}
     </>
   );

@@ -386,3 +386,23 @@ export const validateVariantInputSchema = z.object({
     .optional(),
 });
 export type ValidateVariantInput = z.infer<typeof validateVariantInputSchema>;
+
+// ---------------------------------------------------------------------------
+// Workspace budgets (Phase 5E)
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-workspace monthly spend ceiling. Enforced against ESTIMATED cost from the
+ * versioned rate table (ADR-0026), so it is approximate by construction — the
+ * budget decision always reports how many events could not be priced.
+ */
+export const budgetEnforcementSchema = z.enum(['OFF', 'WARN', 'ENFORCE']);
+export type BudgetEnforcementMode = z.infer<typeof budgetEnforcementSchema>;
+
+export const updateWorkspaceBudgetInputSchema = z.object({
+  /** Monthly ceiling in micros (millionths of a currency unit). Null clears it. */
+  monthlyLimitMicros: z.number().int().min(0).max(2_000_000_000).nullable(),
+  enforcement: budgetEnforcementSchema,
+  warnAtPercent: z.number().int().min(1).max(100).default(80),
+});
+export type UpdateWorkspaceBudgetInput = z.infer<typeof updateWorkspaceBudgetInputSchema>;

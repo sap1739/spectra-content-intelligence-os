@@ -354,6 +354,60 @@ describe('search-driven research runs (integration)', () => {
     expect(run?.failureReason ?? '').toMatch(/budget of 1 reached/);
   }, 30_000);
 
+  it('refuses at execution time when the workspace budget is exhausted', async () => {
+    // A job can be queued BEFORE the ceiling is hit and run after it. The
+    // executor must re-check rather than trusting the API's pre-flight guard.
+    await prisma.workspaceBudget.create({
+      data: {
+        organizationId: orgId,
+        workspaceId,
+        monthlyLimitMicros: 1_000,
+        enforcement: 'ENFORCE',
+      },
+    });
+    await prisma.usageEvent.create({
+      data: {
+        organizationId: orgId,
+        workspaceId,
+        kind: 'WEB_SEARCH',
+        provider: 'brave',
+        model: 'web-search',
+        estimatedCostMicros: 500_000,
+        rateVersion: 'rates-2026-08-31',
+      },
+    });
+
+    const stub = new StubWebSearch(
+      (base) => [{ url: `${base}/article-1?z=9`, title: 'x', snippet: 's', category: 'WEB' }],
+      baseUrl,
+    );
+    const registry = new ResearchProviderRegistry();
+    registry.register(stub);
+
+    const runId = await newRun({ feedUrls: [], searchQueries: ['over budget'] });
+    const outcome = await executeResearchRun(
+      {
+        prisma,
+        storage: storage(),
+        logger,
+        providerRegistry: registry,
+        fetchOptions: FETCH_OPTIONS,
+      },
+      { runId },
+    );
+
+    expect(outcome.status).toBe('FAILED');
+    // Refused before spending: the provider was never called.
+    expect(stub.seen).toEqual([]);
+    const run = await prisma.researchRun.findUnique({ where: { id: runId } });
+    expect(run?.status).toBe('FAILED');
+    expect(run?.failureReason ?? '').toMatch(/monthly limit/);
+
+    // Clean up so later assertions in this file are unaffected.
+    await prisma.workspaceBudget.deleteMany({ where: { workspaceId } });
+    await prisma.usageEvent.deleteMany({ where: { workspaceId } });
+  }, 30_000);
+
   it('refuses a search-only plan when no provider is configured', async () => {
     const runId = await newRun({ feedUrls: [], searchQueries: ['anything'] });
     // Recorded on the run, then re-thrown so the queue sees a real failure.

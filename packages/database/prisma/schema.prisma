@@ -47,10 +47,11 @@ model User {
   updatedAt DateTime  @updatedAt @db.Timestamptz(6)
   deletedAt DateTime? @db.Timestamptz(6)
 
-  memberships     Membership[]
-  createdResearch ResearchProject[] @relation("ResearchProjectCreatedBy")
-  auditLogs       AuditLog[]
-  credential      Credential?
+  memberships      Membership[]
+  createdResearch  ResearchProject[] @relation("ResearchProjectCreatedBy")
+  auditLogs        AuditLog[]
+  credential       Credential?
+  workspaceBudgets WorkspaceBudget[]
 
   @@index([status])
   @@map("users")
@@ -99,6 +100,7 @@ model Organization {
   trendCandidates  TrendCandidate[]
   auditLogs        AuditLog[]
   usageEvents      UsageEvent[]
+  workspaceBudgets WorkspaceBudget[]
   invitations      Invitation[]
   trendWatchlists  TrendWatchlist[]
   campaigns        Campaign[]
@@ -221,6 +223,7 @@ model Workspace {
   mediaAssets      MediaAsset[]
   socialAccounts   SocialAccount[]
   usageEvents      UsageEvent[]
+  workspaceBudget  WorkspaceBudget?
 
   @@unique([organizationId, slug])
   @@index([organizationId, status])
@@ -709,15 +712,15 @@ model EvidencePack {
 /// research findings (documentId = source id, metadata.kind marks it);
 /// uploaded documents join in Phase 3. Vector ops via PgVectorStore raw SQL.
 model DocumentChunk {
-  id                String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId    String                      @db.Uuid
-  workspaceId       String                      @db.Uuid
+  id                String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String                 @db.Uuid
+  workspaceId       String                 @db.Uuid
   /// Collection isolates embedding models — one model per collection.
   collection        String
-  documentId        String                      @db.Uuid
-  index             Int                         @default(0)
+  documentId        String                 @db.Uuid
+  index             Int                    @default(0)
   text              String
-  metadata          Json                        @default("{}")
+  metadata          Json                   @default("{}")
   embeddingProvider String
   embeddingModel    String
   dimensions        Int
@@ -1333,31 +1336,31 @@ model AuditLog {
 /// ESTIMATE derived from a versioned local rate table (`rateVersion`), not a
 /// vendor invoice. Never present it as an amount charged.
 model UsageEvent {
-  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String        @db.Uuid
-  workspaceId    String?       @db.Uuid
-  kind           UsageKind
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId      String    @db.Uuid
+  workspaceId         String?   @db.Uuid
+  kind                UsageKind
   /// Provider + model as reported by the adapter (e.g. "anthropic"/"claude-opus-4-8").
-  provider       String
-  model          String?
+  provider            String
+  model               String?
   /// Number of API calls this event covers (usually 1; batched embeds may be more).
-  requests       Int           @default(1)
+  requests            Int       @default(1)
   /// NULL = the provider did not report it. Never coerce to zero.
-  inputTokens    Int?
-  outputTokens   Int?
-  totalTokens    Int?
-  bytes          Int?
+  inputTokens         Int?
+  outputTokens        Int?
+  totalTokens         Int?
+  bytes               Int?
   /// Estimated cost in millionths of a currency unit; NULL when no rate is known.
   estimatedCostMicros Int?
   /// Rate-table version used for the estimate — makes old rows re-interpretable.
-  rateVersion    String?
-  currency       String        @default("USD")
+  rateVersion         String?
+  currency            String    @default("USD")
   /// What this spend was for: RESEARCH_RUN/CONTENT_DRAFT/etc + its id.
-  resourceType   String?
-  resourceId     String?       @db.Uuid
-  correlationId  String?
-  metadata       Json          @default("{}")
-  occurredAt     DateTime      @default(now()) @db.Timestamptz(6)
+  resourceType        String?
+  resourceId          String?   @db.Uuid
+  correlationId       String?
+  metadata            Json      @default("{}")
+  occurredAt          DateTime  @default(now()) @db.Timestamptz(6)
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   workspace    Workspace?   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -1375,4 +1378,41 @@ enum UsageKind {
   WEB_SEARCH
   NEWS_SEARCH
   PAGE_FETCH
+}
+
+/// Per-workspace spend ceiling, evaluated before expensive work starts.
+///
+/// Enforced against ESTIMATED cost from the versioned rate table (ADR-0026),
+/// which is approximate and excludes operations with no known rate. That
+/// limitation is surfaced in every budget decision rather than hidden, so an
+/// operator is never told a precise-looking number that is quietly incomplete.
+model WorkspaceBudget {
+  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String            @db.Uuid
+  workspaceId        String            @unique @db.Uuid
+  /// OFF = record only; WARN = surface but allow; ENFORCE = refuse new work.
+  enforcement        BudgetEnforcement @default(WARN)
+  /// Calendar-month ceiling in micros. NULL = no ceiling (nothing to exceed).
+  monthlyLimitMicros Int?
+  /// Percentage of the limit at which status becomes WARN (1-100).
+  warnAtPercent      Int               @default(80)
+  currency           String            @default("USD")
+  updatedById        String?           @db.Uuid
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  updatedBy    User?        @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@map("workspace_budgets")
+}
+
+/// How a workspace budget behaves when the ceiling is reached.
+enum BudgetEnforcement {
+  OFF
+  WARN
+  ENFORCE
 }

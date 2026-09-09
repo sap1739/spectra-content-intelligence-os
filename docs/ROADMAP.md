@@ -157,6 +157,18 @@ weakest link in the differentiator: research and evidence quality.
   never breaks the work it measures. Discovery is capped per run (default 100 fetches) and
   degrades to snippet-only past the cap, reporting that it did. The billing placeholder is now a
   real usage page that also states plainly that nothing charges anyone (ADR-0026).
-- Next: per-workspace budgets with pre-flight enforcement; content extraction for non-HTML
-  sources; fact verification; hybrid retrieval tuning + reranking; down-weighting snippet-only
-  evidence in trend scoring.
+- ✅ **Increment E — per-workspace budgets with pre-flight enforcement.** An optional monthly
+  ceiling per workspace (`OFF` / `WARN` / `ENFORCE`), evaluated against summed estimated spend for
+  the current UTC calendar month. `NOT_CONFIGURED` is a distinct status — never `OK`, which would
+  assert a real ceiling was checked. Every decision carries `unpricedEvents`, so the fact that
+  enforcement runs on an _estimate_ (and therefore under-counts) travels with the number instead
+  of being dropped. Only `ENFORCE` blocks; `WARN`/`OFF` report the identical breach without
+  refusing, so an operator can observe before committing to a hard cap. Enforcement is pre-flight
+  (API refuses before creating the row or enqueueing) **and** at execution (the worker re-checks,
+  since a job can be queued before the ceiling is hit) — the worker marks the row `FAILED` and
+  returns without throwing, because retrying cannot help until the limit is raised. Refusal is
+  `403` with a distinct `budget-exceeded` problem type, not `402`, since nothing here charges
+  anyone (ADR-0027).
+- Next: content extraction for non-HTML sources; fact verification; hybrid retrieval tuning +
+  reranking; down-weighting snippet-only evidence in trend scoring; per-kind and org-level
+  sub-limits; broader rate coverage to shrink the unpriced gap.

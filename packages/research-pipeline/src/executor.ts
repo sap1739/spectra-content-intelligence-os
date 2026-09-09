@@ -14,7 +14,7 @@ import {
 
 import type { ResearchProviderRegistry } from '@spectra/research-core';
 
-import { NoopUsageRecorder, type UsageRecorder } from '@spectra/metering';
+import { NoopUsageRecorder, evaluateBudget, type UsageRecorder } from '@spectra/metering';
 
 import { candidatesFromFeed, candidatesFromSearch, type CandidateItem } from './discovery';
 import { HtmlExtractionProvider } from './extraction';
@@ -131,6 +131,23 @@ export async function executeResearchRun(
   const excludedKeywords = vertical?.excludedKeywords ?? [];
   const trustedDomains = vertical?.trustedDomains ?? [];
   const blockedDomains = (vertical?.blockedDomains ?? []).map((d) => d.toLowerCase());
+
+  // Re-check the budget at execution time: this job may have been queued before
+  // the workspace hit its ceiling. Marked FAILED and returned WITHOUT throwing,
+  // because retrying cannot help until the limit is raised or the month rolls
+  // over — a retry would just burn queue attempts on a run that must not spend.
+  const budget = await evaluateBudget(deps.prisma, tenant, now());
+  if (budget.blocked) {
+    await deps.prisma.researchRun.update({
+      where: { id: run.id },
+      data: { status: 'FAILED', completedAt: now(), failureReason: budget.reason },
+    });
+    logger.warn(
+      { usedMicros: budget.usedMicros, limitMicros: budget.limitMicros },
+      'Research run refused — workspace budget exceeded',
+    );
+    return { status: 'FAILED', stats: emptyStats() };
+  }
 
   const stats = emptyStats();
   const feedErrors: string[] = [];

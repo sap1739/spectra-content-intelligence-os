@@ -38,6 +38,14 @@ function fakePrisma(overrides: { draftStatus?: string } = {}) {
   const packUpdates: Array<{ data: Record<string, unknown> }> = [];
 
   const prisma = {
+    // The executor re-checks the workspace budget before spending (ADR-0027).
+    // No budget row => NOT_CONFIGURED => never blocked.
+    workspaceBudget: { findFirst: vi.fn(async () => null) },
+    usageEvent: {
+      aggregate: vi.fn(async () => ({ _sum: { estimatedCostMicros: null } })),
+      count: vi.fn(async () => 0),
+      create: vi.fn(async () => ({})),
+    },
     contentDraft: {
       findUnique: vi.fn(async () => draftRow),
       update: vi.fn(async (args: { data: Record<string, unknown> }) => {
@@ -118,6 +126,32 @@ describe('executeContentDraft', () => {
       { draftId: 'd1' },
     );
     expect(outcome.status).toBe('FAILED');
+    expect(itemUpdates).toHaveLength(0);
+  });
+
+  it('refuses to spend when the workspace budget blocks, without calling the model', async () => {
+    const { prisma, draftUpdates, itemUpdates } = fakePrisma();
+    // An ENFORCE budget already over its ceiling.
+    prisma.workspaceBudget.findFirst = vi.fn(async () => ({
+      enforcement: 'ENFORCE',
+      monthlyLimitMicros: 1_000,
+      warnAtPercent: 80,
+      currency: 'USD',
+    })) as never;
+    prisma.usageEvent.aggregate = vi.fn(async () => ({
+      _sum: { estimatedCostMicros: 50_000 },
+    })) as never;
+    const provider = stubProvider('should never be generated');
+
+    const outcome = await executeContentDraft(
+      { prisma: prisma as never, provider },
+      { draftId: 'd1' },
+    );
+
+    expect(outcome.status).toBe('FAILED');
+    // The whole point: no tokens were spent.
+    expect(provider.generateText).not.toHaveBeenCalled();
+    expect(String(draftUpdates.at(-1)!.data['failureReason'])).toMatch(/monthly limit/);
     expect(itemUpdates).toHaveLength(0);
   });
 
