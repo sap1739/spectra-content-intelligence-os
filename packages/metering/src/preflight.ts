@@ -1,5 +1,22 @@
 import type { SpectraPrismaClient } from '@spectra/database';
 
+/**
+ * The slice of the client budget evaluation needs.
+ *
+ * Narrowed deliberately so the SAME function works against both the root client
+ * and a `$transaction` client — the transactional reserve path (ADR-0029) must
+ * evaluate the budget with the very reads it will then write against, and a
+ * transaction client has no `$transaction` of its own.
+ */
+export type BudgetReadClient = Pick<
+  SpectraPrismaClient,
+  | 'workspaceBudget'
+  | 'organizationBudget'
+  | 'usageEvent'
+  | 'budgetReservation'
+  | 'budgetOperationLimit'
+>;
+
 import { periodEndFor, periodStartFor, type BudgetEnforcement } from './budget';
 import { estimateCost, UNPRICED_REASON_TEXT, type UnpricedReason } from './rates';
 import type { UsageKind } from './recorder';
@@ -114,7 +131,7 @@ const EMPTY_CEILING: CeilingView = {
 
 /** Evaluates every budget control that applies to one prospective operation. */
 export async function preflight(
-  prisma: SpectraPrismaClient,
+  prisma: BudgetReadClient,
   request: PreflightRequest,
   now: Date = new Date(),
 ): Promise<PreflightDecision> {
@@ -338,7 +355,7 @@ function buildCeiling(
 }
 
 async function buildOperationUsage(
-  prisma: SpectraPrismaClient,
+  prisma: BudgetReadClient,
   args: {
     organizationId: string;
     workspaceId: string;
@@ -414,7 +431,7 @@ export class BudgetBlockedError extends Error {
 
 /** Runs pre-flight and throws when the outcome is BLOCK. */
 export async function assertPreflight(
-  prisma: SpectraPrismaClient,
+  prisma: BudgetReadClient,
   request: PreflightRequest,
   now: Date = new Date(),
 ): Promise<PreflightDecision> {

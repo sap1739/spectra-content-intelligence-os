@@ -136,7 +136,7 @@ export async function executeContentDraft(
     requests: 1,
   });
   if (budget.blocked) {
-    await release(prisma, `content-draft-${draft.id}`, logger);
+    await release(prisma, tenant, `content-draft-${draft.id}`, logger);
     await prisma.contentDraft.update({
       where: { id: draft.id },
       data: { status: 'FAILED', failureReason: budget.reason },
@@ -211,7 +211,7 @@ export async function executeContentDraft(
     }
 
     // Real token usage is in the ledger now; stop the hold counting on top.
-    await reconcile(prisma, `content-draft-${draft.id}`, logger);
+    await reconcile(prisma, tenant, `content-draft-${draft.id}`, logger);
 
     if (updated.status === 'READY') {
       await prisma.contentItem.update({

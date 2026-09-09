@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import {
   Injectable,
   ServiceUnavailableException,
@@ -14,7 +16,7 @@ import {
 } from '@spectra/contracts';
 import { moderateContent, type ModerationOutcome } from '@spectra/content-pipeline';
 import { TenantIsolationError } from '@spectra/security';
-import { assertPreflight, reserve } from '@spectra/metering';
+import { release, reserve } from '@spectra/metering';
 import { JOB_NAMES } from '@spectra/workflow-core';
 
 import { AiTextService } from '../infra/ai.service';
@@ -220,40 +222,41 @@ export class ContentService {
       );
     }
 
-    // Pre-flight: generation spends real tokens. Refuse before creating the
-    // draft row, so an over-budget workspace never queues a paid job.
-    await assertPreflight(this.prisma.client, {
+    const scope = {
       organizationId: tenant.organizationId,
       workspaceId: tenant.workspaceId as string,
-      kind: 'CONTENT_DRAFT',
-      provider: this.ai.provider.modelRef.provider,
-      model: this.ai.provider.modelRef.model,
-      requests: 1,
-    });
-
-    const draft = await this.prisma.client.contentDraft.create({
-      data: {
-        organizationId: tenant.organizationId,
-        workspaceId: tenant.workspaceId as string,
-        contentItemId: item.id,
-        status: 'GENERATING',
-        evidencePackId: item.evidencePackId,
-        createdById: principal.userId,
-      },
-    });
-
-    // Hold the allowance for this in-flight generation (see research runs).
+    };
+    // Reserve BEFORE creating the row, keyed to a draft id minted here, so the
+    // decision and the hold are one atomic step (ADR-0029). A blocked workspace
+    // never creates a draft or queues a paid job.
+    const draftId = randomUUID();
     await reserve(this.prisma.client, {
-      organizationId: tenant.organizationId,
-      workspaceId: tenant.workspaceId as string,
+      ...scope,
       kind: 'CONTENT_DRAFT',
       provider: this.ai.provider.modelRef.provider,
       model: this.ai.provider.modelRef.model,
       requests: 1,
-      idempotencyKey: `content-draft-${draft.id}`,
+      idempotencyKey: `content-draft-${draftId}`,
       resourceType: 'CONTENT_DRAFT',
-      resourceId: draft.id,
-    }).catch(() => undefined);
+      resourceId: draftId,
+    });
+
+    let draft;
+    try {
+      draft = await this.prisma.client.contentDraft.create({
+        data: {
+          id: draftId,
+          ...scope,
+          contentItemId: item.id,
+          status: 'GENERATING',
+          evidencePackId: item.evidencePackId,
+          createdById: principal.userId,
+        },
+      });
+    } catch (error) {
+      await release(this.prisma.client, scope, `content-draft-${draftId}`);
+      throw error;
+    }
 
     await this.queue.enqueue(
       JOB_NAMES.contentDraftGenerate,

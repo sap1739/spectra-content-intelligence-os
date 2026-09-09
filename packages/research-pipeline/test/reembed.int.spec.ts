@@ -193,8 +193,8 @@ describe('executeReembed (integration)', () => {
     // Honest about what is left undone.
     expect(outcome.remaining).toBeGreaterThan(0);
 
-    await prisma.workspaceBudget.deleteMany({ where: { workspaceId } });
-    await prisma.usageEvent.deleteMany({ where: { workspaceId } });
+    await prisma.workspaceBudget.deleteMany({ where: { organizationId, workspaceId } });
+    await prisma.usageEvent.deleteMany({ where: { organizationId, workspaceId } });
     // Restore the collection for the remaining tests.
     await executeReembed({ prisma, embedder: stubSemantic }, { organizationId, workspaceId });
   }, 30_000);

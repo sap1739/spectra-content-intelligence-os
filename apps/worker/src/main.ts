@@ -10,7 +10,7 @@ import { loadEnv, storageEnvSchema, workerEnvSchema } from '@spectra/config';
 import { executeContentDraft } from '@spectra/content-pipeline';
 import { createPrismaClient } from '@spectra/database';
 import { createLogger, withCorrelation } from '@spectra/logging';
-import { PrismaUsageRecorder } from '@spectra/metering';
+import { PrismaUsageRecorder, expireStaleReservations } from '@spectra/metering';
 import {
   claimDuePublications,
   executePublication,
@@ -308,10 +308,30 @@ async function main(): Promise<void> {
     { concurrency: 1, timeoutMs: 15 * 60_000 },
   );
 
+  // Stale budget holds: pre-flight already ignores expired reservations, so
+  // this is hygiene rather than correctness — it keeps the table bounded and
+  // interpretable after crashed workers.
+  runtime.register(
+    JOB_NAMES.budgetReservationSweep,
+    async (_envelope, context) => {
+      const released = await expireStaleReservations(prisma);
+      if (released > 0) {
+        withCorrelation(logger, context.correlationId).info(
+          { released },
+          'Released expired budget reservations',
+        );
+      }
+      return { released };
+    },
+    { concurrency: 1, timeoutMs: 30_000 },
+  );
+
   await runtime.start();
   await queue.schedule(HEARTBEAT_JOB_NAME, {}, { everyMs: env.WORKER_HEARTBEAT_INTERVAL_MS });
   // Scan for due publications every minute.
   await queue.schedule(JOB_NAMES.publicationDispatch, {}, { everyMs: 60_000 });
+  // Sweep expired budget holds every five minutes.
+  await queue.schedule(JOB_NAMES.budgetReservationSweep, {}, { everyMs: 5 * 60_000 });
 
   // Immediate first beat so readiness sees the worker without waiting a cycle.
   await queue.enqueue(

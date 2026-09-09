@@ -296,6 +296,59 @@ describe('API integration: budget hardening', () => {
       .catch(() => undefined);
   });
 
+  it('concurrent research-run starts cannot all pass the last allowance', async () => {
+    // Reset this workspace and leave room for exactly one run.
+    await prisma.client.usageEvent.deleteMany({ where: { organizationId: orgId } });
+    await prisma.client.budgetReservation.deleteMany({ where: { organizationId: orgId } });
+    await prisma.client.budgetOperationLimit.deleteMany({ where: { organizationId: orgId } });
+    await inject().inject({
+      method: 'PUT',
+      url: `${org()}/budget`,
+      headers: { cookie },
+      payload: { monthlyLimitMicros: null, enforcement: 'OFF', warnAtPercent: 80 },
+    });
+    await inject().inject({
+      method: 'PUT',
+      url: `${ws()}/budget`,
+      headers: { cookie },
+      // A research run reserves 0 estimated cost (unpriced), so bound it with a
+      // per-kind limit instead — the case that matters for unpriceable work.
+      payload: { monthlyLimitMicros: null, enforcement: 'ENFORCE', warnAtPercent: 80 },
+    });
+    await inject().inject({
+      method: 'PUT',
+      url: `${ws()}/budget/operations`,
+      headers: { cookie },
+      payload: { limits: [{ kind: 'RESEARCH_RUN', maxRequests: 1, maxTokens: null }] },
+    });
+
+    const project = await prisma.client.researchProject.create({
+      data: { organizationId: orgId, workspaceId, name: 'Concurrency project', status: 'ACTIVE' },
+    });
+
+    const attempts = await Promise.all(
+      Array.from({ length: 6 }, () =>
+        inject().inject({
+          method: 'POST',
+          url: `${ws()}/research-projects/${project.id}/runs`,
+          headers: { cookie },
+          payload: { feedUrls: ['https://example.com/feed.xml'] },
+        }),
+      ),
+    );
+
+    const created = attempts.filter((r) => r.statusCode === 201);
+    const refused = attempts.filter((r) => r.statusCode === 403);
+    expect(created).toHaveLength(1);
+    expect(refused).toHaveLength(5);
+
+    // And only one run row exists — the refusals are pre-flight, not post-hoc.
+    const runs = await prisma.client.researchRun.count({
+      where: { organizationId: orgId, workspaceId, projectId: project.id },
+    });
+    expect(runs).toBe(1);
+  });
+
   it('rejects an unknown usage kind with 422', async () => {
     const res = await inject().inject({
       method: 'POST',

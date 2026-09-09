@@ -40,6 +40,11 @@ Mappings in `GlobalExceptionFilter`:
 | Unexpected exception                                 | 500     | opaque; logged with correlationId                                                                                                              |
 | `BudgetBlockedError` (ceiling or per-kind limit)     | 403     | `type: .../budget-exceeded`; decision attached. NOT 402 — nothing charges anyone, so "Payment Required" would imply a bill that does not exist |
 
+Budget-bearing endpoints acquire their allowance **atomically** (ADR-0029): the decision and the
+hold are one transaction, so concurrent requests against the last remaining allowance produce
+exactly one `201` and truthful `403`s for the rest — never several successes that together
+overspend. Refusals happen before any row is created, so a refused request leaves no artefact.
+
 ## 4. Correlation IDs
 
 `x-correlation-id` accepted from callers (≤128 chars) or generated (UUIDv4); always echoed in

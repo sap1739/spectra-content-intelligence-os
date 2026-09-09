@@ -18,6 +18,7 @@ export const JOB_NAMES = {
   publicationDispatch: 'publication.dispatch',
   publicationPublish: 'publication.publish',
   knowledgeReembed: 'knowledge.reembed',
+  budgetReservationSweep: 'budget.reservation.sweep',
 } as const;
 
 export interface RetryPolicy {

@@ -30,6 +30,7 @@
 | [0026](0026-usage-metering.md)                                  | Usage metering: measured spend, estimated cost, capped runs                                    | Accepted             |
 | [0027](0027-workspace-budgets.md)                               | Workspace budgets: pre-flight enforcement on an estimate                                       | Accepted             |
 | [0028](0028-budget-hardening-rate-coverage-and-reservations.md) | Budget hardening: rate coverage, embedding guards, per-kind limits, org ceilings, reservations | Accepted             |
+| [0029](0029-transactional-budget-reservations.md)               | Transactional budget reservations: advisory-lock atomic reserve-and-check                      | Accepted             |
 
 New significant decisions require a new ADR (`NNNN-kebab-title.md`) using the
 Context / Decision / Rationale / Consequences structure.

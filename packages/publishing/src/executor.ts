@@ -1,7 +1,13 @@
 import type { SocialPlatform } from '@spectra/contracts';
 import type { SpectraPrismaClient } from '@spectra/database';
 import type { Logger } from '@spectra/logging';
-import { preflight, type UsageRecorder } from '@spectra/metering';
+import {
+  BudgetBlockedError,
+  reconcile,
+  release,
+  reserve,
+  type UsageRecorder,
+} from '@spectra/metering';
 import type { PostPublisher } from '@spectra/social-core';
 
 /**
@@ -75,13 +81,26 @@ export async function executePublication(
   // than a cost decision — but it DOES count against a per-kind
   // PUBLISH_ATTEMPT limit, and the seam exists so a future paid publishing
   // provider cannot bypass budget enforcement by being added later.
-  const budget = await preflight(prisma, {
-    organizationId: entry.organizationId,
-    workspaceId: entry.workspaceId,
-    kind: 'PUBLISH_ATTEMPT',
-    provider: String(entry.platform).toLowerCase(),
-    requests: 1,
-  });
+  const tenant = { organizationId: entry.organizationId, workspaceId: entry.workspaceId };
+  // Keyed on the entry + attempt so a retry of the SAME attempt re-uses its
+  // hold, while a genuine re-publish takes a fresh one.
+  const reservationKey = `publish-${entry.id}-${entry.attemptCount ?? 0}`;
+  let budget;
+  try {
+    ({ decision: budget } = await reserve(prisma, {
+      ...tenant,
+      kind: 'PUBLISH_ATTEMPT',
+      provider: String(entry.platform).toLowerCase(),
+      requests: 1,
+      idempotencyKey: reservationKey,
+      resourceType: 'SCHEDULE_ENTRY',
+      resourceId: entry.id,
+      ttlMs: 10 * 60_000,
+    }));
+  } catch (error) {
+    if (!(error instanceof BudgetBlockedError)) throw error;
+    budget = error.decision;
+  }
   if (budget.blocked) {
     await prisma.contentScheduleEntry.update({
       where: { id: entry.id },
@@ -107,6 +126,9 @@ export async function executePublication(
         failureReason: `No live publisher is available for ${entry.platform}. Nothing was published.`,
       },
     });
+    // Nothing was attempted externally, so the hold is returned rather than
+    // counted — an UNSUPPORTED entry must not consume a publish allowance.
+    await release(prisma, tenant, reservationKey, logger);
     logger?.info({ platform: entry.platform }, 'No publisher resolved — marked UNSUPPORTED');
     return { status: 'UNSUPPORTED', entryId: entry.id };
   }
@@ -156,6 +178,7 @@ export async function executePublication(
         metadata: { result: outcome.status },
       },
     );
+    await reconcile(prisma, tenant, reservationKey, logger);
     logger?.info({ platform: entry.platform, status: outcome.status }, 'Publish attempt complete');
     return { status: published ? 'PUBLISHED' : 'FAILED', entryId: entry.id };
   } catch (error) {
@@ -164,6 +187,9 @@ export async function executePublication(
       where: { id: entry.id },
       data: { status: 'FAILED', failureReason },
     });
+    // The publisher threw: it may or may not have reached the platform, so
+    // reconcile rather than release — the attempt is recorded either way.
+    await reconcile(prisma, tenant, reservationKey, logger);
     logger?.warn({ err: failureReason }, 'Publish attempt failed');
     return { status: 'FAILED', entryId: entry.id };
   }

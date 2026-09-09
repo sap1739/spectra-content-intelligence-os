@@ -185,6 +185,20 @@ Reservations are advisory, not accounting: idempotency-keyed so retries do not d
 reconciled against real metered usage on completion, released when work never ran, and expiring
 so a crashed worker cannot permanently hold an allowance.
 
+**Acquisition is transactional (ADR-0029).** The budget decision and the reservation write happen
+inside one transaction guarded by a PostgreSQL transaction-scoped advisory lock keyed on
+`organizationId` (`pg_advisory_xact_lock`). Advisory rather than `SELECT … FOR UPDATE` because a
+budget row may legitimately not exist while per-kind limits still apply; organization-scoped
+because the org ceiling aggregates across that org's workspaces. Exactly one lock is taken per
+transaction, so deadlock is impossible by construction, and the lock releases on rollback as well
+as commit. A blocked decision throws inside the transaction, so no partial or orphaned reservation
+is ever written.
+
+All five budget/metering tables are in `TENANT_SCOPED_MODELS`, so an un-scoped multi-row query
+throws rather than relying on convention. The single documented exception is the cross-tenant
+expiry sweep (`budget.reservation.sweep`), which uses `$executeRaw` and touches only expiry
+bookkeeping.
+
 ## 10. Future entities
 
 Remaining contract-only entities (angles, publications, workspace budgets, knowledge

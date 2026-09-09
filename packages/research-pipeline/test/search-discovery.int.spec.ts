@@ -404,8 +404,8 @@ describe('search-driven research runs (integration)', () => {
     expect(run?.failureReason ?? '').toMatch(/monthly limit/);
 
     // Clean up so later assertions in this file are unaffected.
-    await prisma.workspaceBudget.deleteMany({ where: { workspaceId } });
-    await prisma.usageEvent.deleteMany({ where: { workspaceId } });
+    await prisma.workspaceBudget.deleteMany({ where: { organizationId: orgId, workspaceId } });
+    await prisma.usageEvent.deleteMany({ where: { organizationId: orgId, workspaceId } });
   }, 30_000);
 
   it('refuses a search-only plan when no provider is configured', async () => {

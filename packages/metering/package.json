@@ -9,7 +9,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run src",
-    "clean": "rm -rf dist .turbo"
+    "clean": "rm -rf dist .turbo",
+    "test:integration": "vitest run test"
   },
   "dependencies": {
     "@spectra/contracts": "workspace:*",

@@ -29,6 +29,13 @@ per-membership grants. Organization budget controls (`org:budget:read`, `org:bud
 see and set their own ceiling, but cannot read or raise the organization-wide one. Checks test permissions only. Client Reviewer/Read Only bundles are
 minimal by construction (unit-tested).
 
+Budget and metering tables (`UsageEvent`, `WorkspaceBudget`, `OrganizationBudget`,
+`BudgetOperationLimit`, `BudgetReservation`) are tenant-guarded, so an un-scoped multi-row query
+throws. Reservation settlement is addressed by tenant **and** idempotency key — a key alone never
+identifies a hold, and a key resolving to another tenant's reservation is refused (ADR-0029). The
+one cross-tenant statement is the expiry sweep, which is raw, documented, and reads no tenant
+content.
+
 ## 3. Secrets & credentials
 
 - **[P1]** No hard-coded secrets; env validated at boot; local dev credentials only in

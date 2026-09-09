@@ -1,6 +1,8 @@
+import { randomUUID } from 'node:crypto';
+
 import { Injectable } from '@nestjs/common';
 import type { VectorSearchHit } from '@spectra/contracts';
-import { assertPreflight } from '@spectra/metering';
+import { reconcile, release, reserve } from '@spectra/metering';
 import { PgVectorStore } from '@spectra/database';
 import { JOB_NAMES } from '@spectra/workflow-core';
 
@@ -41,21 +43,35 @@ export class KnowledgeService {
     };
     const { provider, collection } = this.embeddings.active;
 
-    // Pre-flight BEFORE the provider call: a blocked workspace must not spend
-    // on a query embedding. The lexical fallback costs nothing, so it is priced
-    // FREE_LOCAL and never blocked — search keeps working, honestly lexical.
-    await assertPreflight(this.prisma.client, {
+    // Reserve BEFORE the provider call: the decision and the hold are atomic
+    // (ADR-0029), so concurrent searches cannot all pass on the last allowance.
+    // The lexical fallback is priced FREE_LOCAL and is never blocked — search
+    // keeps working, honestly lexical.
+    // Keyed per search so concurrent searches each take their own hold.
+    const reservationKey = `knowledge-search-${scope.workspaceId}-${randomUUID()}`;
+    await reserve(this.prisma.client, {
       organizationId: scope.organizationId,
       workspaceId: scope.workspaceId,
       kind: 'AI_EMBEDDING',
       provider: provider.modelRef.provider,
       model: provider.modelRef.model,
       requests: 1,
+      idempotencyKey: reservationKey,
+      resourceType: 'KNOWLEDGE_SEARCH',
+      // Short: a search either happens now or not at all.
+      ttlMs: 60_000,
     });
 
-    // 'query' side of the asymmetric pair — real models encode a search query
-    // differently from a stored passage.
-    const embedResult = await provider.embed([query], scope, 'query');
+    let embedResult;
+    try {
+      // 'query' side of the asymmetric pair — real models encode a search query
+      // differently from a stored passage.
+      embedResult = await provider.embed([query], scope, 'query');
+    } catch (error) {
+      // Never spent — return the allowance rather than holding it for the TTL.
+      await release(this.prisma.client, scope, reservationKey);
+      throw error;
+    }
     const [queryVector] = embedResult.vectors;
     if (embedResult.usage) {
       await this.usage.record(scope, {
@@ -66,6 +82,9 @@ export class KnowledgeService {
         resourceType: 'KNOWLEDGE_SEARCH',
       });
     }
+    // Real usage (if any) is now in the ledger; stop the hold counting on top.
+    await reconcile(this.prisma.client, scope, reservationKey);
+
     const hits = await this.vectorStore.search({
       ...scope,
       collection,
@@ -126,15 +145,19 @@ export class KnowledgeService {
       workspaceId: tenant.workspaceId as string,
     };
     // A backfill can embed an entire corpus — the single most expensive
-    // operation in the product. Refuse BEFORE queuing, so a blocked workspace
-    // never has paid work sitting in the queue.
-    await assertPreflight(this.prisma.client, {
+    // operation in the product. Reserve BEFORE queuing, so a blocked workspace
+    // never has paid work sitting in the queue and two operators cannot both
+    // start one against the same remaining allowance. Keyed per workspace so a
+    // double-click re-uses the same hold instead of stacking a second.
+    await reserve(this.prisma.client, {
       organizationId: scope.organizationId,
       workspaceId: scope.workspaceId,
       kind: 'AI_EMBEDDING',
       provider: this.embeddings.active.provider.modelRef.provider,
       model: this.embeddings.active.provider.modelRef.model,
       requests: 1,
+      idempotencyKey: `knowledge-reembed-${scope.workspaceId}`,
+      resourceType: 'KNOWLEDGE_REEMBED',
     });
     await this.queue.enqueue(JOB_NAMES.knowledgeReembed, scope);
     return { status: 'QUEUED' as const, collection: this.embeddings.active.collection };

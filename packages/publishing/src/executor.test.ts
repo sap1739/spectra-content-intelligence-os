@@ -22,7 +22,12 @@ function fakePrisma(entry: { status: string; platform?: string }) {
     workspaceBudget: { findFirst: vi.fn(async () => null) },
     organizationBudget: { findFirst: vi.fn(async () => null) },
     budgetOperationLimit: { findMany: vi.fn(async () => []) },
-    budgetReservation: { findMany: vi.fn(async () => []) },
+    budgetReservation: {
+      findMany: vi.fn(async () => []),
+      findUnique: vi.fn(async () => null),
+      create: vi.fn(async () => ({ id: 'res-1' })),
+      updateMany: vi.fn(async () => ({ count: 1 })),
+    },
     usageEvent: {
       aggregate: vi.fn(async () => ({
         _sum: {
@@ -56,7 +61,16 @@ function fakePrisma(entry: { status: string; platform?: string }) {
       update: vi.fn(async () => ({})),
     },
   };
-  return { prisma, updates };
+  // Publishing reserves atomically (ADR-0029): the fake must model the
+  // transaction boundary the executor now relies on.
+  const withTx = {
+    ...prisma,
+    $executeRaw: vi.fn(async () => 0),
+    $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
+      fn({ ...prisma, $executeRaw: vi.fn(async () => 0) }),
+    ),
+  };
+  return { prisma: withTx, updates };
 }
 
 /** A stub live publisher — never touches the network. */

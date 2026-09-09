@@ -4,7 +4,13 @@ import type { EmbeddingProvider } from '@spectra/ai-core';
 import { PgVectorStore, type SpectraPrismaClient } from '@spectra/database';
 import { resolveEmbedding, type VectorStoreProvider } from '@spectra/knowledge-core';
 import type { Logger } from '@spectra/logging';
-import { preflight, type UsageRecorder } from '@spectra/metering';
+import {
+  BudgetBlockedError,
+  reconcile,
+  release,
+  reserve,
+  type UsageRecorder,
+} from '@spectra/metering';
 
 /**
  * Re-embeds a workspace's stored chunks into the ACTIVE embedding collection.
@@ -98,21 +104,35 @@ export async function executeReembed(
   let reembedded = 0;
   let failed = 0;
   let budgetStoppedAfter: number | null = null;
+  // Stable across retries of the same backfill, so a re-delivered job re-uses
+  // its own per-batch holds rather than stacking new ones.
+  const reservationPrefix = `knowledge-reembed-${tenant.workspaceId}-${embedding.collection}`;
 
   for (let i = 0; i < rows.length; i += batchSize) {
     const batch = rows.slice(i, i + batchSize);
 
-    // Re-check EVERY batch, not just once at the start. A corpus backfill can
-    // run for a long time and spend continuously; a single entry check would
-    // let it blow straight through a ceiling it crossed mid-run.
-    const decision = await preflight(deps.prisma, {
-      organizationId: tenant.organizationId,
-      workspaceId: tenant.workspaceId,
-      kind: 'AI_EMBEDDING',
-      provider: embedding.provider.modelRef.provider,
-      model: embedding.provider.modelRef.model,
-      requests: batch.length,
-    });
+    // Reserve EVERY batch, not just once at the start. A corpus backfill runs
+    // for a long time and spends continuously; a single entry check would let
+    // it blow through a ceiling it crossed mid-run, and a non-atomic check
+    // would let a concurrent operation take the same allowance (ADR-0029).
+    const batchKey = `${reservationPrefix}-batch-${i}`;
+    let decision;
+    try {
+      ({ decision } = await reserve(deps.prisma, {
+        organizationId: tenant.organizationId,
+        workspaceId: tenant.workspaceId,
+        kind: 'AI_EMBEDDING',
+        provider: embedding.provider.modelRef.provider,
+        model: embedding.provider.modelRef.model,
+        requests: batch.length,
+        idempotencyKey: batchKey,
+        resourceType: 'KNOWLEDGE_REEMBED',
+        ttlMs: 10 * 60_000,
+      }));
+    } catch (error) {
+      if (!(error instanceof BudgetBlockedError)) throw error;
+      decision = error.decision;
+    }
     if (decision.blocked) {
       // Stop honestly and say how far we got — the collection is partially
       // backfilled, which the status endpoint already surfaces.
@@ -132,6 +152,8 @@ export async function executeReembed(
         'document',
       );
       vectors = result.vectors;
+      // Real token usage is metered below; the batch hold has done its job.
+      await reconcile(deps.prisma, tenant, batchKey, logger);
       if (result.usage && deps.usage) {
         await deps.usage.record(tenant, {
           kind: 'AI_EMBEDDING',
@@ -143,6 +165,9 @@ export async function executeReembed(
       }
     } catch (error) {
       failed += batch.length;
+      // Failed before the provider returned: nothing was spent, so return the
+      // allowance instead of holding it until expiry.
+      await release(deps.prisma, tenant, batchKey, logger);
       logger?.warn(
         { err: error instanceof Error ? error.message : String(error), batch: batch.length },
         'Re-embed batch failed',

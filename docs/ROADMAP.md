@@ -186,7 +186,20 @@ weakest link in the differentiator: research and evidence quality.
   pre-flight seam so future paid publishers cannot bypass enforcement, and idempotency-keyed
   reservations so simultaneous pre-flights cannot both pass against the same allowance
   (ADR-0028).
+- ✅ **Increment E.2 — transactional budget reservations.** 5E.1 left one hole and named it: two
+  pre-flights that read before either writes could both pass. The cause was structural — the
+  decision and the hold were separate statements, and a hold is worthless if acquiring it is not
+  atomic with the decision to allow it. Both now run in one transaction serialized by a
+  PostgreSQL transaction-scoped advisory lock keyed on `organizationId`: advisory because a budget
+  row may legitimately not exist while per-kind limits still apply, organization-scoped because
+  the org ceiling aggregates across that org's workspaces, and exactly one lock per transaction so
+  deadlock is impossible by construction. A blocked decision throws inside the transaction, so no
+  orphaned hold is written. The API layer was reproducing the same race one level up
+  (`assertPreflight` then a separate `reserve`) and was fixed to reserve-first against a
+  pre-minted row id. Settlement is now tenant-scoped and covers success, failure before spend,
+  failure after spend, retry, cancellation and crash-then-expiry. Proven against real PostgreSQL:
+  10 concurrent reserves against room for one yield exactly one winner — and the test fails
+  (7 winners) with the lock removed (ADR-0029).
 - Next: content extraction for non-HTML sources; fact verification; hybrid retrieval tuning +
-  reranking; down-weighting snippet-only evidence in trend scoring; transactional
-  reserve-and-check to fully close concurrent overspend; an approval workflow behind the existing
-  `REQUIRES_APPROVAL` decision.
+  reranking; down-weighting snippet-only evidence in trend scoring; an approval workflow behind
+  the existing `REQUIRES_APPROVAL` decision.

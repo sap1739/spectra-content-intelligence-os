@@ -25,6 +25,14 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'ResearchFinding',
   'TrendCandidate',
   'AuditLog',
+  // Budget + metering (ADR-0026/0027/0028/0029). Every read in the budget
+  // engine filters by organizationId; the guard makes that a hard requirement
+  // rather than a convention.
+  'UsageEvent',
+  'WorkspaceBudget',
+  'OrganizationBudget',
+  'BudgetOperationLimit',
+  'BudgetReservation',
 ]);
 
 const GUARDED_OPERATIONS: ReadonlySet<string> = new Set([

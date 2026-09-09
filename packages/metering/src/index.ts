@@ -18,6 +18,7 @@ export {
 export type { BudgetDecision, BudgetEnforcement, BudgetStatus } from './budget';
 export { BudgetBlockedError, assertPreflight, preflight } from './preflight';
 export type {
+  BudgetReadClient,
   BudgetScope,
   BudgetWarning,
   CeilingView,
@@ -27,8 +28,14 @@ export type {
   PreflightOutcome,
   PreflightRequest,
 } from './preflight';
-export { reconcile, release, reserve, withReservation } from './reservation';
-export type { Reservation, ReserveInput } from './reservation';
+export {
+  expireStaleReservations,
+  reconcile,
+  release,
+  reserve,
+  withReservation,
+} from './reservation';
+export type { Reservation, ReservationScope, ReserveInput } from './reservation';
 export {
   COUNTER_ONLY_KINDS,
   FREE_LOCAL_PROVIDERS,

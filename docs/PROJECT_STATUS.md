@@ -1,7 +1,7 @@
 # SpectraContent Intelligence OS — Project Status
 
 **Snapshot date:** 2026-09-09 · **Branch:** `main`
-**Status:** Phases 1–4 complete · Phase 5 in progress (5A–5E.1 shipped)
+**Status:** Phases 1–4 complete · Phase 5 in progress (5A–5E.2 shipped)
 
 > This document is a factual, audited snapshot intended as context for planning further work.
 > Every number below was measured from the repository, not estimated.
@@ -189,6 +189,11 @@ standards, health/readiness endpoints, OpenAPI at `/docs`.
   scan, snapshotting, scoring, embedding). Discovered URLs are fetched through the existing
   `safeFetch`; failed fetches keep the snippet and mark `snippetOnly`. Provenance records the
   _query_ that found a source.
+- **5E.2:** **Transactional reservations.** The budget decision and the reservation write are now
+  one transaction, serialized by a PostgreSQL advisory lock keyed on `organizationId`, so
+  concurrent operations cannot all pass on the last remaining allowance. Verified against real
+  PostgreSQL, with the test confirmed to fail when the lock is removed. Also fixed the API layer,
+  which was reproducing the same check-then-act race one level up (ADR-0029).
 - **5E.1:** **Budget hardening.** Fixed a real defect where the DEFAULT Voyage embedding model
   had no rate entry, making all default embedding spend invisible to ceilings. Unpriced work now
   carries an explicit reason; unknown models from known paid providers are conservatively

@@ -155,7 +155,7 @@ export async function executeResearchRun(
   );
   if (budget.blocked) {
     // The hold is no longer needed: this run will not spend.
-    await release(deps.prisma, `research-run-${run.id}`, logger);
+    await release(deps.prisma, tenant, `research-run-${run.id}`, logger);
     await deps.prisma.researchRun.update({
       where: { id: run.id },
       data: { status: 'FAILED', completedAt: now(), failureReason: budget.reason },
@@ -770,7 +770,7 @@ export async function executeResearchRun(
       },
     });
     // Real usage is now in the ledger; stop the hold double-counting it.
-    await reconcile(deps.prisma, `research-run-${run.id}`, logger);
+    await reconcile(deps.prisma, tenant, `research-run-${run.id}`, logger);
     await input.onProgress?.(100, 'HUMAN_REVIEW');
     logger.info({ status, ...stats }, 'Research run completed');
     return { status, stats };
@@ -786,7 +786,7 @@ export async function executeResearchRun(
       },
     });
     // Partial spend is already metered; the hold must not keep counting on top.
-    await reconcile(deps.prisma, `research-run-${run.id}`, logger);
+    await reconcile(deps.prisma, tenant, `research-run-${run.id}`, logger);
     logger.error({ err: message }, 'Research run failed');
     throw error;
   }
