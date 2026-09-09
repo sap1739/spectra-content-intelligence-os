@@ -1,7 +1,7 @@
 # SpectraContent Intelligence OS — Project Status
 
 **Snapshot date:** 2026-09-09 · **Branch:** `main`
-**Status:** Phases 1–4 complete · Phase 5 in progress (5A–5E shipped)
+**Status:** Phases 1–4 complete · Phase 5 in progress (5A–5E.1 shipped)
 
 > This document is a factual, audited snapshot intended as context for planning further work.
 > Every number below was measured from the repository, not estimated.
@@ -189,6 +189,13 @@ standards, health/readiness endpoints, OpenAPI at `/docs`.
   scan, snapshotting, scoring, embedding). Discovered URLs are fetched through the existing
   `safeFetch`; failed fetches keep the snippet and mark `snippetOnly`. Provenance records the
   _query_ that found a source.
+- **5E.1:** **Budget hardening.** Fixed a real defect where the DEFAULT Voyage embedding model
+  had no rate entry, making all default embedding spend invisible to ceilings. Unpriced work now
+  carries an explicit reason; unknown models from known paid providers are conservatively
+  over-priced rather than dropped. Embedding paths (search + re-embed, including per-batch)
+  guarded. Added per-operation monthly limits, an optional organization ceiling (stricter scope
+  wins), a publishing pre-flight seam, and idempotency-keyed reservations for concurrency
+  (ADR-0028).
 - **5E:** **Workspace budgets.** Optional monthly ceiling per workspace with `OFF`/`WARN`/`ENFORCE`
   modes, enforced pre-flight (API) and re-checked at execution (worker). `NOT_CONFIGURED` is
   distinct from `OK`; every decision carries `unpricedEvents` so the estimate's incompleteness is

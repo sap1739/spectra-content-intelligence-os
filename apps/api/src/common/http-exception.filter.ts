@@ -6,7 +6,7 @@ import {
   type ArgumentsHost,
   type ExceptionFilter,
 } from '@nestjs/common';
-import { BudgetExceededError } from '@spectra/metering';
+import { BudgetBlockedError, BudgetExceededError } from '@spectra/metering';
 import { ForbiddenError, TenantIsolationError } from '@spectra/security';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
@@ -67,6 +67,20 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         title: 'Insufficient permissions',
         status: HttpStatus.FORBIDDEN,
         detail: exception.message,
+        ...(correlationId ? { correlationId } : {}),
+      };
+    }
+
+    if (exception instanceof BudgetBlockedError) {
+      // 403, not 402: nothing here charges anyone, so "Payment Required" would
+      // imply a bill that does not exist. The decision carries which ceiling or
+      // per-operation limit was hit, and no foreign-tenant data.
+      return {
+        type: 'https://spectra.dev/problems/budget-exceeded',
+        title: 'Budget limit reached',
+        status: HttpStatus.FORBIDDEN,
+        detail: exception.message,
+        budget: exception.decision,
         ...(correlationId ? { correlationId } : {}),
       };
     }

@@ -14,7 +14,7 @@ import {
 } from '@spectra/contracts';
 import { moderateContent, type ModerationOutcome } from '@spectra/content-pipeline';
 import { TenantIsolationError } from '@spectra/security';
-import { assertWithinBudget } from '@spectra/metering';
+import { assertPreflight, reserve } from '@spectra/metering';
 import { JOB_NAMES } from '@spectra/workflow-core';
 
 import { AiTextService } from '../infra/ai.service';
@@ -222,9 +222,13 @@ export class ContentService {
 
     // Pre-flight: generation spends real tokens. Refuse before creating the
     // draft row, so an over-budget workspace never queues a paid job.
-    await assertWithinBudget(this.prisma.client, {
+    await assertPreflight(this.prisma.client, {
       organizationId: tenant.organizationId,
       workspaceId: tenant.workspaceId as string,
+      kind: 'CONTENT_DRAFT',
+      provider: this.ai.provider.modelRef.provider,
+      model: this.ai.provider.modelRef.model,
+      requests: 1,
     });
 
     const draft = await this.prisma.client.contentDraft.create({
@@ -237,6 +241,19 @@ export class ContentService {
         createdById: principal.userId,
       },
     });
+
+    // Hold the allowance for this in-flight generation (see research runs).
+    await reserve(this.prisma.client, {
+      organizationId: tenant.organizationId,
+      workspaceId: tenant.workspaceId as string,
+      kind: 'CONTENT_DRAFT',
+      provider: this.ai.provider.modelRef.provider,
+      model: this.ai.provider.modelRef.model,
+      requests: 1,
+      idempotencyKey: `content-draft-${draft.id}`,
+      resourceType: 'CONTENT_DRAFT',
+      resourceId: draft.id,
+    }).catch(() => undefined);
 
     await this.queue.enqueue(
       JOB_NAMES.contentDraftGenerate,

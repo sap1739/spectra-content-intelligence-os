@@ -4,7 +4,7 @@ import type { EmbeddingProvider } from '@spectra/ai-core';
 import { PgVectorStore, type SpectraPrismaClient } from '@spectra/database';
 import { resolveEmbedding, type VectorStoreProvider } from '@spectra/knowledge-core';
 import type { Logger } from '@spectra/logging';
-import type { UsageRecorder } from '@spectra/metering';
+import { preflight, type UsageRecorder } from '@spectra/metering';
 
 /**
  * Re-embeds a workspace's stored chunks into the ACTIVE embedding collection.
@@ -44,6 +44,12 @@ export interface ReembedOutcome {
   alreadyPresent: number;
   reembedded: number;
   failed: number;
+  /** True when a budget stopped the backfill part-way (ADR-0028). */
+  budgetStopped?: boolean;
+  /** Chunks completed before the budget stopped it. */
+  budgetStoppedAfter?: number;
+  /** Chunks still not in the target collection when it stopped. */
+  remaining?: number;
 }
 
 interface SourceRow {
@@ -91,9 +97,32 @@ export async function executeReembed(
 
   let reembedded = 0;
   let failed = 0;
+  let budgetStoppedAfter: number | null = null;
 
   for (let i = 0; i < rows.length; i += batchSize) {
     const batch = rows.slice(i, i + batchSize);
+
+    // Re-check EVERY batch, not just once at the start. A corpus backfill can
+    // run for a long time and spend continuously; a single entry check would
+    // let it blow straight through a ceiling it crossed mid-run.
+    const decision = await preflight(deps.prisma, {
+      organizationId: tenant.organizationId,
+      workspaceId: tenant.workspaceId,
+      kind: 'AI_EMBEDDING',
+      provider: embedding.provider.modelRef.provider,
+      model: embedding.provider.modelRef.model,
+      requests: batch.length,
+    });
+    if (decision.blocked) {
+      // Stop honestly and say how far we got — the collection is partially
+      // backfilled, which the status endpoint already surfaces.
+      budgetStoppedAfter = reembedded;
+      logger?.warn(
+        { reembedded, remaining: rows.length - i, reason: decision.reason },
+        'Re-embed stopped by budget',
+      );
+      break;
+    }
     let vectors: number[][];
     try {
       // Stored passages embed as 'document' — matching how search queries them.
@@ -155,6 +184,13 @@ export async function executeReembed(
     alreadyPresent,
     reembedded,
     failed,
+    ...(budgetStoppedAfter !== null
+      ? {
+          budgetStopped: true,
+          budgetStoppedAfter,
+          remaining: rows.length - budgetStoppedAfter,
+        }
+      : {}),
   };
 }
 

@@ -1,7 +1,7 @@
 import type { TextGenerationProvider } from '@spectra/ai-core';
 import type { SpectraPrismaClient } from '@spectra/database';
 import type { Logger } from '@spectra/logging';
-import { evaluateBudget, type UsageRecorder } from '@spectra/metering';
+import { preflight, reconcile, release, type UsageRecorder } from '@spectra/metering';
 
 import { validateCitations } from './citations';
 import { generateDraft } from './generator';
@@ -127,14 +127,22 @@ export async function executeContentDraft(
   // Re-check at execution time: this job may have been queued before the
   // workspace hit its ceiling. Recorded as FAILED without throwing — retrying
   // cannot help until the limit is raised or the period rolls over.
-  const budget = await evaluateBudget(prisma, tenant, new Date());
+  const budget = await preflight(prisma, {
+    organizationId: tenant.organizationId,
+    workspaceId: tenant.workspaceId,
+    kind: 'CONTENT_DRAFT',
+    provider: deps.provider.modelRef.provider,
+    model: deps.provider.modelRef.model,
+    requests: 1,
+  });
   if (budget.blocked) {
+    await release(prisma, `content-draft-${draft.id}`, logger);
     await prisma.contentDraft.update({
       where: { id: draft.id },
       data: { status: 'FAILED', failureReason: budget.reason },
     });
     logger?.warn(
-      { usedMicros: budget.usedMicros, limitMicros: budget.limitMicros },
+      { outcome: budget.outcome, exceededReason: budget.exceededReason },
       'Draft generation refused — workspace budget exceeded',
     );
     return { status: 'FAILED', draftId: draft.id };
@@ -201,6 +209,9 @@ export async function executeContentDraft(
         },
       );
     }
+
+    // Real token usage is in the ledger now; stop the hold counting on top.
+    await reconcile(prisma, `content-draft-${draft.id}`, logger);
 
     if (updated.status === 'READY') {
       await prisma.contentItem.update({

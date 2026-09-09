@@ -1,6 +1,7 @@
 import type { SocialPlatform } from '@spectra/contracts';
 import type { SpectraPrismaClient } from '@spectra/database';
 import type { Logger } from '@spectra/logging';
+import { preflight, type UsageRecorder } from '@spectra/metering';
 import type { PostPublisher } from '@spectra/social-core';
 
 /**
@@ -31,6 +32,8 @@ export interface PublishDeps {
    */
   resolvePublisher?: ResolvePublisher;
   logger?: Logger;
+  /** Records the publish attempt so per-kind limits can count it. */
+  usage?: UsageRecorder;
   now?: () => Date;
 }
 
@@ -65,6 +68,27 @@ export async function executePublication(
   if (entry.status !== 'QUEUED' && entry.status !== 'PUBLISHING') {
     logger?.info({ status: entry.status }, 'Entry not dispatchable — skipping re-delivery');
     return { status: 'SKIPPED', entryId: entry.id };
+  }
+
+  // Publishing pre-flight. Publishing is not currently a vendor-billed
+  // operation, so this normally returns UNKNOWN_COST_ALLOW_WITH_NOTICE rather
+  // than a cost decision — but it DOES count against a per-kind
+  // PUBLISH_ATTEMPT limit, and the seam exists so a future paid publishing
+  // provider cannot bypass budget enforcement by being added later.
+  const budget = await preflight(prisma, {
+    organizationId: entry.organizationId,
+    workspaceId: entry.workspaceId,
+    kind: 'PUBLISH_ATTEMPT',
+    provider: String(entry.platform).toLowerCase(),
+    requests: 1,
+  });
+  if (budget.blocked) {
+    await prisma.contentScheduleEntry.update({
+      where: { id: entry.id },
+      data: { status: 'FAILED', failureReason: budget.reason },
+    });
+    logger?.warn({ platform: entry.platform }, 'Publish refused — budget limit');
+    return { status: 'FAILED', entryId: entry.id };
   }
 
   await prisma.contentScheduleEntry.update({
@@ -120,6 +144,18 @@ export async function executePublication(
         .update({ where: { id: entry.contentItemId }, data: { lifecycleState: 'PUBLISHED' } })
         .catch(() => undefined);
     }
+    // Counter-only: priced as COUNTER_ONLY, never as a fake zero-cost row.
+    await deps.usage?.record(
+      { organizationId: entry.organizationId, workspaceId: entry.workspaceId },
+      {
+        kind: 'PUBLISH_ATTEMPT',
+        provider: String(entry.platform).toLowerCase(),
+        requests: 1,
+        resourceType: 'SCHEDULE_ENTRY',
+        resourceId: entry.id,
+        metadata: { result: outcome.status },
+      },
+    );
     logger?.info({ platform: entry.platform, status: outcome.status }, 'Publish attempt complete');
     return { status: published ? 'PUBLISHED' : 'FAILED', entryId: entry.id };
   } catch (error) {

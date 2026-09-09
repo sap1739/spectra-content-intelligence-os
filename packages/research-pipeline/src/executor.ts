@@ -14,7 +14,13 @@ import {
 
 import type { ResearchProviderRegistry } from '@spectra/research-core';
 
-import { NoopUsageRecorder, evaluateBudget, type UsageRecorder } from '@spectra/metering';
+import {
+  NoopUsageRecorder,
+  preflight,
+  reconcile,
+  release,
+  type UsageRecorder,
+} from '@spectra/metering';
 
 import { candidatesFromFeed, candidatesFromSearch, type CandidateItem } from './discovery';
 import { HtmlExtractionProvider } from './extraction';
@@ -136,14 +142,26 @@ export async function executeResearchRun(
   // the workspace hit its ceiling. Marked FAILED and returned WITHOUT throwing,
   // because retrying cannot help until the limit is raised or the month rolls
   // over — a retry would just burn queue attempts on a run that must not spend.
-  const budget = await evaluateBudget(deps.prisma, tenant, now());
+  const budget = await preflight(
+    deps.prisma,
+    {
+      organizationId: tenant.organizationId,
+      workspaceId: tenant.workspaceId,
+      kind: 'RESEARCH_RUN',
+      provider: 'spectra',
+      requests: 1,
+    },
+    now(),
+  );
   if (budget.blocked) {
+    // The hold is no longer needed: this run will not spend.
+    await release(deps.prisma, `research-run-${run.id}`, logger);
     await deps.prisma.researchRun.update({
       where: { id: run.id },
       data: { status: 'FAILED', completedAt: now(), failureReason: budget.reason },
     });
     logger.warn(
-      { usedMicros: budget.usedMicros, limitMicros: budget.limitMicros },
+      { outcome: budget.outcome, exceededReason: budget.exceededReason },
       'Research run refused — workspace budget exceeded',
     );
     return { status: 'FAILED', stats: emptyStats() };
@@ -751,6 +769,8 @@ export async function executeResearchRun(
         failureReason: feedErrors.length > 0 ? feedErrors.join(' | ').slice(0, 3900) : null,
       },
     });
+    // Real usage is now in the ledger; stop the hold double-counting it.
+    await reconcile(deps.prisma, `research-run-${run.id}`, logger);
     await input.onProgress?.(100, 'HUMAN_REVIEW');
     logger.info({ status, ...stats }, 'Research run completed');
     return { status, stats };
@@ -765,6 +785,8 @@ export async function executeResearchRun(
         failureReason: message.slice(0, 3900),
       },
     });
+    // Partial spend is already metered; the hold must not keep counting on top.
+    await reconcile(deps.prisma, `research-run-${run.id}`, logger);
     logger.error({ err: message }, 'Research run failed');
     throw error;
   }

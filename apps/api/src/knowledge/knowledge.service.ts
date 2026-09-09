@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { VectorSearchHit } from '@spectra/contracts';
+import { assertPreflight } from '@spectra/metering';
 import { PgVectorStore } from '@spectra/database';
 import { JOB_NAMES } from '@spectra/workflow-core';
 
@@ -39,6 +40,19 @@ export class KnowledgeService {
       workspaceId: tenant.workspaceId as string,
     };
     const { provider, collection } = this.embeddings.active;
+
+    // Pre-flight BEFORE the provider call: a blocked workspace must not spend
+    // on a query embedding. The lexical fallback costs nothing, so it is priced
+    // FREE_LOCAL and never blocked — search keeps working, honestly lexical.
+    await assertPreflight(this.prisma.client, {
+      organizationId: scope.organizationId,
+      workspaceId: scope.workspaceId,
+      kind: 'AI_EMBEDDING',
+      provider: provider.modelRef.provider,
+      model: provider.modelRef.model,
+      requests: 1,
+    });
+
     // 'query' side of the asymmetric pair — real models encode a search query
     // differently from a stored passage.
     const embedResult = await provider.embed([query], scope, 'query');
@@ -111,6 +125,17 @@ export class KnowledgeService {
       organizationId: tenant.organizationId,
       workspaceId: tenant.workspaceId as string,
     };
+    // A backfill can embed an entire corpus — the single most expensive
+    // operation in the product. Refuse BEFORE queuing, so a blocked workspace
+    // never has paid work sitting in the queue.
+    await assertPreflight(this.prisma.client, {
+      organizationId: scope.organizationId,
+      workspaceId: scope.workspaceId,
+      kind: 'AI_EMBEDDING',
+      provider: this.embeddings.active.provider.modelRef.provider,
+      model: this.embeddings.active.provider.modelRef.model,
+      requests: 1,
+    });
     await this.queue.enqueue(JOB_NAMES.knowledgeReembed, scope);
     return { status: 'QUEUED' as const, collection: this.embeddings.active.collection };
   }

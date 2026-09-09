@@ -23,8 +23,10 @@ httpOnly SameSite=Lax cookies, per-request principal rebuild (instant revocation
 enumeration-safe login. Guard chain on every route: origin check → principal → tenant
 context → permissions.
 
-Permission-oriented: 30 permissions bundled into 13 roles (`ROLE_PERMISSIONS`), plus explicit
-per-membership grants. Checks test permissions only. Client Reviewer/Read Only bundles are
+Permission-oriented: 33 permissions bundled into 13 roles (`ROLE_PERMISSIONS`), plus explicit
+per-membership grants. Organization budget controls (`org:budget:read`, `org:budget:manage`,
+`org:usage:read`) are deliberately absent from workspace-scoped bundles — a workspace admin can
+see and set their own ceiling, but cannot read or raise the organization-wide one. Checks test permissions only. Client Reviewer/Read Only bundles are
 minimal by construction (unit-tested).
 
 ## 3. Secrets & credentials

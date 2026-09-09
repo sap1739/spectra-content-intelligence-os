@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { RATE_VERSION, estimateCostMicros, formatMicros } from './rates';
+import { RATE_VERSION, estimateCost, estimateCostMicros, formatMicros } from './rates';
 
 describe('estimateCostMicros', () => {
   it('prices generation from separate input and output rates', () => {
@@ -34,6 +34,16 @@ describe('estimateCostMicros', () => {
     expect(estimateCostMicros({ provider: 'mystery', model: 'x', inputTokens: 100 })).toBeNull();
   });
 
+  it('reports NO_MEASURED_QUANTITY distinctly from NO_RATE_FOR_MODEL', () => {
+    // Same null micros, different facts — they must not collapse together.
+    expect(estimateCost({ provider: 'anthropic', model: 'claude-opus-4-8' }).unpricedReason).toBe(
+      'NO_MEASURED_QUANTITY',
+    );
+    expect(estimateCost({ provider: 'mystery', model: 'x', inputTokens: 1 }).unpricedReason).toBe(
+      'NO_RATE_FOR_MODEL',
+    );
+  });
+
   it('returns null when nothing was actually measured', () => {
     expect(estimateCostMicros({ provider: 'anthropic', model: 'claude-opus-4-8' })).toBeNull();
     expect(
@@ -46,10 +56,24 @@ describe('estimateCostMicros', () => {
     ).toBeNull();
   });
 
-  it('does not confuse a known provider with an unknown model', () => {
-    expect(
-      estimateCostMicros({ provider: 'anthropic', model: 'not-a-real-model', inputTokens: 10 }),
-    ).toBeNull();
+  it('conservatively prices an unknown model from a KNOWN PAID provider', () => {
+    // Behaviour change in 5E.1: this used to return null, which meant an
+    // unrecognised model from a provider we definitely pay silently contributed
+    // zero to every budget. It is now over-stated at the provider's most
+    // expensive known rate and labelled as a fallback.
+    const result = estimateCost({
+      provider: 'anthropic',
+      model: 'not-a-real-model',
+      inputTokens: 10,
+    });
+    expect(result.micros).toBe(50);
+    expect(result.rateSource).toBe('FAMILY_FALLBACK_CONSERVATIVE');
+  });
+
+  it('still returns null for a provider we have no relationship with', () => {
+    const result = estimateCost({ provider: 'mystery', model: 'x', inputTokens: 100 });
+    expect(result.micros).toBeNull();
+    expect(result.unpricedReason).toBe('NO_RATE_FOR_MODEL');
   });
 
   it('carries a stable rate version for stored rows', () => {

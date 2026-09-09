@@ -45,6 +45,25 @@ describe('executeReembed (integration)', () => {
 
   beforeAll(async () => {
     prisma = createPrismaClient({ datasourceUrl: process.env['DATABASE_URL'] as string });
+    // document_chunks is FK-free by design, but budgets are not — create the
+    // real tenant rows so a workspace budget can attach to this workspace.
+    await prisma.organization.create({
+      data: {
+        id: organizationId,
+        name: 'Reembed IT Org',
+        slug: `reembed-it-${Date.now()}`,
+        status: 'ACTIVE',
+      },
+    });
+    await prisma.workspace.create({
+      data: {
+        id: workspaceId,
+        organizationId,
+        name: 'Reembed WS',
+        slug: 'reembed-ws',
+        status: 'ACTIVE',
+      },
+    });
     const store = new PgVectorStore(prisma);
     // Seed three chunks in the LEXICAL collection, as an earlier ingest would.
     await store.upsertChunks({
@@ -70,6 +89,8 @@ describe('executeReembed (integration)', () => {
   afterAll(async () => {
     await prisma.$executeRaw`
       DELETE FROM "document_chunks" WHERE "organizationId" = ${organizationId}::uuid`;
+    // Cascades budgets, limits, reservations and usage events.
+    await prisma.organization.delete({ where: { id: organizationId } }).catch(() => undefined);
     await prisma.$disconnect();
   });
 
@@ -125,6 +146,58 @@ describe('executeReembed (integration)', () => {
     });
     expect(rows).toBe(3); // no duplicates
   });
+
+  it('stops mid-backfill when the budget is exhausted, and says how far it got', async () => {
+    // Clear the target collection so there is work to do.
+    await prisma.$executeRaw`DELETE FROM "document_chunks" WHERE "organizationId" = ${organizationId}::uuid AND "collection" = ${SEMANTIC_COLLECTION}`;
+
+    await prisma.workspaceBudget.create({
+      data: {
+        organizationId,
+        workspaceId,
+        monthlyLimitMicros: 1_000,
+        enforcement: 'ENFORCE',
+      },
+    });
+    await prisma.usageEvent.create({
+      data: {
+        organizationId,
+        workspaceId,
+        kind: 'WEB_SEARCH',
+        provider: 'brave',
+        model: 'web-search',
+        estimatedCostMicros: 900_000,
+        rateVersion: 'rates-2026-09-09',
+        rateSource: 'EXACT',
+      },
+    });
+
+    let embedCalls = 0;
+    const countingEmbedder = {
+      ...stubSemantic,
+      embed: async (texts: readonly string[], t: TenantScope) => {
+        embedCalls += 1;
+        return stubSemantic.embed(texts, t);
+      },
+    };
+
+    const outcome = await executeReembed(
+      { prisma, embedder: countingEmbedder },
+      { organizationId, workspaceId, batchSize: 1 },
+    );
+
+    // Refused before spending: the paid provider was never called.
+    expect(embedCalls).toBe(0);
+    expect(outcome.budgetStopped).toBe(true);
+    expect(outcome.reembedded).toBe(0);
+    // Honest about what is left undone.
+    expect(outcome.remaining).toBeGreaterThan(0);
+
+    await prisma.workspaceBudget.deleteMany({ where: { workspaceId } });
+    await prisma.usageEvent.deleteMany({ where: { workspaceId } });
+    // Restore the collection for the remaining tests.
+    await executeReembed({ prisma, embedder: stubSemantic }, { organizationId, workspaceId });
+  }, 30_000);
 
   it('semantic vectors are searchable in their own collection', async () => {
     const store = new PgVectorStore(prisma);

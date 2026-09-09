@@ -17,6 +17,25 @@ function fakePrisma(entry: { status: string; platform?: string }) {
     note: 'hello',
   };
   const prisma = {
+    // Publishing now passes through budget pre-flight (ADR-0028). Nothing
+    // configured => UNKNOWN_COST_ALLOW_WITH_NOTICE, never blocked.
+    workspaceBudget: { findFirst: vi.fn(async () => null) },
+    organizationBudget: { findFirst: vi.fn(async () => null) },
+    budgetOperationLimit: { findMany: vi.fn(async () => []) },
+    budgetReservation: { findMany: vi.fn(async () => []) },
+    usageEvent: {
+      aggregate: vi.fn(async () => ({
+        _sum: {
+          estimatedCostMicros: null,
+          requests: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+        },
+      })),
+      count: vi.fn(async () => 0),
+      create: vi.fn(async () => ({})),
+    },
     contentScheduleEntry: {
       findUnique: vi.fn(async () => row),
       update: vi.fn(async (args: { data: Record<string, unknown> }) => {
@@ -48,6 +67,60 @@ function stubResolver(outcome: Awaited<ReturnType<PostPublisher['publish']>>): R
     publish: vi.fn(async () => outcome),
   });
 }
+
+describe('executePublication — budget pre-flight (ADR-0028)', () => {
+  it('passes through pre-flight and publishes when nothing limits it', async () => {
+    const { prisma } = fakePrisma({ status: 'QUEUED' });
+    const outcome = await executePublication(
+      {
+        prisma: prisma as never,
+        resolvePublisher: stubResolver({ status: 'PUBLISHED', externalPostId: 'p1' }),
+      },
+      { entryId: 'e1' },
+    );
+    // Publishing is unpriced, so pre-flight allows with notice rather than
+    // blocking — it must not be treated as zero-cost-therefore-unlimited.
+    expect(outcome.status).toBe('PUBLISHED');
+    expect(prisma.workspaceBudget.findFirst).toHaveBeenCalled();
+  });
+
+  it('is BLOCKED by a per-kind PUBLISH_ATTEMPT limit even though it is unpriced', async () => {
+    const { prisma, updates } = fakePrisma({ status: 'QUEUED' });
+    prisma.budgetOperationLimit.findMany = vi.fn(async () => [
+      { workspaceId: 'w1', kind: 'PUBLISH_ATTEMPT', maxRequests: 2, maxTokens: null },
+    ]) as never;
+    prisma.usageEvent.aggregate = vi.fn(async () => ({
+      _sum: {
+        estimatedCostMicros: null,
+        requests: 2,
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+      },
+    })) as never;
+
+    const publish = vi.fn(async () => ({ status: 'PUBLISHED' as const }));
+    const outcome = await executePublication(
+      {
+        prisma: prisma as never,
+        resolvePublisher: async () => ({ platform: 'WORDPRESS', adapterVersion: 's', publish }),
+      },
+      { entryId: 'e1' },
+    );
+
+    expect(outcome.status).toBe('FAILED');
+    // Never reached the platform.
+    expect(publish).not.toHaveBeenCalled();
+    expect(String(updates.at(-1)!.data.failureReason)).toMatch(/PUBLISH_ATTEMPT/);
+  });
+
+  it('an unsupported platform still resolves UNSUPPORTED, not blocked or published', async () => {
+    const { prisma, updates } = fakePrisma({ status: 'QUEUED' });
+    const outcome = await executePublication({ prisma: prisma as never }, { entryId: 'e1' });
+    expect(outcome.status).toBe('UNSUPPORTED');
+    expect(String(updates.at(-1)!.data.failureReason)).toMatch(/No live publisher/);
+  });
+});
 
 describe('executePublication', () => {
   it('resolves to UNSUPPORTED (never fabricated) when no publisher can be resolved', async () => {

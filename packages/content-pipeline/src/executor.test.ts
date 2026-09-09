@@ -38,11 +38,26 @@ function fakePrisma(overrides: { draftStatus?: string } = {}) {
   const packUpdates: Array<{ data: Record<string, unknown> }> = [];
 
   const prisma = {
-    // The executor re-checks the workspace budget before spending (ADR-0027).
-    // No budget row => NOT_CONFIGURED => never blocked.
+    // Budget pre-flight reads (ADR-0028). No budget/limits configured => ALLOW.
     workspaceBudget: { findFirst: vi.fn(async () => null) },
+    organizationBudget: { findFirst: vi.fn(async () => null) },
+    budgetOperationLimit: { findMany: vi.fn(async () => []) },
+    budgetReservation: {
+      findMany: vi.fn(async () => []),
+      findUnique: vi.fn(async () => null),
+      create: vi.fn(async () => ({ id: 'res-1' })),
+      updateMany: vi.fn(async () => ({ count: 0 })),
+    },
     usageEvent: {
-      aggregate: vi.fn(async () => ({ _sum: { estimatedCostMicros: null } })),
+      aggregate: vi.fn(async () => ({
+        _sum: {
+          estimatedCostMicros: null,
+          requests: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+        },
+      })),
       count: vi.fn(async () => 0),
       create: vi.fn(async () => ({})),
     },

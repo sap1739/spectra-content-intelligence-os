@@ -31,13 +31,14 @@ accepts unvalidated input.
 
 Mappings in `GlobalExceptionFilter`:
 
-| Condition                                            | Status  | Notes                               |
-| ---------------------------------------------------- | ------- | ----------------------------------- |
-| Zod validation failure                               | 422     | field errors included               |
-| `TenantIsolationError` (missing OR foreign resource) | 404     | identical body — no existence leaks |
-| `ForbiddenError` (missing permission)                | 403     | names the permission                |
-| Unknown route/method                                 | 404/405 | Nest defaults, problem+json body    |
-| Unexpected exception                                 | 500     | opaque; logged with correlationId   |
+| Condition                                            | Status  | Notes                                                                                                                                          |
+| ---------------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Zod validation failure                               | 422     | field errors included                                                                                                                          |
+| `TenantIsolationError` (missing OR foreign resource) | 404     | identical body — no existence leaks                                                                                                            |
+| `ForbiddenError` (missing permission)                | 403     | names the permission                                                                                                                           |
+| Unknown route/method                                 | 404/405 | Nest defaults, problem+json body                                                                                                               |
+| Unexpected exception                                 | 500     | opaque; logged with correlationId                                                                                                              |
+| `BudgetBlockedError` (ceiling or per-kind limit)     | 403     | `type: .../budget-exceeded`; decision attached. NOT 402 — nothing charges anyone, so "Payment Required" would imply a bill that does not exist |
 
 ## 4. Correlation IDs
 

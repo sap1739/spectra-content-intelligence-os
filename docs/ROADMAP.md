@@ -169,6 +169,24 @@ weakest link in the differentiator: research and evidence quality.
   returns without throwing, because retrying cannot help until the limit is raised. Refusal is
   `403` with a distinct `budget-exceeded` problem type, not `402`, since nothing here charges
   anyone (ADR-0027).
+- ✅ **Increment E.1 — budget hardening.** An audit of 5E found the mechanism sound but the
+  coverage incomplete, in one case seriously: `voyage-4`, the DEFAULT embedding model, had no
+  rate entry, so on a default deployment every embedding priced to `null` and contributed
+  **nothing** to any ceiling — a whole paid category invisible while the budget reported itself
+  unbreached. Fixed by pricing every default provider, adding a conservative per-provider
+  fallback (unknown model from a provider we definitely pay is over-stated, never invisible, and
+  labelled), and a regression test that reads defaults from the repo's own config rather than
+  hard-coding model names — which is exactly how the defect survived testing. Unpriced work now
+  carries an explicit reason (`NO_RATE_FOR_MODEL` / `FREE_LOCAL` / `NOT_VENDOR_BILLED` /
+  `NO_MEASURED_QUANTITY` / `COUNTER_ONLY`) so "free" and "unpriced" never collapse into a silent
+  zero. Both embedding paths are now guarded — knowledge search before the provider call, and
+  re-embed before enqueue _and_ on every batch, since a corpus backfill spends continuously.
+  Added per-operation monthly limits (the only bound that works when price is unknown), an
+  optional organization ceiling where the stricter of the two scopes wins, a publishing
+  pre-flight seam so future paid publishers cannot bypass enforcement, and idempotency-keyed
+  reservations so simultaneous pre-flights cannot both pass against the same allowance
+  (ADR-0028).
 - Next: content extraction for non-HTML sources; fact verification; hybrid retrieval tuning +
-  reranking; down-weighting snippet-only evidence in trend scoring; per-kind and org-level
-  sub-limits; broader rate coverage to shrink the unpriced gap.
+  reranking; down-weighting snippet-only evidence in trend scoring; transactional
+  reserve-and-check to fully close concurrent overspend; an approval workflow behind the existing
+  `REQUIRES_APPROVAL` decision.

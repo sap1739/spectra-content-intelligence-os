@@ -47,11 +47,13 @@ model User {
   updatedAt DateTime  @updatedAt @db.Timestamptz(6)
   deletedAt DateTime? @db.Timestamptz(6)
 
-  memberships      Membership[]
-  createdResearch  ResearchProject[] @relation("ResearchProjectCreatedBy")
-  auditLogs        AuditLog[]
-  credential       Credential?
-  workspaceBudgets WorkspaceBudget[]
+  memberships           Membership[]
+  createdResearch       ResearchProject[]      @relation("ResearchProjectCreatedBy")
+  auditLogs             AuditLog[]
+  credential            Credential?
+  workspaceBudgets      WorkspaceBudget[]
+  organizationBudgets   OrganizationBudget[]
+  budgetOperationLimits BudgetOperationLimit[]
 
   @@index([status])
   @@map("users")
@@ -89,30 +91,33 @@ model Organization {
   updatedAt DateTime  @updatedAt @db.Timestamptz(6)
   deletedAt DateTime? @db.Timestamptz(6)
 
-  memberships      Membership[]
-  workspaces       Workspace[]
-  brands           Brand[]
-  verticals        CustomVertical[]
-  researchProjects ResearchProject[]
-  researchRuns     ResearchRun[]
-  researchSources  ResearchSource[]
-  researchFindings ResearchFinding[]
-  trendCandidates  TrendCandidate[]
-  auditLogs        AuditLog[]
-  usageEvents      UsageEvent[]
-  workspaceBudgets WorkspaceBudget[]
-  invitations      Invitation[]
-  trendWatchlists  TrendWatchlist[]
-  campaigns        Campaign[]
-  contentItems     ContentItem[]
-  contentDrafts    ContentDraft[]
-  audiencePersonas AudiencePersona[]
-  contentPillars   ContentPillar[]
-  topicIdeas       TopicIdea[]
-  campaignBriefs   CampaignBrief[]
-  scheduleEntries  ContentScheduleEntry[]
-  mediaAssets      MediaAsset[]
-  socialAccounts   SocialAccount[]
+  memberships           Membership[]
+  workspaces            Workspace[]
+  brands                Brand[]
+  verticals             CustomVertical[]
+  researchProjects      ResearchProject[]
+  researchRuns          ResearchRun[]
+  researchSources       ResearchSource[]
+  researchFindings      ResearchFinding[]
+  trendCandidates       TrendCandidate[]
+  auditLogs             AuditLog[]
+  usageEvents           UsageEvent[]
+  workspaceBudgets      WorkspaceBudget[]
+  organizationBudget    OrganizationBudget?
+  budgetOperationLimits BudgetOperationLimit[]
+  budgetReservations    BudgetReservation[]
+  invitations           Invitation[]
+  trendWatchlists       TrendWatchlist[]
+  campaigns             Campaign[]
+  contentItems          ContentItem[]
+  contentDrafts         ContentDraft[]
+  audiencePersonas      AudiencePersona[]
+  contentPillars        ContentPillar[]
+  topicIdeas            TopicIdea[]
+  campaignBriefs        CampaignBrief[]
+  scheduleEntries       ContentScheduleEntry[]
+  mediaAssets           MediaAsset[]
+  socialAccounts        SocialAccount[]
 
   @@map("organizations")
 }
@@ -203,27 +208,29 @@ model Workspace {
   updatedAt DateTime  @updatedAt @db.Timestamptz(6)
   deletedAt DateTime? @db.Timestamptz(6)
 
-  organization     Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  brands           Brand[]
-  verticals        CustomVertical[]
-  researchProjects ResearchProject[]
-  researchRuns     ResearchRun[]
-  researchSources  ResearchSource[]
-  researchFindings ResearchFinding[]
-  trendCandidates  TrendCandidate[]
-  trendWatchlists  TrendWatchlist[]
-  campaigns        Campaign[]
-  contentItems     ContentItem[]
-  contentDrafts    ContentDraft[]
-  audiencePersonas AudiencePersona[]
-  contentPillars   ContentPillar[]
-  topicIdeas       TopicIdea[]
-  campaignBriefs   CampaignBrief[]
-  scheduleEntries  ContentScheduleEntry[]
-  mediaAssets      MediaAsset[]
-  socialAccounts   SocialAccount[]
-  usageEvents      UsageEvent[]
-  workspaceBudget  WorkspaceBudget?
+  organization          Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  brands                Brand[]
+  verticals             CustomVertical[]
+  researchProjects      ResearchProject[]
+  researchRuns          ResearchRun[]
+  researchSources       ResearchSource[]
+  researchFindings      ResearchFinding[]
+  trendCandidates       TrendCandidate[]
+  trendWatchlists       TrendWatchlist[]
+  campaigns             Campaign[]
+  contentItems          ContentItem[]
+  contentDrafts         ContentDraft[]
+  audiencePersonas      AudiencePersona[]
+  contentPillars        ContentPillar[]
+  topicIdeas            TopicIdea[]
+  campaignBriefs        CampaignBrief[]
+  scheduleEntries       ContentScheduleEntry[]
+  mediaAssets           MediaAsset[]
+  socialAccounts        SocialAccount[]
+  usageEvents           UsageEvent[]
+  workspaceBudget       WorkspaceBudget?
+  budgetOperationLimits BudgetOperationLimit[]
+  budgetReservations    BudgetReservation[]
 
   @@unique([organizationId, slug])
   @@index([organizationId, status])
@@ -1336,15 +1343,15 @@ model AuditLog {
 /// ESTIMATE derived from a versioned local rate table (`rateVersion`), not a
 /// vendor invoice. Never present it as an amount charged.
 model UsageEvent {
-  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId      String    @db.Uuid
-  workspaceId         String?   @db.Uuid
+  id                  String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId      String          @db.Uuid
+  workspaceId         String?         @db.Uuid
   kind                UsageKind
   /// Provider + model as reported by the adapter (e.g. "anthropic"/"claude-opus-4-8").
   provider            String
   model               String?
   /// Number of API calls this event covers (usually 1; batched embeds may be more).
-  requests            Int       @default(1)
+  requests            Int             @default(1)
   /// NULL = the provider did not report it. Never coerce to zero.
   inputTokens         Int?
   outputTokens        Int?
@@ -1354,13 +1361,20 @@ model UsageEvent {
   estimatedCostMicros Int?
   /// Rate-table version used for the estimate — makes old rows re-interpretable.
   rateVersion         String?
-  currency            String    @default("USD")
+  /// Set whenever estimatedCostMicros is NULL. Says WHY, never implies zero.
+  unpricedReason      UnpricedReason?
+  /// Set whenever estimatedCostMicros is non-NULL.
+  rateSource          RateSource?
+  /// True when a kind that normally reports a quantity reported none — surfaced
+  /// as unknown so a token limit never treats it as zero tokens used.
+  quantityUnknown     Boolean         @default(false)
+  currency            String          @default("USD")
   /// What this spend was for: RESEARCH_RUN/CONTENT_DRAFT/etc + its id.
   resourceType        String?
-  resourceId          String?   @db.Uuid
+  resourceId          String?         @db.Uuid
   correlationId       String?
-  metadata            Json      @default("{}")
-  occurredAt          DateTime  @default(now()) @db.Timestamptz(6)
+  metadata            Json            @default("{}")
+  occurredAt          DateTime        @default(now()) @db.Timestamptz(6)
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   workspace    Workspace?   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -1378,6 +1392,39 @@ enum UsageKind {
   WEB_SEARCH
   NEWS_SEARCH
   PAGE_FETCH
+  /// Whole-operation counters, so per-kind limits can cap them even when the
+  /// underlying spend is metered separately (or is not vendor-billed at all).
+  RESEARCH_RUN
+  CONTENT_DRAFT
+  DOCUMENT_EXTRACTION
+  MEDIA_RENDER
+  PUBLISH_ATTEMPT
+}
+
+/// Why an event carries no cost estimate. NEVER absent on an unpriced row —
+/// "no rate" and "free" and "not measured" are different facts and must not
+/// collapse into a silent zero.
+enum UnpricedReason {
+  /// Provider/model has no entry in the rate table.
+  NO_RATE_FOR_MODEL
+  /// First-party/local work with no vendor charge (lexical embedding, sharp).
+  FREE_LOCAL
+  /// Real external work we do not pay a vendor per-unit for (page fetches).
+  NOT_VENDOR_BILLED
+  /// A rate exists but the provider reported no quantity to price.
+  NO_MEASURED_QUANTITY
+  /// Counter-only row (RESEARCH_RUN, PUBLISH_ATTEMPT) — spend is metered on the
+  /// underlying operations, so pricing it here would double-count.
+  COUNTER_ONLY
+}
+
+/// How confident the stored estimate is.
+enum RateSource {
+  /// Exact rate for this provider/model.
+  EXACT
+  /// No exact entry; priced at the most expensive known rate in the same
+  /// provider family so spend is over-stated rather than invisible.
+  FAMILY_FALLBACK_CONSERVATIVE
 }
 
 /// Per-workspace spend ceiling, evaluated before expensive work starts.
@@ -1415,4 +1462,100 @@ enum BudgetEnforcement {
   OFF
   WARN
   ENFORCE
+}
+
+/// Optional organization-wide ceiling ABOVE workspace budgets (ADR-0028).
+/// Workspace budgets remain primary; a pre-flight evaluates both and the
+/// STRICTER decision wins. Aggregates usage across that organization's
+/// workspaces only — never across tenants.
+model OrganizationBudget {
+  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String            @unique @db.Uuid
+  enforcement        BudgetEnforcement @default(WARN)
+  monthlyLimitMicros Int?
+  warnAtPercent      Int               @default(80)
+  currency           String            @default("USD")
+  updatedById        String?           @db.Uuid
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  updatedBy    User?        @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("organization_budgets")
+}
+
+/// A per-operation monthly cap, independent of total estimated spend.
+///
+/// Exists so operations that are free, unpriced or not vendor-billed can still
+/// be bounded: a cost ceiling cannot cap what it cannot price.
+/// `workspaceId` NULL = an organization-wide limit for that kind.
+model BudgetOperationLimit {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @db.Uuid
+  /// NULL => organization-scoped limit for this kind.
+  workspaceId    String?   @db.Uuid
+  kind           UsageKind
+  /// Max API calls/operations this calendar month. NULL = uncapped.
+  maxRequests    Int?
+  /// Max tokens this calendar month, where the provider reports them.
+  /// Events with unknown quantity are counted as requests but NOT as tokens.
+  maxTokens      Int?
+  updatedById    String?   @db.Uuid
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace?   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  updatedBy    User?        @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, workspaceId, kind])
+  @@index([organizationId, kind])
+  @@map("budget_operation_limits")
+}
+
+/// Holds estimated spend for in-flight work so two simultaneous pre-flight
+/// checks cannot both pass against the same remaining allowance (ADR-0028).
+///
+/// Reservations are advisory, not accounting: they are reconciled against real
+/// metered usage when the work finishes, and released/ignored once expired so a
+/// crashed worker cannot permanently consume an allowance.
+model BudgetReservation {
+  id                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId      String            @db.Uuid
+  workspaceId         String            @db.Uuid
+  kind                UsageKind
+  /// Estimated cost held. 0 when the operation has no known price — the
+  /// reservation then guards per-kind request limits only.
+  estimatedCostMicros Int               @default(0)
+  /// Requests held against per-kind limits (usually 1).
+  requests            Int               @default(1)
+  status              ReservationStatus @default(ACTIVE)
+  /// Retries must not double-reserve; unique per logical operation.
+  idempotencyKey      String            @unique
+  resourceType        String?
+  resourceId          String?           @db.Uuid
+  /// After this, the reservation no longer counts against the budget.
+  expiresAt           DateTime          @db.Timestamptz(6)
+  releasedAt          DateTime?         @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, workspaceId, status, expiresAt])
+  @@map("budget_reservations")
+}
+
+enum ReservationStatus {
+  /// Held against the budget.
+  ACTIVE
+  /// Work finished; real usage is in the ledger and this no longer counts.
+  RECONCILED
+  /// Work never ran (failed/refused); allowance returned.
+  RELEASED
 }

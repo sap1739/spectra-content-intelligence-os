@@ -104,3 +104,80 @@ export function useUpdateBudget(workspaceId: string) {
     },
   });
 }
+
+// --- Phase 5E.1: per-kind limits, org ceiling, unpriced report -------------
+
+export interface OperationKindRow {
+  kind: string;
+  requests: number;
+  measuredTokens: number;
+  /** Events whose token counts the provider never reported. NOT counted as 0. */
+  unknownQuantityEvents: number;
+  workspaceMaxRequests: number | null;
+  workspaceMaxTokens: number | null;
+  organizationMaxRequests: number | null;
+  organizationMaxTokens: number | null;
+  remainingRequests: number | null;
+  remainingTokens: number | null;
+}
+
+export interface OperationLimits {
+  periodStart: string;
+  periodEnd: string;
+  kinds: OperationKindRow[];
+  note: string;
+}
+
+export function useOperationLimits(workspaceId: string) {
+  return useQuery<OperationLimits, ApiError>({
+    queryKey: ['budget-operations', workspaceId],
+    queryFn: () => api.get<OperationLimits>(`/v1/workspaces/${workspaceId}/budget/operations`),
+    staleTime: 60_000,
+  });
+}
+
+export interface UnpricedReport {
+  periodStart: string;
+  byReason: Array<{ reason: string | null; events: number; explanation: string }>;
+  operations: Array<{
+    kind: string;
+    provider: string;
+    model: string | null;
+    reason: string | null;
+    events: number;
+    requests: number;
+  }>;
+  conservativelyPricedEvents: number;
+  note: string;
+}
+
+export function useUnpricedReport(workspaceId: string) {
+  return useQuery<UnpricedReport, ApiError>({
+    queryKey: ['budget-unpriced', workspaceId],
+    queryFn: () => api.get<UnpricedReport>(`/v1/workspaces/${workspaceId}/budget/unpriced`),
+    staleTime: 60_000,
+  });
+}
+
+export interface OrganizationBudget {
+  configured: boolean;
+  enforcement: string;
+  limitMicros: number | null;
+  usedMicros: number;
+  remainingMicros: number | null;
+  usedPercent: number | null;
+  totalEvents: number;
+  unpricedEvents: number;
+  currency: string;
+  workspaces: Array<{ workspaceId: string | null; estimatedCostMicros: number; events: number }>;
+  note: string;
+}
+
+export function useOrganizationBudget(organizationId: string) {
+  return useQuery<OrganizationBudget, ApiError>({
+    queryKey: ['org-budget', organizationId],
+    queryFn: () => api.get<OrganizationBudget>(`/v1/organizations/${organizationId}/budget`),
+    staleTime: 60_000,
+    retry: false,
+  });
+}

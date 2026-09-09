@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { ScheduleResearchInput, StartResearchRunInput } from '@spectra/contracts';
 import { Prisma, type ResearchProject, type ResearchRun } from '@spectra/database';
 import { TenantIsolationError } from '@spectra/security';
-import { assertWithinBudget } from '@spectra/metering';
+import { assertPreflight, reserve } from '@spectra/metering';
 import { JOB_NAMES } from '@spectra/workflow-core';
 
 import { AuditService } from '../infra/audit.service';
@@ -71,9 +71,12 @@ export class ResearchRunsService {
     // Pre-flight: a research run spends on search, page fetches and embeddings.
     // Refuse BEFORE creating the row and enqueueing, so an over-budget workspace
     // never queues work it is not allowed to do.
-    await assertWithinBudget(this.prisma.client, {
+    await assertPreflight(this.prisma.client, {
       organizationId: tenant.organizationId,
       workspaceId: tenant.workspaceId as string,
+      kind: 'RESEARCH_RUN',
+      provider: 'spectra',
+      requests: 1,
     });
 
     const run = await this.prisma.client.researchRun.create({
@@ -90,6 +93,20 @@ export class ResearchRunsService {
         } as Prisma.InputJsonValue,
       },
     });
+
+    // Hold the allowance for this in-flight run so a simultaneous request
+    // cannot pass pre-flight against the same remaining budget. Keyed by run id
+    // so a retry re-uses the same hold. Reconciled/released by the executor.
+    await reserve(this.prisma.client, {
+      organizationId: tenant.organizationId,
+      workspaceId: tenant.workspaceId as string,
+      kind: 'RESEARCH_RUN',
+      provider: 'spectra',
+      requests: 1,
+      idempotencyKey: `research-run-${run.id}`,
+      resourceType: 'RESEARCH_RUN',
+      resourceId: run.id,
+    }).catch(() => undefined); // a lost hold must not fail the request
 
     await this.queue.enqueue(
       JOB_NAMES.researchRunExecute,

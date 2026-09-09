@@ -138,12 +138,19 @@ describe('API integration: workspace budgets', () => {
       payload: { feedUrls: ['https://example.com/feed.xml'] },
     });
     expect(res.statusCode).toBe(403);
-    const problem = res.json() as { type: string; detail: string; budget: BudgetBody };
+    const problem = res.json() as {
+      type: string;
+      detail: string;
+      // 5E.1: the attached decision is now a PreflightDecision (outcome +
+      // exceededReason), which also says WHICH ceiling or limit was hit.
+      budget: { outcome: string; blocked: boolean; exceededReason: string };
+    };
     // A distinct problem type — not confusable with a permissions failure.
     expect(problem.type).toContain('budget-exceeded');
     expect(problem.detail).toMatch(/reached its monthly limit/);
-    expect(problem.budget.status).toBe('EXCEEDED');
+    expect(problem.budget.outcome).toBe('BLOCK');
     expect(problem.budget.blocked).toBe(true);
+    expect(problem.budget.exceededReason).toBe('WORKSPACE_COST_CEILING');
   });
 
   it('does not create the run row when it refuses (pre-flight, not post-hoc)', async () => {

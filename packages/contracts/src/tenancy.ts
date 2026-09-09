@@ -45,6 +45,11 @@ export const PERMISSIONS = [
   'social:publish',
   'analytics:read',
   'audit:read',
+  // Budget controls (Phase 5E.1). Org-level ceilings are an org-admin concern,
+  // so they are deliberately absent from workspace-scoped role bundles.
+  'org:budget:read',
+  'org:budget:manage',
+  'org:usage:read',
 ] as const;
 
 export const permissionSchema = z.enum(PERMISSIONS);

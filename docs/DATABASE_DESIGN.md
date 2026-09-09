@@ -157,6 +157,34 @@ month. Two honesty rules apply (ADR-0027):
 Only `ENFORCE` blocks work; `WARN` and `OFF` report the same breach without refusing, so an
 operator can observe real spend before committing to a hard cap.
 
+### 9.2 Budget hardening (Phase 5E.1)
+
+| Table                   | Purpose                                           | Key constraints / indexes                                                     |
+| ----------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------- |
+| organization_budgets    | Optional org-wide ceiling above workspace budgets | unique(organizationId)                                                        |
+| budget_operation_limits | Per-`UsageKind` monthly caps (requests/tokens)    | unique(organizationId, workspaceId, kind); workspaceId NULL = org-scoped      |
+| budget_reservations     | Holds estimated cost for in-flight work           | unique(idempotencyKey); index(organizationId, workspaceId, status, expiresAt) |
+
+`usage_events` gained three honesty columns (ADR-0028):
+
+- `unpricedReason` (`UnpricedReason`) — set whenever `estimatedCostMicros` is NULL. Distinguishes
+  `NO_RATE_FOR_MODEL` (real spend we cannot price — the gap worth closing) from `FREE_LOCAL`,
+  `NOT_VENDOR_BILLED`, `NO_MEASURED_QUANTITY` and `COUNTER_ONLY`. Exactly one of
+  `unpricedReason` / `rateSource` is always set.
+- `rateSource` (`RateSource`) — `EXACT`, or `FAMILY_FALLBACK_CONSERVATIVE` when an unknown model
+  from a known paid provider was priced at that provider's most expensive known rate. Such costs
+  are deliberately **over-stated rather than invisible**.
+- `quantityUnknown` — the provider reported no token count for a kind that normally has one.
+  Counted as an operation but **not** as zero tokens.
+
+`UsageKind` gained whole-operation counters (`RESEARCH_RUN`, `CONTENT_DRAFT`,
+`DOCUMENT_EXTRACTION`, `MEDIA_RENDER`, `PUBLISH_ATTEMPT`) so per-kind limits can bound operations
+that are free, unpriced or not vendor-billed — the only bound that works when price is unknown.
+
+Reservations are advisory, not accounting: idempotency-keyed so retries do not double-reserve,
+reconciled against real metered usage on completion, released when work never ran, and expiring
+so a crashed worker cannot permanently hold an allowance.
+
 ## 10. Future entities
 
 Remaining contract-only entities (angles, publications, workspace budgets, knowledge

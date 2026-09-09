@@ -531,6 +531,12 @@ importers:
         specifier: workspace:*
         version: link:../logging
     devDependencies:
+      '@spectra/ai-voyage':
+        specifier: workspace:*
+        version: link:../ai-voyage
+      '@spectra/config':
+        specifier: workspace:*
+        version: link:../config
       '@types/node':
         specifier: ^22.15.0
         version: 22.20.0
@@ -564,6 +570,9 @@ importers:
       '@spectra/logging':
         specifier: workspace:*
         version: link:../logging
+      '@spectra/metering':
+        specifier: workspace:*
+        version: link:../metering
       '@spectra/social-core':
         specifier: workspace:*
         version: link:../social-core

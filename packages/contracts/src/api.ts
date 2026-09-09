@@ -406,3 +406,92 @@ export const updateWorkspaceBudgetInputSchema = z.object({
   warnAtPercent: z.number().int().min(1).max(100).default(80),
 });
 export type UpdateWorkspaceBudgetInput = z.infer<typeof updateWorkspaceBudgetInputSchema>;
+
+// ---------------------------------------------------------------------------
+// Budget hardening (Phase 5E.1) — ADR-0028
+// ---------------------------------------------------------------------------
+
+export const usageKindSchema = z.enum([
+  'AI_GENERATION',
+  'AI_EMBEDDING',
+  'WEB_SEARCH',
+  'NEWS_SEARCH',
+  'PAGE_FETCH',
+  'RESEARCH_RUN',
+  'CONTENT_DRAFT',
+  'DOCUMENT_EXTRACTION',
+  'MEDIA_RENDER',
+  'PUBLISH_ATTEMPT',
+]);
+export type UsageKindName = z.infer<typeof usageKindSchema>;
+
+/** Why an operation carries no cost estimate. Never absent on an unpriced row. */
+export const unpricedReasonSchema = z.enum([
+  'NO_RATE_FOR_MODEL',
+  'FREE_LOCAL',
+  'NOT_VENDOR_BILLED',
+  'NO_MEASURED_QUANTITY',
+  'COUNTER_ONLY',
+]);
+export type UnpricedReasonName = z.infer<typeof unpricedReasonSchema>;
+
+export const rateSourceSchema = z.enum(['EXACT', 'FAMILY_FALLBACK_CONSERVATIVE']);
+export type RateSourceName = z.infer<typeof rateSourceSchema>;
+
+/** Pre-flight outcomes. UNKNOWN_COST_ALLOW_WITH_NOTICE exists so an operation we
+ *  cannot price is never silently treated as free. */
+export const preflightOutcomeSchema = z.enum([
+  'ALLOW',
+  'ALLOW_WITH_WARNING',
+  'BLOCK',
+  'REQUIRES_APPROVAL',
+  'UNKNOWN_COST_ALLOW_WITH_NOTICE',
+]);
+export type PreflightOutcomeName = z.infer<typeof preflightOutcomeSchema>;
+
+export const budgetLimitExceededReasonSchema = z.enum([
+  'WORKSPACE_COST_CEILING',
+  'ORGANIZATION_COST_CEILING',
+  'WORKSPACE_OPERATION_LIMIT',
+  'ORGANIZATION_OPERATION_LIMIT',
+]);
+export type BudgetLimitExceededReasonName = z.infer<typeof budgetLimitExceededReasonSchema>;
+
+/** Shared shape for a workspace or organization spend ceiling. */
+export const budgetPolicyInputSchema = z.object({
+  monthlyLimitMicros: z.number().int().min(0).max(2_000_000_000).nullable(),
+  enforcement: budgetEnforcementSchema,
+  warnAtPercent: z.number().int().min(1).max(100).default(80),
+});
+export type BudgetPolicyInput = z.infer<typeof budgetPolicyInputSchema>;
+
+export const organizationBudgetPolicyInputSchema = budgetPolicyInputSchema;
+export type OrganizationBudgetPolicyInput = z.infer<typeof organizationBudgetPolicyInputSchema>;
+export const workspaceBudgetPolicyInputSchema = budgetPolicyInputSchema;
+export type WorkspaceBudgetPolicyInput = z.infer<typeof workspaceBudgetPolicyInputSchema>;
+
+/** One per-operation monthly cap. Null limits mean uncapped. */
+export const budgetOperationLimitInputSchema = z.object({
+  kind: usageKindSchema,
+  maxRequests: z.number().int().min(0).max(10_000_000).nullable(),
+  maxTokens: z.number().int().min(0).max(2_000_000_000).nullable(),
+});
+export type BudgetOperationLimitInput = z.infer<typeof budgetOperationLimitInputSchema>;
+
+export const updateBudgetOperationLimitsInputSchema = z.object({
+  limits: z.array(budgetOperationLimitInputSchema).max(20),
+});
+export type UpdateBudgetOperationLimitsInput = z.infer<
+  typeof updateBudgetOperationLimitsInputSchema
+>;
+
+/** Ask what WOULD happen for an operation, without performing it. */
+export const budgetPreflightRequestSchema = z.object({
+  kind: usageKindSchema,
+  provider: z.string().min(1).max(64).optional(),
+  model: z.string().min(1).max(128).optional(),
+  requests: z.number().int().min(1).max(1000).default(1),
+  estimatedInputTokens: z.number().int().min(0).max(10_000_000).optional(),
+  estimatedOutputTokens: z.number().int().min(0).max(10_000_000).optional(),
+});
+export type BudgetPreflightRequest = z.infer<typeof budgetPreflightRequestSchema>;
