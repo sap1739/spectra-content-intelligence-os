@@ -81,3 +81,26 @@ JSON-only responses (no reflection of request HTML). See [SECURITY.md](SECURITY.
 
 Breaking changes require a new URI version; previous versions receive `Deprecation` +
 `Sunset` headers at least one minor release before removal.
+
+## 11. Operational endpoints (Phase 6B, ADR-0033)
+
+Three endpoints exist for operators rather than for the product, and they follow different rules
+from the rest of the surface:
+
+| Endpoint                                     | Auth                     | Versioned              |
+| -------------------------------------------- | ------------------------ | ---------------------- |
+| `GET /health`, `GET /health/ready`           | public                   | no (`VERSION_NEUTRAL`) |
+| `GET /v1/meta/metrics`                       | public                   | yes                    |
+| `GET/POST /v1/workspaces/:workspaceId/ops/*` | `ops:read` / `ops:retry` | yes                    |
+
+- **Health probes are version-neutral** — infrastructure should not have to track an API version to
+  know whether a process is alive. They live at `/health`, not `/v1/health`.
+- **`/health/ready` returns `200` when degraded.** Required dependencies down => `503`; optional
+  ones down => `200` with `status: "degraded"` and per-component detail. Component details carry
+  counts and states only, never configuration.
+- **`GET /v1/meta/metrics` returns `text/plain; version=0.0.4`,** not problem+json or JSON — it is
+  Prometheus exposition, the one non-JSON response in the API. It is unauthenticated for scraping
+  and carries no tenant identifiers; HTTP series are labelled by route PATTERN, never resolved URL.
+- **Ops endpoints are ordinary tenant-scoped `/v1` routes** and follow every normal rule: guard
+  chain, problem+json errors, and a `404` for a foreign job that is indistinguishable from a `404`
+  for one that never existed.

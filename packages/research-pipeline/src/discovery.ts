@@ -16,6 +16,7 @@ import type { FirstPartyRssProvider } from './rss';
 import type { FetchScheduler } from './fetch-scheduler';
 import type { RobotsDecision, RobotsGateway } from './robots';
 import { safeFetch, type SafeFetchOptions } from './safe-fetch';
+import { METRICS, metrics } from '@spectra/telemetry';
 
 /**
  * Source discovery, normalized.
@@ -171,13 +172,23 @@ export async function candidatesFromSearch(
         label: p.id,
         providerName: providerNameOf(p.id),
         kind: 'WEB_SEARCH' as const,
-        run: () => p.search(input, tenant),
+        run: () =>
+          metrics.time(
+            METRICS.providerLatency,
+            { provider: providerNameOf(p.id), op: 'search' },
+            () => p.search(input, tenant),
+          ),
       })),
       ...news.map((p) => ({
         label: p.id,
         providerName: providerNameOf(p.id),
         kind: 'NEWS_SEARCH' as const,
-        run: () => p.searchNews(input, tenant),
+        run: () =>
+          metrics.time(
+            METRICS.providerLatency,
+            { provider: providerNameOf(p.id), op: 'search_news' },
+            () => p.searchNews(input, tenant),
+          ),
       })),
     ];
 

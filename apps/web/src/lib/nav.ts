@@ -1,4 +1,5 @@
 import {
+  Activity,
   BadgeIndianRupee,
   BarChart3,
   Boxes,
@@ -24,7 +25,7 @@ export interface NavItem {
   href: string;
   icon: LucideIcon;
   /** Which delivery phase makes this area functional. */
-  phase: 1 | 2 | 3 | 4;
+  phase: 1 | 2 | 3 | 4 | 5 | 6;
 }
 
 export interface NavGroup {
@@ -68,7 +69,10 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: 'Insights',
-    items: [{ label: 'Analytics', href: '/analytics', icon: BarChart3, phase: 4 }],
+    items: [
+      { label: 'Analytics', href: '/analytics', icon: BarChart3, phase: 4 },
+      { label: 'Operations', href: '/operations', icon: Activity, phase: 6 },
+    ],
   },
   {
     label: 'Organization',

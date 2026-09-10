@@ -9,6 +9,7 @@ export {
   redisEnvSchema,
   researchEnvSchema,
   socialEnvSchema,
+  telemetryEnvSchema,
   storageEnvSchema,
   webEnvSchema,
   workerEnvSchema,

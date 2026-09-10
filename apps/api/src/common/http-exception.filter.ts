@@ -7,6 +7,7 @@ import {
   type ExceptionFilter,
 } from '@nestjs/common';
 import { BudgetBlockedError, BudgetExceededError } from '@spectra/metering';
+import { METRICS, metrics } from '@spectra/telemetry';
 import { ForbiddenError, TenantIsolationError } from '@spectra/security';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
@@ -72,6 +73,15 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
 
     if (exception instanceof BudgetBlockedError) {
+      // Counted apart from `apiRequestErrors`: a budget refusal is the platform
+      // working as configured, not an outage. Labelled by the ENUM reason and
+      // the usage kind — `decision.reason` is free text and the tenant id is
+      // both unbounded and identifying, so neither becomes a label.
+      metrics.increment(METRICS.budgetBlocked, {
+        surface: 'api',
+        reason: exception.decision.exceededReason ?? 'unknown',
+        kind: exception.decision.kind,
+      });
       // 403, not 402: nothing here charges anyone, so "Payment Required" would
       // imply a bill that does not exist. The decision carries which ceiling or
       // per-operation limit was hit, and no foreign-tenant data.
@@ -86,6 +96,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
 
     if (exception instanceof BudgetExceededError) {
+      metrics.increment(METRICS.budgetBlocked, { surface: 'api', reason: 'workspace-budget' });
       // 403, not 402: nothing here charges anyone, so "Payment Required" would
       // imply a bill that does not exist. This is a refusal by operator policy —
       // the problem `type` distinguishes it from a permissions failure, and the

@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Header } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { AiTextService } from '../infra/ai.service';
@@ -7,10 +7,11 @@ import { SearchProviderService } from '../infra/search.service';
 import { SocialCryptoService } from '../infra/social-crypto.service';
 import { Public } from '../auth/decorators';
 import { CONTENT_TYPE_FORMAT, PROMPT_TEMPLATE_ID, PROMPT_VERSION } from '@spectra/content-pipeline';
+import { metrics } from '@spectra/telemetry';
 
-const API_VERSION = '0.5.0';
+const API_VERSION = '0.6.0';
 /** Current delivery phase — keep in step with docs/ROADMAP.md. */
-const PHASE = 5;
+const PHASE = 6;
 
 @ApiTags('meta')
 @Controller({ path: 'meta', version: '1' })
@@ -75,5 +76,17 @@ export class MetaController {
           : 'SOCIAL_TOKEN_ENCRYPTION_KEY is not set — credentials cannot be stored, and publishing resolves to UNSUPPORTED.',
       },
     };
+  }
+
+  @Get('metrics')
+  @Header('content-type', 'text/plain; version=0.0.4; charset=utf-8')
+  @Public()
+  @ApiOperation({
+    summary: 'Prometheus metrics exposition',
+    description:
+      'Counters, histograms and gauges for API, worker, queue, provider and budget activity. Contains no tenant content — only opaque ids, route patterns and counts.',
+  })
+  async metrics(): Promise<string> {
+    return metrics.render();
   }
 }

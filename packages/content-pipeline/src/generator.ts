@@ -1,4 +1,5 @@
 import type { TextGenerationProvider } from '@spectra/ai-core';
+import { METRICS, metrics } from '@spectra/telemetry';
 
 import { PROMPT_TEMPLATE_ID, PROMPT_VERSION, buildDraftPrompt } from './prompt';
 import type { DraftGenerationInput, DraftGenerationResult } from './types';
@@ -16,13 +17,18 @@ export async function generateDraft(
 ): Promise<DraftGenerationResult> {
   const prompt = buildDraftPrompt(input);
 
-  const result = await provider.generateText({
-    tenant: input.tenant,
-    instructions: prompt.instructions,
-    dataSections: prompt.dataSections,
-    promptTemplate: { templateId: PROMPT_TEMPLATE_ID, version: PROMPT_VERSION },
-    ...(input.maxOutputTokens ? { maxOutputTokens: input.maxOutputTokens } : {}),
-  });
+  // Timed here rather than inside the adapter: the adapters are pure port
+  // implementations with no telemetry dependency, and this is the one place
+  // every generation call passes through.
+  const result = await metrics.time(METRICS.providerLatency, { op: 'generate_text' }, () =>
+    provider.generateText({
+      tenant: input.tenant,
+      instructions: prompt.instructions,
+      dataSections: prompt.dataSections,
+      promptTemplate: { templateId: PROMPT_TEMPLATE_ID, version: PROMPT_VERSION },
+      ...(input.maxOutputTokens ? { maxOutputTokens: input.maxOutputTokens } : {}),
+    }),
+  );
 
   return {
     body: result.text,

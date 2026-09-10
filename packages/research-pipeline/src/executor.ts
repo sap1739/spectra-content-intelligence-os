@@ -40,6 +40,7 @@ import { sha256Hex, titleKey, urlHash } from './hashing';
 import { FirstPartyRssProvider } from './rss';
 import { assertSafeUrl, type SafeFetchOptions } from './safe-fetch';
 import { sourceDiversityScore, velocityScore } from './signals';
+import { METRICS, metrics } from '@spectra/telemetry';
 
 export const PIPELINE_VERSION = 'rss-pipeline/1.0.0';
 const DEFAULT_MAX_PAGE_FETCHES = 100;
@@ -138,6 +139,11 @@ export async function executeResearchRun(
   deps: PipelineDeps,
   input: ExecuteRunInput,
 ): Promise<RunOutcome> {
+  // Wrapped so the histogram covers the whole run, including the failure path.
+  return metrics.time(METRICS.researchRunDuration, {}, () => runResearch(deps, input));
+}
+
+async function runResearch(deps: PipelineDeps, input: ExecuteRunInput): Promise<RunOutcome> {
   const now = deps.now ?? (() => new Date());
   const usage = deps.usage ?? new NoopUsageRecorder();
   const logger = deps.logger.child({ runId: input.runId });

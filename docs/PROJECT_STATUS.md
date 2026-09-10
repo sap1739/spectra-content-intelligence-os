@@ -1,7 +1,7 @@
 # SpectraContent Intelligence OS — Project Status
 
-**Snapshot date:** 2026-09-09 · **Branch:** `main`
-**Status:** Phases 1–5 complete · Phase 6 in progress (6A shipped)
+**Snapshot date:** 2026-09-10 · **Branch:** `main`
+**Status:** Phases 1–5 complete · Phase 6 in progress (6A, 6B shipped)
 
 > This document is a factual, audited snapshot intended as context for planning further work.
 > Every number below was measured from the repository, not estimated.
@@ -87,18 +87,18 @@ gives real end-to-end coverage of worker logic without running a worker.
 
 ## 4. Current inventory (measured)
 
-| Metric               | Value                                                          |
-| -------------------- | -------------------------------------------------------------- |
-| Commits              | 22                                                             |
-| Packages             | 26                                                             |
-| Apps                 | 3 (`api`, `web`, `worker`)                                     |
-| TypeScript/TSX lines | ~31,700 (api 7,711 · web 8,888 · worker 425 · packages 14,661) |
-| API routes           | 89 across 25 controllers                                       |
-| Prisma models        | 32                                                             |
-| Migrations           | 16                                                             |
-| ADRs                 | 26                                                             |
-| Permissions          | 26 (permission-oriented authz; never role-name branching)      |
-| Web pages            | 18 (all real — placeholders removed in 6A)                     |
+| Metric               | Value                                                           |
+| -------------------- | --------------------------------------------------------------- |
+| Commits              | 29                                                              |
+| Packages             | 29                                                              |
+| Apps                 | 3 (`api`, `web`, `worker`)                                      |
+| TypeScript/TSX lines | ~43,300 (api 10,555 · web 9,367 · worker 532 · packages 22,834) |
+| API routes           | 110 across 28 controllers                                       |
+| Prisma models        | 40                                                              |
+| Migrations           | 24                                                              |
+| ADRs                 | 33                                                              |
+| Permissions          | 35 (permission-oriented authz; never role-name branching)       |
+| Web pages            | 21 (all real — placeholders removed in 6A)                      |
 
 ### Packages
 
@@ -110,6 +110,7 @@ security/         Permissions, tenant isolation, AES-256-GCM, scrypt, deepRedact
 auth/             Principal + token-vault ports (direction only; superseded by apps/api/src/auth)
 logging/          pino with mandatory secret redaction
 observability/    Correlation IDs (AsyncLocalStorage), health aggregation
+telemetry/        Optional OTel tracing, allow-listed span attrs, Prometheus metrics [Phase 6B]
 metering/         Usage ledger + versioned cost ESTIMATES               [Phase 5D]
 research-core/    11 research ports, provider registry, 23-stage pipeline model
 research-pipeline/ Ingest pipeline: feeds + search → one candidate path
@@ -120,12 +121,14 @@ ai-core/          12 provider-neutral AI ports
 ai-anthropic/     Anthropic adapter for TextGenerationProvider, env-gated
 ai-voyage/        Voyage adapter for EmbeddingProvider, env-gated        [Phase 5A]
 content-pipeline/ Evidence-grounded drafting with prompt isolation
+claim-verification/ Corroboration, contradiction, staleness, eligibility  [Phase 5H]
+document-extract/ PDF/DOCX/TXT extraction with citation anchors           [Phase 5G]
 media-core/       Rendering ports (image/video/audio/subtitles)
 media-sharp/      Real sharp ImageRenderer adapter
 social-core/      SocialPublisher + PostPublisher ports, capability matrix, validation
 social-wordpress/ Real WordPress adapter (REST + application password)   [Phase 4D]
 publishing/       Dispatch machinery + per-account publisher resolution
-workflow-core/    Queue-neutral job ports; BullMQ + in-memory adapters
+workflow-core/    Queue-neutral job ports; BullMQ + in-memory adapters; queue inspector
 storage/          Object storage port + S3/MinIO, tenant-scoped keys
 testing/          Deterministic, schema-validated factories
 ui/               Accessible shadcn-style primitives (Tailwind v4)
@@ -177,7 +180,7 @@ standards, health/readiness endpoints, OpenAPI at `/docs`.
   (`POST /wp-json/wp/v2/posts`) with application-password Basic auth. Worker decrypts the sealed
   credential and builds a per-account publisher. Genuinely posts to real sites.
 
-### Phase 5 — Research depth and cost control (in progress)
+### Phase 5 — Research depth and cost control
 
 - **5A:** Semantic embeddings via Voyage behind `EmbeddingProvider`; **collection pairing** so
   vectors of different models/dimensions never mix; backfill/re-embed job; honest lexical
@@ -230,22 +233,51 @@ standards, health/readiness endpoints, OpenAPI at `/docs`.
   parsed and discarded). Per-run page-fetch budget (default 100) that degrades to snippet-only
   rather than aborting. Billing placeholder replaced with a real usage page.
 
+### Phase 6 — Product completeness and operations (in progress)
+
+- **6A:** **UI gaps and frontend test foundation.** Removed the three stale placeholder pages that
+  claimed already-shipped capabilities were future work (Brands had a five-route CRUD API since
+  Phase 2 while its page said "arrives in Phase 2") and deleted the `PlaceholderPage` component.
+  Fixed a standing violation of the project's own rule — the UI branched on ROLE NAMES — by
+  returning server-resolved `effectivePermissions` from `/auth/me`. Added the missing web unit test
+  framework (Vitest + RTL) and expanded Playwright from 5 smoke tests to 18 journeys.
+- **6B:** **Observability, DLQ and operations.** A new `/operations` page lists this workspace's
+  failed and dead-lettered jobs with reason and correlation id, and retries them under a separate
+  `ops:retry` permission. **Retry re-runs the original job**, so its idempotency key holds and
+  budget pre-flight runs again — retry cannot be used to bypass a limit or duplicate a publish.
+  Tracing is OpenTelemetry over OTLP and fully optional: with no endpoint the SDK is never loaded
+  and each service logs why. Span attributes are an **allow-list**, not a deny-list, because traces
+  leave the process for a third party and a deny-list fails open. First-party Prometheus metrics at
+  `GET /v1/meta/metrics` cover API latency/errors, worker job duration/failures, queue depth,
+  provider latency, run and publish durations and budget refusals — cardinality-capped, labelled by
+  route PATTERN, and with unreadable gauges OMITTED rather than reported as 0. Readiness gained
+  optional `job-queue` and `object-storage` indicators, so a stalled queue degrades the service
+  instead of pulling it out of the load balancer. Log redaction widened to header casings,
+  credential shapes, model input/output and extracted document text (ADR-0033).
+
 ---
 
 ## 6. Integration status (what is actually live)
 
-| Integration                                                                  | Status                                     | Gate                                                   |
-| ---------------------------------------------------------------------------- | ------------------------------------------ | ------------------------------------------------------ |
-| Anthropic (text generation)                                                  | **Real, working**                          | `ANTHROPIC_API_KEY`                                    |
-| Voyage (embeddings)                                                          | **Real, working**                          | `VOYAGE_API_KEY`                                       |
-| Brave (web + news search)                                                    | **Real, working**                          | `BRAVE_SEARCH_API_KEY`                                 |
-| WordPress (publishing)                                                       | **Real, working**                          | Per-account credential + `SOCIAL_TOKEN_ENCRYPTION_KEY` |
-| sharp (image rendering)                                                      | **Real, working**                          | none (local)                                           |
-| PostgreSQL / Redis / MinIO                                                   | **Real, working**                          | docker-compose                                         |
-| RSS/Atom ingestion                                                           | **Real, working** (first-party parser)     | none                                                   |
-| X, LinkedIn, Facebook, Instagram, TikTok, YouTube, Threads, Pinterest, Email | **Declared capabilities only — NOT wired** | resolve `UNSUPPORTED`                                  |
-| External engagement analytics                                                | **Not built**                              | reports `externalAvailable: false`                     |
-| Payments / billing / plans                                                   | **Not built**                              | usage page states nothing is charged                   |
+| Integration                                                                  | Status                                     | Gate                                                    |
+| ---------------------------------------------------------------------------- | ------------------------------------------ | ------------------------------------------------------- |
+| Anthropic (text generation)                                                  | **Real, working**                          | `ANTHROPIC_API_KEY`                                     |
+| Voyage (embeddings)                                                          | **Real, working**                          | `VOYAGE_API_KEY`                                        |
+| Brave (web + news search)                                                    | **Real, working**                          | `BRAVE_SEARCH_API_KEY`                                  |
+| WordPress (publishing)                                                       | **Real, working**                          | Per-account credential + `SOCIAL_TOKEN_ENCRYPTION_KEY`  |
+| sharp (image rendering)                                                      | **Real, working**                          | none (local)                                            |
+| PostgreSQL / Redis / MinIO                                                   | **Real, working**                          | docker-compose                                          |
+| RSS/Atom ingestion                                                           | **Real, working** (first-party parser)     | none                                                    |
+| X, LinkedIn, Facebook, Instagram, TikTok, YouTube, Threads, Pinterest, Email | **Declared capabilities only — NOT wired** | resolve `UNSUPPORTED`                                   |
+| External engagement analytics                                                | **Not built**                              | reports `externalAvailable: false`                      |
+| Payments / billing / plans                                                   | **Not built**                              | usage page states nothing is charged                    |
+| OpenTelemetry tracing                                                        | **Real, optional**                         | `OTEL_EXPORTER_OTLP_ENDPOINT` (unset => SDK not loaded) |
+| Prometheus metrics                                                           | **Real, working**                          | `GET /v1/meta/metrics` (API series only — see below)    |
+
+**Note on metrics:** provider-latency, research-run and publish-attempt series are emitted from
+the pipeline packages, which run on the **worker** — and the worker does not expose a scrape
+endpoint yet, so only the API's own series are scrapable today. A worker metrics listener is the
+next observability increment.
 
 **Note on WordPress:** the adapter targets **self-hosted WordPress** (WordPress.org software with
 application passwords, WP 5.6+). WordPress.com (the hosted service) is _not_ supported — it
@@ -280,14 +312,17 @@ requires OAuth, which is not yet built.
 
 ### 8.2 Research/quality track
 
-- Content extraction for non-HTML sources (PDF/document extractor) — currently non-HTML discovered
-  URLs fall back to snippet.
-- Fact verification / claim corroboration across sources.
+- ~~Content extraction for non-HTML sources~~ — **shipped in 5G** (PDF/DOCX/TXT/Markdown with
+  citation anchors; scanned PDFs fail `NO_TEXT_LAYER` rather than guessing).
+- ~~Fact verification / claim corroboration across sources~~ — **shipped in 5H**.
+- ~~Down-weight `snippetOnly` evidence~~ — **shipped in 5F**.
+- ~~`robots.txt` compliance~~ — **shipped in 5F**.
+- Anchor-aware citation selection: attach 5G document anchors per claim, so a citation reads
+  "p. 12" rather than naming a whole document.
 - Hybrid retrieval tuning + reranking.
-- Down-weight `snippetOnly` evidence in trend scoring and evidence-pack inclusion (currently
-  treated equally — flagged in ADR-0025).
-- `robots.txt` compliance before fetching discovered pages (acceptable at current low,
-  operator-directed volume; must be addressed before higher-volume crawling).
+- Review-queue prioritisation and bulk actions for contradicted claims.
+- A DomainPolicy management UI; uploaded-document ingestion (today documents arrive only via
+  discovery).
 
 ### 8.3 Product surface gaps
 
@@ -296,8 +331,11 @@ requires OAuth, which is not yet built.
   - `brands` — claims "arrives in Phase 2"; **a full 5-route CRUD API already exists**. Pure UI gap.
   - `settings` — claims "Phase 2"; workspace/org settings not editable in UI.
   - `templates` — claims "Phase 3"; prompt/visual templates never built.
-- Publishing DLQ / failed-attempt history dashboard (deferred in ADR-0020).
-- Per-attempt publication history table.
+- ~~Publishing DLQ / failed-attempt dashboard~~ — **shipped in 6B** as the workspace-scoped
+  `/operations` page (failed + dead-lettered jobs, reasons, correlation ids, safe retry).
+- Per-attempt publication history table (the queue shows the current failure, not the attempt
+  history).
+- A metrics scrape endpoint on the worker — pipeline series are emitted there but not scrapable.
 
 ### 8.4 Engineering debt
 
@@ -366,7 +404,9 @@ pnpm dev                                # web :3000 · api :4000 · worker
 
 - Web: http://localhost:3000 (use `PORT=3001` if 3000 is taken; add the origin to `API_CORS_ORIGIN`)
 - API liveness: http://localhost:4000/v1/health/live
-- API readiness (Postgres/Redis/worker heartbeat): http://localhost:4000/v1/health/ready
+- API readiness (Postgres · Redis · worker heartbeat · job queue · object storage):
+  http://localhost:4000/health/ready
+- API metrics (Prometheus exposition): http://localhost:4000/v1/meta/metrics
 - OpenAPI: http://localhost:4000/docs
 - MinIO console: http://localhost:9001
 

@@ -98,7 +98,9 @@ Verify:
 
 - Web: http://localhost:3000
 - API liveness: http://localhost:4000/health
-- API readiness (Postgres/Redis/worker heartbeat): http://localhost:4000/health/ready
+- API readiness (Postgres · Redis · worker heartbeat · job queue · object storage):
+  http://localhost:4000/health/ready
+- API metrics (Prometheus exposition): http://localhost:4000/v1/meta/metrics
 - OpenAPI: http://localhost:4000/docs
 - MinIO console: http://localhost:9001
 

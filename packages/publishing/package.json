@@ -16,7 +16,8 @@
     "@spectra/database": "workspace:*",
     "@spectra/logging": "workspace:*",
     "@spectra/metering": "workspace:*",
-    "@spectra/social-core": "workspace:*"
+    "@spectra/social-core": "workspace:*",
+    "@spectra/telemetry": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",

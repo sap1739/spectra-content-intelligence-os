@@ -13,5 +13,8 @@ allowBuilds:
   # Native addon used by BullMQ's msgpackr.
   msgpackr-extract: true
   prisma: true
+  # Arrives via the OpenTelemetry OTLP exporter (Phase 6B); its postinstall
+  # builds the protobuf codecs the exporter uses on the wire.
+  protobufjs: true
   sharp: true
   unrs-resolver: true

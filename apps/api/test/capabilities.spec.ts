@@ -119,6 +119,6 @@ describe('API integration: honest capability reporting', () => {
   it('still serves public version metadata without auth', async () => {
     const res = await inject().inject({ method: 'GET', url: '/v1/meta/version' });
     expect(res.statusCode).toBe(200);
-    expect((res.json() as { phase: number }).phase).toBe(5);
+    expect((res.json() as { phase: number }).phase).toBe(6);
   });
 });

@@ -12,6 +12,7 @@ import { createPrismaClient } from '@spectra/database';
 import { FirstPartyDocumentExtractor } from '@spectra/document-extract';
 import { createLogger, withCorrelation } from '@spectra/logging';
 import { PrismaUsageRecorder, expireStaleReservations } from '@spectra/metering';
+import { METRICS, initTracing, metrics, withSpan } from '@spectra/telemetry';
 import {
   claimDuePublications,
   executePublication,
@@ -27,6 +28,8 @@ import {
   JOB_NAMES,
   SYSTEM_QUEUE,
   createRedisConnection,
+  type JobContext,
+  type JobEnvelope,
 } from '@spectra/workflow-core';
 import IORedis from 'ioredis';
 
@@ -51,6 +54,18 @@ async function main(): Promise<void> {
   const logger = createLogger({ name: 'worker', level: env.LOG_LEVEL });
   const startedAt = new Date();
 
+  // Tracing is env-gated: with no OTEL_EXPORTER_OTLP_ENDPOINT nothing is
+  // loaded and the worker runs exactly as before (ADR-0033).
+  const tracing = await initTracing(
+    {
+      endpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT,
+      serviceName: 'spectra-worker',
+      environment: env.NODE_ENV,
+    },
+    logger,
+  );
+  logger.info({ tracingEnabled: tracing.enabled }, tracing.reason);
+
   // Separate connections: BullMQ blocking ops vs. plain state writes.
   const queueConnection = createRedisConnection(env.REDIS_URL);
   const workerConnection = createRedisConnection(env.REDIS_URL);
@@ -59,6 +74,57 @@ async function main(): Promise<void> {
 
   const queue = new BullMqJobQueue(QUEUE_NAME, queueConnection);
   const runtime = new BullMqWorkerRuntime(QUEUE_NAME, workerConnection, env.WORKER_CONCURRENCY);
+
+  /**
+   * Wraps a job handler with duration/failure metrics and a span.
+   *
+   * Only the job name, ids and outcome reach telemetry — never the payload,
+   * which carries tenant identifiers and, for some jobs, content (ADR-0033).
+   */
+  const instrument =
+    <TPayload, TResult>(
+      jobName: string,
+      handler: (envelope: JobEnvelope<TPayload>, context: JobContext) => Promise<TResult>,
+    ) =>
+    async (envelope: JobEnvelope<TPayload>, context: JobContext): Promise<TResult> => {
+      const started = Date.now();
+      try {
+        const result = await withSpan(
+          `job ${jobName}`,
+          {
+            'spectra.job.name': jobName,
+            'spectra.job.id': context.jobId,
+            'spectra.job.attempt': context.attempt,
+            'spectra.correlation_id': context.correlationId,
+            'spectra.organization_id': envelope.tenant?.organizationId,
+            'spectra.workspace_id': envelope.tenant?.workspaceId,
+          },
+          () => handler(envelope, context),
+        );
+        metrics.observe(METRICS.workerJobDuration, Date.now() - started, {
+          job: jobName,
+          outcome: 'success',
+        });
+        return result;
+      } catch (error) {
+        metrics.observe(METRICS.workerJobDuration, Date.now() - started, {
+          job: jobName,
+          outcome: 'error',
+        });
+        metrics.increment(METRICS.workerJobFailures, { job: jobName });
+        // A budget refusal is a product decision, not an outage. Counted
+        // separately so a dashboard does not read "the platform is failing"
+        // when the truth is "this workspace hit its limit".
+        if (error instanceof Error && error.name === 'BudgetBlockedError') {
+          metrics.increment(METRICS.budgetBlocked, { job: jobName, surface: 'worker' });
+        }
+        // The last attempt is the one that dead-letters (see BullMqWorkerRuntime).
+        if (context.attempt >= (envelope.maxAttempts || 1)) {
+          metrics.increment(METRICS.queueDeadLettered, { job: jobName });
+        }
+        throw error;
+      }
+    };
 
   runtime.register(
     HEARTBEAT_JOB_NAME,
@@ -126,7 +192,7 @@ async function main(): Promise<void> {
 
   runtime.register<{ runId: string }, unknown>(
     JOB_NAMES.researchRunExecute,
-    async (envelope, context) => {
+    instrument('research.run.execute', async (envelope, context) => {
       const jobLogger = withCorrelation(logger, context.correlationId);
       jobLogger.info(
         { runId: envelope.payload.runId, attempt: context.attempt },
@@ -155,7 +221,7 @@ async function main(): Promise<void> {
         'Research run finished',
       );
       return outcome;
-    },
+    }),
     { concurrency: 2, timeoutMs: 4 * 60_000 },
   );
 
@@ -164,7 +230,7 @@ async function main(): Promise<void> {
   // project is gone or its schedule was cleared.
   runtime.register<{ projectId: string }, unknown>(
     JOB_NAMES.researchRunScheduled,
-    async (envelope, context) => {
+    instrument('research.run.scheduled', async (envelope, context) => {
       const jobLogger = withCorrelation(logger, context.correlationId);
       const { projectId } = envelope.payload;
       const project = await prisma.researchProject.findUnique({ where: { id: projectId } });
@@ -207,7 +273,7 @@ async function main(): Promise<void> {
           },
         },
       );
-    },
+    }),
     { concurrency: 1, timeoutMs: 4 * 60_000 },
   );
 
@@ -223,13 +289,13 @@ async function main(): Promise<void> {
 
   runtime.register<{ draftId: string }, unknown>(
     JOB_NAMES.contentDraftGenerate,
-    async (envelope, context) => {
+    instrument('content.draft.generate', async (envelope, context) => {
       const jobLogger = withCorrelation(logger, context.correlationId);
       return executeContentDraft(
         { prisma, provider: textProvider, usage, logger: jobLogger },
         { draftId: envelope.payload.draftId },
       );
-    },
+    }),
     { concurrency: 2, timeoutMs: 5 * 60_000 },
   );
 
@@ -302,12 +368,12 @@ async function main(): Promise<void> {
   // PUBLISHED/FAILED from the platform's own response.
   runtime.register<{ entryId: string }, unknown>(
     JOB_NAMES.publicationPublish,
-    async (envelope, context) => {
+    instrument('publication.publish', async (envelope, context) => {
       return executePublication(
         { prisma, resolvePublisher, logger: withCorrelation(logger, context.correlationId) },
         { entryId: envelope.payload.entryId },
       );
-    },
+    }),
     { concurrency: 3, timeoutMs: 2 * 60_000 },
   );
 
@@ -316,7 +382,7 @@ async function main(): Promise<void> {
   // empty collection and silently return nothing for existing findings.
   runtime.register<{ organizationId: string; workspaceId: string }, unknown>(
     JOB_NAMES.knowledgeReembed,
-    async (envelope, context) => {
+    instrument('knowledge.reembed', async (envelope, context) => {
       const jobLogger = withCorrelation(logger, context.correlationId);
       return executeReembed(
         { prisma, embedder, logger: jobLogger },
@@ -325,7 +391,7 @@ async function main(): Promise<void> {
           workspaceId: envelope.payload.workspaceId,
         },
       );
-    },
+    }),
     { concurrency: 1, timeoutMs: 15 * 60_000 },
   );
 

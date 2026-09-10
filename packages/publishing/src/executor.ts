@@ -9,6 +9,7 @@ import {
   type UsageRecorder,
 } from '@spectra/metering';
 import type { PostPublisher } from '@spectra/social-core';
+import { METRICS, metrics } from '@spectra/telemetry';
 
 /**
  * The subset of a SocialAccount a resolver needs to build a live publisher.
@@ -62,6 +63,15 @@ export interface PublicationOutcome {
  * Idempotent: an entry not in QUEUED/PUBLISHING is skipped on re-delivery.
  */
 export async function executePublication(
+  deps: PublishDeps,
+  input: ExecutePublicationInput,
+): Promise<PublicationOutcome> {
+  // Wrapped so the histogram covers the whole attempt, including the failure
+  // path — a publish that fails slowly is the interesting case.
+  return metrics.time(METRICS.publishAttemptDuration, {}, () => runPublication(deps, input));
+}
+
+async function runPublication(
   deps: PublishDeps,
   input: ExecutePublicationInput,
 ): Promise<PublicationOutcome> {
@@ -141,11 +151,16 @@ export async function executePublication(
   });
 
   try {
-    const outcome = await publisher.publish({
-      idempotencyKey: entry.idempotencyKey ?? entry.id,
-      title: item?.title ?? 'Untitled',
-      body: item?.body ?? entry.note ?? '',
-    });
+    const outcome = await metrics.time(
+      METRICS.providerLatency,
+      { provider: entry.platform, op: 'publish' },
+      () =>
+        publisher.publish({
+          idempotencyKey: entry.idempotencyKey ?? entry.id,
+          title: item?.title ?? 'Untitled',
+          body: item?.body ?? entry.note ?? '',
+        }),
+    );
     const published = outcome.status === 'PUBLISHED';
     await prisma.contentScheduleEntry.update({
       where: { id: entry.id },

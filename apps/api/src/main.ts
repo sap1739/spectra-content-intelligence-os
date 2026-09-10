@@ -3,6 +3,8 @@ import { resolve } from 'node:path';
 
 import { createLogger } from '@spectra/logging';
 
+import { initTracing } from '@spectra/telemetry';
+
 import { createApp } from './bootstrap';
 import { getApiEnv } from './config/env';
 
@@ -15,6 +17,15 @@ if (existsSync(rootEnvFile)) {
 
 async function main(): Promise<void> {
   const env = getApiEnv();
+
+  // Env-gated tracing (ADR-0033). Unconfigured is a supported, silent state:
+  // no SDK is loaded and the API behaves exactly as before.
+  const tracing = await initTracing({
+    endpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT,
+    serviceName: 'spectra-api',
+    environment: env.NODE_ENV,
+  });
+  console.log(`[telemetry] ${tracing.reason}`);
   const logger = createLogger({ name: 'api', level: env.LOG_LEVEL });
 
   const app = await createApp(env);

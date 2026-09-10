@@ -93,6 +93,16 @@ export const socialEnvSchema = z.object({
   SOCIAL_TOKEN_ENCRYPTION_KEY: z.string().min(1).optional(),
 });
 
+/**
+ * OpenTelemetry (Phase 6B). Entirely optional: with no endpoint the services
+ * run without tracing and say so at boot rather than failing.
+ */
+export const telemetryEnvSchema = z.object({
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
+  /** Comma-separated `key=value` pairs, e.g. an auth header. NEVER logged. */
+  OTEL_EXPORTER_OTLP_HEADERS: z.string().optional(),
+});
+
 export const apiEnvSchema = z
   .object({
     NODE_ENV: nodeEnvSchema,
@@ -119,7 +129,9 @@ export const apiEnvSchema = z
   // Publishing (Phase 4): optional token-encryption key for social credentials.
   .merge(socialEnvSchema)
   // Research discovery (Phase 5B): optional live web/news search.
-  .merge(researchEnvSchema);
+  .merge(researchEnvSchema)
+  // Observability (Phase 6B): optional OTLP tracing.
+  .merge(telemetryEnvSchema);
 
 export const workerEnvSchema = z
   .object({
@@ -138,7 +150,9 @@ export const workerEnvSchema = z
   // publish. Without the key, publishing resolves to UNSUPPORTED (honest).
   .merge(socialEnvSchema)
   // Research discovery (Phase 5B): optional live web/news search.
-  .merge(researchEnvSchema);
+  .merge(researchEnvSchema)
+  // Observability (Phase 6B): optional OTLP tracing.
+  .merge(telemetryEnvSchema);
 
 export const webEnvSchema = z.object({
   NODE_ENV: nodeEnvSchema,

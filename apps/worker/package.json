@@ -29,6 +29,7 @@
     "@spectra/security": "workspace:*",
     "@spectra/social-wordpress": "workspace:*",
     "@spectra/storage": "workspace:*",
+    "@spectra/telemetry": "workspace:*",
     "@spectra/workflow-core": "workspace:*",
     "ioredis": "5.10.1"
   },

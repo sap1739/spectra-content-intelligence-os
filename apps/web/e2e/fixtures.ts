@@ -43,7 +43,27 @@ export const ALL_PERMISSIONS = [
   'social:publish',
   'analytics:read',
   'audit:read',
+  'ops:read',
+  'ops:retry',
 ];
+
+/** A failed job as the operations dashboard receives it. */
+export function failedJob(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'job-1',
+    name: 'research.run.execute',
+    category: 'Research runs',
+    attemptsMade: 3,
+    maxAttempts: 3,
+    reason: 'Brave Search returned 429 (rate limited)',
+    failedAt: '2026-09-10T09:15:00.000Z',
+    correlationId: 'corr-abc123',
+    organizationId: ORG_ID,
+    workspaceId: WORKSPACE_ID,
+    resourceId: 'run-9',
+    ...overrides,
+  };
+}
 
 export function meResponse(permissions: readonly string[] = ALL_PERMISSIONS) {
   return {

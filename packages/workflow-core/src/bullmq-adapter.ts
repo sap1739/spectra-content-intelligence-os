@@ -15,7 +15,7 @@ import {
 } from './types';
 
 // BullMQ queue names cannot contain ':' — it is the Redis key separator.
-const DEAD_LETTER_SUFFIX = '-dead-letter';
+export const DEAD_LETTER_SUFFIX = '-dead-letter';
 
 export function createRedisConnection(redisUrl: string): Redis {
   // BullMQ requires maxRetriesPerRequest: null on blocking connections.

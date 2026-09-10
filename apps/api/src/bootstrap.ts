@@ -8,6 +8,7 @@ import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { CORRELATION_HEADER, generateCorrelationId } from '@spectra/observability';
+import { METRICS, metrics } from '@spectra/telemetry';
 import type { ApiEnv } from '@spectra/config';
 
 import { AppModule } from './app.module';
@@ -27,6 +28,22 @@ export async function createApp(env: ApiEnv): Promise<NestFastifyApplication> {
   const fastify = app.getHttpAdapter().getInstance();
 
   // Correlation IDs: accept inbound header or generate; always echo back.
+  // Request metrics (ADR-0033). Labelled by ROUTE PATTERN, never the raw URL:
+  // a URL carries ids and query strings, which would explode metric
+  // cardinality and leak identifiers into the metrics backend.
+  fastify.addHook('onResponse', async (request, reply) => {
+    const route = request.routeOptions?.url ?? 'unmatched';
+    const method = request.method;
+    const status = reply.statusCode;
+    metrics.observe(METRICS.apiRequestDuration, reply.elapsedTime, { route, method });
+    if (status >= 400) {
+      metrics.increment(METRICS.apiRequestErrors, { route, method, status: String(status) });
+    }
+    if (status === 429) {
+      metrics.increment(METRICS.apiRateLimited, { route, method });
+    }
+  });
+
   fastify.addHook('onRequest', async (request, reply) => {
     const inbound = request.headers[CORRELATION_HEADER];
     const correlationId =

@@ -47,6 +47,9 @@ export const PERMISSIONS = [
   'audit:read',
   // Budget controls (Phase 5E.1). Org-level ceilings are an org-admin concern,
   // so they are deliberately absent from workspace-scoped role bundles.
+  // Operations: queue health, failed jobs and retrying them (Phase 6B).
+  'ops:read',
+  'ops:retry',
   'org:budget:read',
   'org:budget:manage',
   'org:usage:read',

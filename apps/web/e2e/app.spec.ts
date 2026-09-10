@@ -1,6 +1,13 @@
 import { expect, test } from '@playwright/test';
 
-import { ORG_ID, WORKSPACE_ID, gotoAuthenticated, stubApi } from './fixtures';
+import {
+  ALL_PERMISSIONS,
+  ORG_ID,
+  WORKSPACE_ID,
+  failedJob,
+  gotoAuthenticated,
+  stubApi,
+} from './fixtures';
 
 /**
  * Authenticated UI journeys against a stubbed `/v1` API (see fixtures.ts for
@@ -256,6 +263,108 @@ test.describe('publication status', () => {
     await expect(page.getByText('UNSUPPORTED').first()).toBeVisible();
     await expect(page.getByText(/Nothing was published/i)).toBeVisible();
     await expect(page.getByText(/WordPress responded 401/i)).toBeVisible();
+  });
+});
+
+test.describe('operations', () => {
+  test('lists failed jobs with the reason and the correlation id an operator quotes', async ({
+    page,
+  }) => {
+    await stubApi(page, {
+      routes: {
+        '/ops/queue': {
+          reachable: true,
+          counts: {
+            waiting: 2,
+            active: 1,
+            delayed: 0,
+            completed: 40,
+            failed: 1,
+            paused: 0,
+            deadLettered: 0,
+          },
+          reason: 'Queue reachable.',
+        },
+        '/ops/failed-jobs': {
+          reachable: true,
+          failed: [failedJob()],
+          deadLettered: [],
+          note: 'Dead-lettered jobs exhausted their retries.',
+        },
+      },
+    });
+    await gotoAuthenticated(page, '/operations');
+
+    await expect(page.getByText('Research runs').first()).toBeVisible();
+    await expect(page.getByText('Brave Search returned 429 (rate limited)')).toBeVisible();
+    await expect(page.getByText('corr-abc123')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
+  });
+
+  test('an unreachable queue never renders as "no failures"', async ({ page }) => {
+    await stubApi(page, {
+      routes: {
+        '/ops/queue': {
+          reachable: false,
+          counts: null,
+          reason:
+            'The job queue could not be reached (connect ECONNREFUSED). Counts are unknown, not zero.',
+        },
+        '/ops/failed-jobs': {
+          reachable: false,
+          failed: [],
+          deadLettered: [],
+          note: 'The job queue could not be reached. This is not an empty failure list — the queue is unavailable.',
+        },
+      },
+    });
+    await gotoAuthenticated(page, '/operations');
+
+    await expect(page.getByText('The job queue is unreachable')).toBeVisible();
+    await expect(page.getByText('Failure list unavailable')).toBeVisible();
+    // The reassuring message must NOT appear while the truth is "unknown".
+    await expect(page.getByText('No failed or dead-lettered jobs')).toHaveCount(0);
+  });
+
+  test('retry is hidden without ops:retry and the missing permission is named', async ({
+    page,
+  }) => {
+    await stubApi(page, {
+      permissions: ALL_PERMISSIONS.filter((p) => p !== 'ops:retry'),
+      routes: {
+        '/ops/queue': {
+          reachable: true,
+          counts: {
+            waiting: 0,
+            active: 0,
+            delayed: 0,
+            completed: 0,
+            failed: 1,
+            paused: 0,
+            deadLettered: 0,
+          },
+          reason: 'Queue reachable.',
+        },
+        '/ops/failed-jobs': {
+          reachable: true,
+          failed: [failedJob()],
+          deadLettered: [],
+          note: 'Dead-lettered jobs exhausted their retries.',
+        },
+      },
+    });
+    await gotoAuthenticated(page, '/operations');
+
+    await expect(page.getByRole('button', { name: 'Retry' })).toHaveCount(0);
+    await expect(page.getByText('ops:retry')).toBeVisible();
+  });
+
+  test('the page refuses to show queue state without ops:read', async ({ page }) => {
+    await stubApi(page, { permissions: ALL_PERMISSIONS.filter((p) => p !== 'ops:read') });
+    await gotoAuthenticated(page, '/operations');
+
+    await expect(page.getByText('ops:read')).toBeVisible();
+    await expect(page.getByText('Failed jobs')).toHaveCount(0);
   });
 });
 

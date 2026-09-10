@@ -14,3 +14,12 @@ export type {
 } from './types';
 export { BullMqJobQueue, BullMqWorkerRuntime, createRedisConnection } from './bullmq-adapter';
 export { InMemoryJobQueue } from './in-memory-adapter';
+export { BullMqQueueInspector } from './inspector';
+export { DEAD_LETTER_SUFFIX } from './bullmq-adapter';
+export type {
+  FailedJobSummary,
+  ListFailedOptions,
+  QueueCounts,
+  QueueInspectorPort,
+  QueueJobState,
+} from './inspector';

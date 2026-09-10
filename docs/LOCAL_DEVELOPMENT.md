@@ -37,7 +37,8 @@ Single workspace: `pnpm --filter @spectra/trend-core test`, `pnpm --filter @spec
 | Check            | How                                                                                                   |
 | ---------------- | ----------------------------------------------------------------------------------------------------- |
 | API liveness     | `curl localhost:4000/health` → `{"status":"ok",…}`                                                    |
-| API readiness    | `curl localhost:4000/health/ready` → postgres/redis/worker-heartbeat components                       |
+| API readiness    | `curl localhost:4000/health/ready` → postgres, redis, worker-heartbeat, job-queue, object-storage     |
+| API metrics      | `curl localhost:4000/v1/meta/metrics` → Prometheus exposition (no tenant ids or content)              |
 | Worker heartbeat | start worker; readiness `worker-heartbeat` flips to `up`, or `redis-cli get spectra:worker:heartbeat` |
 | OpenAPI          | http://localhost:4000/docs                                                                            |
 | Web shell        | http://localhost:3000                                                                                 |

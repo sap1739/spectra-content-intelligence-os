@@ -32,6 +32,58 @@ export const MANDATORY_REDACT_PATHS: readonly string[] = [
   '*.cardNumber',
   'documentContent',
   '*.documentContent',
+  // --- Phase 6B additions (ADR-0033) -------------------------------------
+  // Header casing varies by client and framework; pino paths are
+  // case-sensitive, so each real-world spelling needs its own entry.
+  'req.headers.Authorization',
+  'req.headers["x-api-key"]',
+  'req.headers["X-Api-Key"]',
+  'headers.authorization',
+  'headers.cookie',
+  '*.headers.authorization',
+  '*.headers.cookie',
+  'set-cookie',
+  '*.setCookie',
+  // Credentials by other names used across the codebase.
+  'credential',
+  '*.credential',
+  'applicationPassword',
+  '*.applicationPassword',
+  'encryptedToken',
+  '*.encryptedToken',
+  'sessionToken',
+  '*.sessionToken',
+  'passwordHash',
+  '*.passwordHash',
+  'privateKey',
+  '*.privateKey',
+  'clientSecret',
+  '*.clientSecret',
+  // Model input/output. A prompt carries the operator's private research and
+  // an untrusted source's text; a completion can echo both back.
+  'prompt',
+  '*.prompt',
+  'prompts',
+  '*.prompts',
+  'completion',
+  '*.completion',
+  'messages',
+  '*.messages',
+  'instructions',
+  '*.instructions',
+  // Extracted external/document content.
+  'extractedText',
+  '*.extractedText',
+  'rawHtml',
+  '*.rawHtml',
+  'body.content',
+  // Payment data beyond the card number itself.
+  'cvv',
+  '*.cvv',
+  'cardCvc',
+  '*.cardCvc',
+  'iban',
+  '*.iban',
 ];
 
 export interface CreateLoggerOptions {

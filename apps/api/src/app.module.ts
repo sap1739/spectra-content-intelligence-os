@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { AnalyticsModule } from './analytics/analytics.module';
 import { ClaimsModule } from './claims/claims.module';
+import { OpsModule } from './ops/ops.module';
 import { UsageModule } from './usage/usage.module';
 import { BudgetModule } from './budget/budget.module';
 import { AuthModule } from './auth/auth.module';
@@ -37,6 +38,7 @@ import { VerticalsModule } from './verticals/verticals.module';
     AnalyticsModule,
     UsageModule,
     ClaimsModule,
+    OpsModule,
     BudgetModule,
   ],
   controllers: [MetaController],

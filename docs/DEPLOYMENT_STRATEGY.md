@@ -27,6 +27,13 @@ differs — configuration is entirely environment-driven and validated at boot.
 4. Rolling deploy; API readiness (`/health/ready`) gates traffic; worker drains gracefully
    (SIGTERM handling already implemented).
 
+**Readiness semantics matter for the LB config.** `/health/ready` separates required from optional
+dependencies (ADR-0033): Postgres and Redis being down returns `503` and pulls the instance out of
+rotation; the worker heartbeat, the job queue and object storage returning down mark the response
+`degraded` with `200`, because the API still serves reads when background work is stalled. **Wire
+the load balancer to the status code, and alert on `degraded` separately** — treating `degraded` as
+unhealthy will take a serving deployment offline over a stalled queue.
+
 ## 3. Secrets & config
 
 Secret manager (AWS SM / GCP SM / Doppler) injects env at runtime; the encryption key ring
@@ -34,8 +41,64 @@ Secret manager (AWS SM / GCP SM / Doppler) injects env at runtime; the encryptio
 
 ## 4. Observability in production
 
-Structured pino logs → log pipeline (correlationId-indexed); OTel traces/metrics wiring per
-ADR-0013; alerting on readiness failures, DLQ depth, heartbeat staleness, migration errors.
+Implemented in Phase 6B (ADR-0033).
+
+**Logs.** Structured pino → log pipeline, indexed by `correlationId`. The same correlation id
+appears on the HTTP request, the queued job and the worker span, so one id follows a research run
+end to end. Redaction is enforced in the logger itself, not at the pipeline.
+
+**Traces.** OpenTelemetry over OTLP/HTTP, entirely optional:
+
+| Variable                      | Effect                                                              |
+| ----------------------------- | ------------------------------------------------------------------- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Unset => tracing off, SDK never loaded, reason logged once at boot  |
+| `OTEL_EXPORTER_OTLP_HEADERS`  | Comma-separated `key=value` (collector auth). Secret — never logged |
+
+Set the **same endpoint in the API and the worker** or a request will not join the background job
+it queued. `initTracing` never throws: a broken collector degrades telemetry, never traffic. Span
+attributes are allow-listed, so an attribute that is not on the list silently does not appear on
+your dashboard — see `docs/SECURITY.md` §12 before adding one.
+
+**Metrics.** Prometheus text exposition at `GET /v1/meta/metrics` on the API (unauthenticated,
+pull-based).
+
+| Metric                                | Type      | Labels                      | Emitted by                |
+| ------------------------------------- | --------- | --------------------------- | ------------------------- |
+| `spectra_api_request_duration_ms`     | histogram | `route`, `method`           | API                       |
+| `spectra_api_request_errors_total`    | counter   | `route`, `method`, `status` | API                       |
+| `spectra_api_rate_limited_total`      | counter   | `route`, `method`           | API                       |
+| `spectra_queue_depth`                 | gauge     | `state`                     | API (read at scrape time) |
+| `spectra_ops_job_retries_total`       | counter   | `job`                       | API                       |
+| `spectra_worker_job_duration_ms`      | histogram | `job`, `outcome`            | Worker                    |
+| `spectra_worker_job_failures_total`   | counter   | `job`                       | Worker                    |
+| `spectra_queue_dead_lettered_total`   | counter   | `job`                       | Worker                    |
+| `spectra_provider_latency_ms`         | histogram | `provider`, `op`, `outcome` | Worker (pipelines)        |
+| `spectra_research_run_duration_ms`    | histogram | `outcome`                   | Worker                    |
+| `spectra_publish_attempt_duration_ms` | histogram | `outcome`                   | Worker                    |
+| `spectra_budget_blocked_total`        | counter   | `surface`, `reason`, `kind` | API + worker              |
+
+`spectra_budget_blocked_total` is deliberately **not** an error metric: a budget refusal is the
+platform doing what it was configured to do. Alert on it as a product signal — usually a limit that
+needs raising — not as an outage.
+
+Provider, run and publish metrics are emitted from the pipeline packages, which execute on the
+worker. **The worker does not expose a scrape endpoint yet**, so today those series are visible
+only in a process that renders the registry; the API endpoint carries the API's own series. Adding
+a worker metrics listener is the next observability increment.
+
+A gauge whose source is unreachable is **omitted from the exposition rather than reported as 0**.
+Alert on `absent(spectra_queue_depth)` as well as on its value: a missing series means the depth is
+unknown, which is a different incident from a depth of zero.
+
+**Alerting baseline.** Readiness `down`; `degraded` sustained > 5 min; dead-letter depth > 0;
+worker heartbeat stale; `spectra_api_request_errors_total` rate; migration failures; and
+`spectra_budget_blocked_total` rising (customers are being refused work — usually a limit that
+needs raising, not an outage).
+
+**Failure triage.** The Operations page (`/operations`, `ops:read`) lists this workspace's failed
+and dead-lettered jobs with their reason and correlation id, and retries them under `ops:retry`.
+Retry re-runs the original job, so idempotency keys and budget pre-flight still apply — it is safe
+to hand to support. See `docs/SECURITY.md` §13.
 
 ## 5. Data protection
 

@@ -17,7 +17,8 @@
     "@spectra/database": "workspace:*",
     "@spectra/knowledge-core": "workspace:*",
     "@spectra/logging": "workspace:*",
-    "@spectra/metering": "workspace:*"
+    "@spectra/metering": "workspace:*",
+    "@spectra/telemetry": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",

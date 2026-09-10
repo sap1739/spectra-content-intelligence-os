@@ -252,5 +252,22 @@ weakest link in the differentiator: research and evidence quality.
   test framework (Vitest + RTL, 16 tests) and expanded Playwright from 5 unauthenticated smoke
   tests to 18 covering login, dashboard, brands, settings, templates, research, usage/budgets,
   publication status, permission-restricted controls and accessibility.
-- Next: anchor-aware citation selection (5G anchors per claim); review-queue prioritisation;
+- ✅ **Increment B — observability, DLQ and operations.** Everything after Phase 3 runs
+  asynchronously, and until now a job that exhausted its retries went to the dead-letter queue and
+  stopped there — nothing listed it, nothing retried it, and nobody found out unless a customer
+  asked. The new Operations page lists this workspace's failed and dead-lettered jobs with their
+  reason and correlation id and retries them under a separate `ops:retry` permission; retry re-runs
+  the ORIGINAL job, so its idempotency key holds and budget pre-flight runs again — an operator
+  cannot use it to bypass a limit or duplicate a publish. Tracing is OpenTelemetry over OTLP and
+  entirely optional: with no endpoint the SDK is never loaded and each service says so at boot.
+  Span attributes are an ALLOW-LIST rather than a deny-list, because a deny-list fails open and
+  traces leave the process for a third party. First-party Prometheus metrics cover API latency and
+  errors, worker job duration and failures, queue depth, provider latency, run and publish
+  durations, and budget refusals — with a cardinality cap, route-pattern labels (never resolved
+  URLs), and a gauge that is OMITTED rather than reported as 0 when its source is unreachable.
+  Readiness gained queue and object-storage indicators as optional components, so a stalled queue
+  degrades the service instead of pulling it out of the load balancer. Log redaction was widened to
+  header casings, credential shapes, model input/output and extracted document text (ADR-0033).
+- Next: a metrics endpoint on the worker (pipeline series are emitted there but not yet scrapable);
+  anchor-aware citation selection (5G anchors per claim); review-queue prioritisation;
   a DomainPolicy management UI; uploaded-document ingestion.
