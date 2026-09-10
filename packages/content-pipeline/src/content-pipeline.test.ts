@@ -34,6 +34,17 @@ const baseInput: DraftGenerationInput = {
         findingId: 'finding-1',
       },
     ],
+    // Phase 5H: the pack states how well each claim is supported (ADR-0032).
+    claims: [
+      {
+        id: 'claim-1',
+        text: 'Adoption of AI testing grew 40% in 2026 across large enterprises in India.',
+        corroborated: true,
+        independentSourceCount: 3,
+        confidenceLevel: 'HIGH',
+      },
+    ],
+    limitedEvidence: false,
   },
 };
 

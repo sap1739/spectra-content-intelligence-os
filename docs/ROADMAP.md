@@ -216,6 +216,24 @@ weakest link in the differentiator: research and evidence quality.
   dropped. **Syndication no longer inflates diversity** — clusters count once, and URL
   canonicalization was broadened so one article from three channels is one source. Fetching is
   bounded and per-host polite. Runs report what they could NOT do (ADR-0030).
-- Next: content extraction for non-HTML sources (PDFs still fall back to snippet-only); fact
-  verification / claim corroboration; hybrid retrieval tuning + reranking; an approval workflow
-  behind the existing `REQUIRES_APPROVAL` decision.
+- ✅ **Increment G — document extraction.** PDFs, DOCX, TXT and Markdown discovered by search are
+  extracted into real text **with citation anchors** — page for PDF, section for DOCX/Markdown,
+  line range for text — behind a new `DocumentExtractionProvider` port. MIME and size limits are
+  enforced before any parser sees the bytes; extracted text is prompt-injection scanned exactly
+  like scraped web content, because a PDF is not more trustworthy than a web page. Failures are
+  returned as typed codes and shown in the UI, so a document source is never silently thin. Scanned
+  PDFs fail `NO_TEXT_LAYER` — OCR is deliberately not attempted rather than guessing at image text
+  (ADR-0031).
+- ✅ **Increment H — claim verification.** Corroboration now counts INDEPENDENT sources: syndicated
+  copies of one story collapse to one, so republication cannot manufacture confidence (the same
+  correction 5F made for trends, finally applied to claims). Claims cluster by asserted content;
+  contradictions — numeric beyond a rounding tolerance, negation, opposite direction — are detected
+  and SURFACED for a human decision rather than auto-resolved, because picking a winner
+  automatically is how a tool launders a disagreement into a fact. Time-sensitive claims decay from
+  their newest support; factual ones do not. Every claim carries an explicit eligibility decision
+  with a reason, packs carry only usable claims, generation re-filters on load and tells the model
+  how strong each claim is so weak evidence is qualified rather than dropped. Human review is
+  append-only with mandatory notes (ADR-0032).
+- Next: anchor-aware citation selection (attach 5G document anchors per claim so citations read
+  "p. 12" rather than naming a whole document); hybrid retrieval tuning + reranking; a DomainPolicy
+  management UI; uploaded-document ingestion; review-queue prioritisation and bulk actions.

@@ -64,8 +64,24 @@ export function buildDraftPrompt(input: DraftGenerationInput): BuiltDraftPrompt 
     '  not support a claim, do not make it.',
     '- If the provided evidence is too thin to write a credible piece, say so plainly',
     '  instead of padding with unsupported claims.',
+    // ADR-0032: the pack now states how well each claim is supported, so the
+    // draft must carry that distinction through rather than flattening
+    // single-source reports into settled fact.
+    '- The VERIFIED CLAIMS list states how well each claim is supported. Prefer',
+    '  corroborated claims. Where you use one marked "limited evidence" or',
+    '  "ONE source only", attribute it explicitly (e.g. "according to X") rather',
+    '  than stating it as established fact.',
     '- Output only the content itself — no preamble, no notes about these rules.',
   );
+
+  if (input.evidence.limitedEvidence) {
+    instructionLines.push(
+      '',
+      'EVIDENCE WARNING: every claim available for this piece rests on limited',
+      'evidence. Write cautiously, attribute claims to their sources, and do not',
+      'present any of it as settled or widely confirmed.',
+    );
+  }
 
   // Build the numbered evidence block. Findings first, then standalone citations.
   const sourceOrder: string[] = [];
@@ -94,6 +110,21 @@ export function buildDraftPrompt(input: DraftGenerationInput): BuiltDraftPrompt 
       `[${index}] ${publisher} — ${citation.sourceUrl}`,
       `    Quote: "${citation.quote}"`,
     );
+  }
+
+  // Verified claims, with how well each is supported (ADR-0032). Stated
+  // explicitly so the model can hedge a single-source claim instead of
+  // asserting it flatly — and so it never has to guess which evidence is solid.
+  if (input.evidence.claims.length > 0) {
+    evidenceLines.push('', 'VERIFIED CLAIMS:');
+    for (const claim of input.evidence.claims) {
+      const standing = claim.corroborated
+        ? `corroborated by ${claim.independentSourceCount} independent sources`
+        : claim.independentSourceCount === 1
+          ? 'supported by ONE source only — limited evidence'
+          : 'limited evidence';
+      evidenceLines.push(`- ${claim.text} (${standing})`);
+    }
   }
 
   if (index === 0) {

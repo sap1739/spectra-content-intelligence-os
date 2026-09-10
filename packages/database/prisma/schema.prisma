@@ -55,6 +55,8 @@ model User {
   organizationBudgets   OrganizationBudget[]
   budgetOperationLimits BudgetOperationLimit[]
   domainPolicies        DomainPolicy[]
+  extractedClaims       ExtractedClaim[]
+  claimReviews          ClaimReview[]
 
   @@index([status])
   @@map("users")
@@ -673,29 +675,171 @@ enum ClaimVerificationStatus {
 /// Heuristically extracted claims (ADR-0016). One row per normalized claim
 /// per project; corroboration = supported by ≥2 distinct sources.
 model ExtractedClaim {
-  id                   String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId       String                  @db.Uuid
-  workspaceId          String                  @db.Uuid
-  projectId            String                  @db.Uuid
-  text                 String
+  id                     String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId         String                      @db.Uuid
+  workspaceId            String                      @db.Uuid
+  projectId              String                      @db.Uuid
+  text                   String
   /// titleKey-normalized claim text — the per-project dedupe identity.
-  normalizedKey        String
-  claimType            ClaimType               @default(FACTUAL)
-  verificationStatus   ClaimVerificationStatus @default(UNVERIFIED)
-  supportingFindingIds String[]                @default([]) @db.Uuid
-  /// Distinct sources backing the claim (drives corroboration).
-  sourceCount          Int                     @default(1)
-  confidence           Float?
+  normalizedKey          String
+  claimType              ClaimType                   @default(FACTUAL)
+  verificationStatus     ClaimVerificationStatus     @default(UNVERIFIED)
+  supportingFindingIds   String[]                    @default([]) @db.Uuid
+  /// Distinct sources backing the claim, INCLUDING syndicated copies.
+  sourceCount            Int                         @default(1)
+  /// Distinct INDEPENDENT sources — syndicated copies of one story collapse to
+  /// one. This, not `sourceCount`, is what corroboration means (ADR-0032).
+  independentSourceCount Int                         @default(1)
+  /// Cluster identity: claims asserting the same thing share it, so the same
+  /// fact restated across outlets is corroboration rather than a new claim.
+  clusterKey             String?
+  /// Citations that actually support this claim. Never populated speculatively.
+  supportingCitationIds  String[]                    @default([]) @db.Uuid
+  confidence             Float?
+  confidenceLevel        ClaimConfidenceLevel        @default(UNKNOWN)
+  /// Age-based confidence for TIME-SENSITIVE claims (statistics, forecasts).
+  freshnessStatus        ClaimFreshnessStatus        @default(UNKNOWN)
+  /// Publication date of the NEWEST supporting source — drives staleness.
+  latestSupportAt        DateTime?                   @db.Timestamptz(6)
+  /// Operator-marked: this claim does not decay (definitions, standards).
+  evergreen              Boolean                     @default(false)
+  /// Whether this claim may ground generated content, and why.
+  eligibility            EvidenceEligibilityDecision @default(WEAK)
+  eligibilityReason      String?
+  reviewStatus           ClaimReviewStatus           @default(NOT_REQUIRED)
+  reviewedById           String?                     @db.Uuid
+  reviewedAt             DateTime?                   @db.Timestamptz(6)
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
-  project   ResearchProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  citations Citation[]
+  project        ResearchProject      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  reviewedBy     User?                @relation(fields: [reviewedById], references: [id], onDelete: SetNull)
+  citations      Citation[]
+  reviews        ClaimReview[]
+  contradictions ClaimContradiction[] @relation("ClaimContradictionSubject")
+  contradicting  ClaimContradiction[] @relation("ClaimContradictionCounterpart")
 
   @@unique([projectId, normalizedKey])
   @@index([workspaceId, verificationStatus])
+  @@index([projectId, clusterKey])
+  @@index([workspaceId, eligibility])
+  @@index([workspaceId, reviewStatus])
   @@map("extracted_claims")
+}
+
+/// How much confidence the evidence supports for one claim.
+enum ClaimConfidenceLevel {
+  /// Multiple independent sources agree.
+  HIGH
+  /// Two independent sources, or one highly credible one.
+  MEDIUM
+  /// A single source, or only snippet-derived support.
+  LOW
+  /// Actively contradicted by other evidence.
+  CONTESTED
+  /// Not yet assessed.
+  UNKNOWN
+}
+
+/// Age-based standing for time-sensitive claims (ADR-0032).
+enum ClaimFreshnessStatus {
+  CURRENT
+  AGING
+  STALE
+  /// Explicitly marked as not decaying.
+  EVERGREEN
+  /// No supporting source stated a date — decay cannot be computed honestly.
+  UNKNOWN
+}
+
+/// Whether a claim may ground generated content.
+enum EvidenceEligibilityDecision {
+  /// Corroborated by independent sources; preferred for generation.
+  ELIGIBLE
+  /// Usable, but thin — surfaced to the operator as limited evidence.
+  WEAK
+  /// Must not be used until a human decides (contradicted, or stale + risky).
+  REQUIRES_REVIEW
+  /// Never usable as evidence.
+  BLOCKED
+}
+
+enum ClaimReviewStatus {
+  NOT_REQUIRED
+  PENDING
+  APPROVED
+  REJECTED
+  /// Reviewer asked for more research before deciding.
+  MORE_RESEARCH_REQUESTED
+}
+
+/// Audit trail of every human decision on a claim. Append-only.
+model ClaimReview {
+  id             String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String            @db.Uuid
+  workspaceId    String            @db.Uuid
+  claimId        String            @db.Uuid
+  action         ClaimReviewAction
+  /// Required for REJECT and REQUEST_MORE_RESEARCH — a decision without a
+  /// stated reason is not reviewable by the next person.
+  note           String?
+  reviewerId     String?           @db.Uuid
+  createdAt      DateTime          @default(now()) @db.Timestamptz(6)
+
+  claim    ExtractedClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  reviewer User?          @relation(fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, claimId, createdAt])
+  @@map("claim_reviews")
+}
+
+enum ClaimReviewAction {
+  APPROVE
+  REJECT
+  REQUEST_MORE_RESEARCH
+}
+
+/// A detected conflict between two claims. Surfaced, never hidden — suppressing
+/// conflicting evidence is the failure mode this whole layer exists to prevent.
+model ClaimContradiction {
+  id                 String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String                   @db.Uuid
+  workspaceId        String                   @db.Uuid
+  projectId          String                   @db.Uuid
+  claimId            String                   @db.Uuid
+  conflictingClaimId String                   @db.Uuid
+  kind               ClaimContradictionKind
+  /// What specifically conflicts, e.g. "40% vs 25% for the same subject".
+  detail             String
+  status             ClaimContradictionStatus @default(OPEN)
+  resolvedById       String?                  @db.Uuid
+  resolvedAt         DateTime?                @db.Timestamptz(6)
+  createdAt          DateTime                 @default(now()) @db.Timestamptz(6)
+
+  claim            ExtractedClaim @relation("ClaimContradictionSubject", fields: [claimId], references: [id], onDelete: Cascade)
+  conflictingClaim ExtractedClaim @relation("ClaimContradictionCounterpart", fields: [conflictingClaimId], references: [id], onDelete: Cascade)
+
+  @@unique([claimId, conflictingClaimId])
+  @@index([workspaceId, status])
+  @@map("claim_contradictions")
+}
+
+enum ClaimContradictionKind {
+  /// Same subject, materially different numbers.
+  NUMERIC_CONFLICT
+  /// One asserts, the other negates.
+  NEGATION
+  /// Same subject, incompatible direction (grew vs fell).
+  DIRECTIONAL_CONFLICT
+}
+
+enum ClaimContradictionStatus {
+  OPEN
+  /// A human decided which claim stands.
+  RESOLVED
+  /// A human judged it a false positive.
+  DISMISSED
 }
 
 /// First-class citation: finding ↔ source (+snapshot) with a byte locator.

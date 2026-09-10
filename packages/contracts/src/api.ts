@@ -495,3 +495,31 @@ export const budgetPreflightRequestSchema = z.object({
   estimatedOutputTokens: z.number().int().min(0).max(10_000_000).optional(),
 });
 export type BudgetPreflightRequest = z.infer<typeof budgetPreflightRequestSchema>;
+
+// ---------------------------------------------------------------------------
+// Claim verification & review (Phase 5H) — ADR-0032
+// ---------------------------------------------------------------------------
+
+export const claimReviewActionSchema = z.enum(['APPROVE', 'REJECT', 'REQUEST_MORE_RESEARCH']);
+export type ClaimReviewActionName = z.infer<typeof claimReviewActionSchema>;
+
+/**
+ * A reviewer decision. REJECT and REQUEST_MORE_RESEARCH require a note: a
+ * decision nobody can understand later is not reviewable.
+ */
+export const reviewClaimInputSchema = z
+  .object({
+    action: claimReviewActionSchema,
+    note: z.string().min(1).max(2000).optional(),
+  })
+  .refine((v) => v.action === 'APPROVE' || (v.note !== undefined && v.note.trim().length > 0), {
+    message: 'A note is required when rejecting a claim or requesting more research',
+    path: ['note'],
+  });
+export type ReviewClaimInput = z.infer<typeof reviewClaimInputSchema>;
+
+export const resolveContradictionInputSchema = z.object({
+  status: z.enum(['RESOLVED', 'DISMISSED']),
+  note: z.string().max(2000).optional(),
+});
+export type ResolveContradictionInput = z.infer<typeof resolveContradictionInputSchema>;

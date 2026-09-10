@@ -20,6 +20,21 @@ export interface GroundingFinding {
   sourceUrl: string;
 }
 
+/**
+ * A verified claim supplied to the model as grounding (ADR-0032).
+ *
+ * Carries HOW WELL supported it is, so a statement resting on a single source
+ * can be written as such instead of asserted as settled fact.
+ */
+export interface GroundingClaim {
+  id: string;
+  text: string;
+  /** True when independently corroborated; false means thin support. */
+  corroborated: boolean;
+  independentSourceCount: number;
+  confidenceLevel: 'HIGH' | 'MEDIUM' | 'LOW' | 'CONTESTED' | 'UNKNOWN';
+}
+
 /** The evidence a draft is grounded on — drawn from a living evidence pack. */
 export interface DraftEvidence {
   packId: string | null;
@@ -27,6 +42,14 @@ export interface DraftEvidence {
   packSummary?: string | null;
   findings: GroundingFinding[];
   citations: GroundingCitation[];
+  /** Verified claims, strongest first. Contradicted/unsupported never appear. */
+  claims: GroundingClaim[];
+  /**
+   * True when every claim in the pack is only weakly supported. The prompt uses
+   * this to require an explicit hedge rather than letting thin evidence read as
+   * settled.
+   */
+  limitedEvidence: boolean;
 }
 
 export interface DraftGenerationInput {

@@ -34,11 +34,11 @@ import {
   type RunRow,
 } from '@/lib/research';
 
-const CLAIM_BADGE: Record<string, 'success' | 'secondary' | 'muted' | 'warning'> = {
-  CORROBORATED: 'success',
-  VERIFIED: 'success',
-  UNVERIFIED: 'muted',
-  DISPUTED: 'warning',
+const ELIGIBILITY_BADGE: Record<string, 'success' | 'warning' | 'destructive' | 'muted'> = {
+  ELIGIBLE: 'success',
+  WEAK: 'warning',
+  REQUIRES_REVIEW: 'destructive',
+  BLOCKED: 'muted',
 };
 
 function EvidencePacksSection({
@@ -51,7 +51,7 @@ function EvidencePacksSection({
   const packs = useEvidencePacks(workspaceId, projectId);
   const claims = useClaims(workspaceId, projectId);
   const [openPackId, setOpenPackId] = React.useState<string | null>(null);
-  const claimById = new Map((claims.data ?? []).map((c) => [c.id, c]));
+  const claimById = new Map((claims.data?.claims ?? []).map((c) => [c.id, c]));
 
   return (
     <Card className="mt-6">
@@ -110,15 +110,52 @@ function EvidencePacksSection({
                     ) : (
                       <ul className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
                         {packClaims.map((claim) => (
-                          <li key={claim.id} className="flex items-start justify-between gap-2">
-                            <p className="text-xs leading-snug">{claim.text}</p>
-                            <span className="flex shrink-0 gap-1">
-                              <Badge variant="outline">{claim.claimType}</Badge>
-                              <Badge variant={CLAIM_BADGE[claim.verificationStatus] ?? 'muted'}>
-                                {claim.verificationStatus}
-                                {claim.sourceCount > 1 ? ` ×${claim.sourceCount}` : ''}
-                              </Badge>
-                            </span>
+                          <li key={claim.id} className="flex flex-col gap-1">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-xs leading-snug">{claim.text}</p>
+                              <span className="flex shrink-0 flex-wrap justify-end gap-1">
+                                <Badge variant="outline">{claim.claimType}</Badge>
+                                {/* Eligibility is the operative fact: whether this
+                                    claim may ground content, and how strongly. */}
+                                <Badge variant={ELIGIBILITY_BADGE[claim.eligibility] ?? 'muted'}>
+                                  {claim.eligibility.toLowerCase().replace(/_/g, ' ')}
+                                </Badge>
+                                <Badge variant="muted">
+                                  {/* Independent sources, not raw row count —
+                                      syndicated copies count once (ADR-0032). */}
+                                  {claim.independentSourceCount} independent
+                                  {claim.sourceCount !== claim.independentSourceCount
+                                    ? ` of ${claim.sourceCount}`
+                                    : ''}
+                                </Badge>
+                                {claim.freshnessStatus === 'STALE' ||
+                                claim.freshnessStatus === 'AGING' ? (
+                                  <Badge
+                                    variant={
+                                      claim.freshnessStatus === 'STALE' ? 'destructive' : 'warning'
+                                    }
+                                  >
+                                    {claim.freshnessStatus.toLowerCase()}
+                                  </Badge>
+                                ) : null}
+                                {claim.contradictions.length > 0 ? (
+                                  <Badge variant="destructive">
+                                    contradicted ×{claim.contradictions.length}
+                                  </Badge>
+                                ) : null}
+                              </span>
+                            </div>
+                            {claim.eligibilityReason ? (
+                              <p className="text-xs text-muted-foreground">
+                                {claim.eligibilityReason}
+                              </p>
+                            ) : null}
+                            {/* Conflicting evidence is shown, never hidden. */}
+                            {claim.contradictions.map((c) => (
+                              <p key={c.id} className="text-xs text-destructive">
+                                Conflict ({c.kind.toLowerCase().replace(/_/g, ' ')}): {c.detail}
+                              </p>
+                            ))}
                           </li>
                         ))}
                       </ul>

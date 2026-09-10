@@ -41,6 +41,8 @@ export const RESEARCH_PIPELINE_STAGES = [
   'CITATION_CAPTURE',
   'CREDIBILITY_ASSESSMENT',
   'FRESHNESS_ASSESSMENT',
+  /** Corroboration, contradiction and eligibility assessment (ADR-0032). */
+  'CLAIM_VERIFICATION',
   'TREND_SCORING',
   'HUMAN_REVIEW',
   'EVIDENCE_PACK_GENERATION',
@@ -124,6 +126,9 @@ export const researchRunStatsSchema = z.object({
   // robots-blocked must not read like a thorough run.
   robotsBlocked: z.number().int().nonnegative().default(0),
   documentsExtracted: z.number().int().nonnegative().default(0),
+  claimsEligible: z.number().int().nonnegative().default(0),
+  claimsRequiringReview: z.number().int().nonnegative().default(0),
+  claimContradictions: z.number().int().nonnegative().default(0),
   documentExtractionFailures: z.number().int().nonnegative().default(0),
   snippetOnly: z.number().int().nonnegative().default(0),
   blockedDomainRejected: z.number().int().nonnegative().default(0),

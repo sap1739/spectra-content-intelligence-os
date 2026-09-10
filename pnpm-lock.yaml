@@ -135,6 +135,9 @@ importers:
       '@spectra/publishing':
         specifier: workspace:*
         version: link:../../packages/publishing
+      '@spectra/research-pipeline':
+        specifier: workspace:*
+        version: link:../../packages/research-pipeline
       '@swc-node/register':
         specifier: ^1.11.1
         version: 1.11.1(@swc/core@1.15.43)(@swc/types@0.1.27)(typescript@5.9.3)
@@ -357,6 +360,22 @@ importers:
       typescript:
         specifier: ^5.8.3
         version: 5.9.3
+
+  packages/claim-verification:
+    dependencies:
+      '@spectra/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+    devDependencies:
+      '@types/node':
+        specifier: ^22.15.0
+        version: 22.20.0
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.22.4)
 
   packages/config:
     dependencies:
@@ -658,6 +677,9 @@ importers:
       '@spectra/ai-core':
         specifier: workspace:*
         version: link:../ai-core
+      '@spectra/claim-verification':
+        specifier: workspace:*
+        version: link:../claim-verification
       '@spectra/contracts':
         specifier: workspace:*
         version: link:../contracts

@@ -31,7 +31,7 @@
   sanitization, MIME/size policy validation.
 - **Workflow**: in-memory queue semantics — idempotent enqueue, retry-then-dead-letter,
   recovery, cancellation.
-- **Research-core**: provider registry (dedupe, typed errors, fixture flagging), 22-stage
+- **Research-core**: provider registry (dedupe, typed errors, fixture flagging), 23-stage
   ordering and forward-only advancement.
 - **Trend-core**: deterministic scoring, penalties + risk flags, evidence floor, config
   swap without code change, invalid input rejection.

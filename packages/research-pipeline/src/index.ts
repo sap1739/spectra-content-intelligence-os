@@ -37,3 +37,5 @@ export type {
   FreshnessResult,
   StalenessStatus,
 } from './quality';
+export { verifyProjectClaims } from './verify-claims';
+export type { VerifyClaimsInput, VerifyClaimsOutcome } from './verify-claims';

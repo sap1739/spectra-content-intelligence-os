@@ -1,7 +1,7 @@
 # SpectraContent Intelligence OS — Project Status
 
 **Snapshot date:** 2026-09-09 · **Branch:** `main`
-**Status:** Phases 1–4 complete · Phase 5 in progress (5A–5G shipped)
+**Status:** Phases 1–4 complete · Phase 5 in progress (5A–5H shipped)
 
 > This document is a factual, audited snapshot intended as context for planning further work.
 > Every number below was measured from the repository, not estimated.
@@ -111,7 +111,7 @@ auth/             Principal + token-vault ports (direction only; superseded by a
 logging/          pino with mandatory secret redaction
 observability/    Correlation IDs (AsyncLocalStorage), health aggregation
 metering/         Usage ledger + versioned cost ESTIMATES               [Phase 5D]
-research-core/    11 research ports, provider registry, 22-stage pipeline model
+research-core/    11 research ports, provider registry, 23-stage pipeline model
 research-pipeline/ Ingest pipeline: feeds + search → one candidate path
 research-brave/   Brave Search adapters (web + news), env-gated          [Phase 5B]
 trend-core/       Versioned, explainable trend scoring engine
@@ -189,6 +189,11 @@ standards, health/readiness endpoints, OpenAPI at `/docs`.
   scan, snapshotting, scoring, embedding). Discovered URLs are fetched through the existing
   `safeFetch`; failed fetches keep the snippet and mark `snippetOnly`. Provenance records the
   _query_ that found a source.
+- **5H:** **Claim verification.** Corroboration counts independent sources (syndicated copies
+  collapse to one), claims cluster by asserted content, contradictions are detected and surfaced
+  for human decision rather than auto-resolved, time-sensitive claims decay, and every claim gets
+  an explicit eligibility decision with a reason. Packs carry only usable claims; the prompt states
+  how strong each is. Append-only human review with mandatory notes (ADR-0032).
 - **5G:** **Document extraction.** PDF/DOCX/TXT/Markdown become anchored evidence via a
   `DocumentExtractionProvider` port (`@spectra/document-extract`, using pdf.js + mammoth).
   Page/section/line citation anchors, MIME + size limits enforced before parsing, mandatory

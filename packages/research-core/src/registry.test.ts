@@ -47,10 +47,21 @@ describe('ResearchProviderRegistry', () => {
 });
 
 describe('pipeline stage sequencing', () => {
-  it('covers all 22 stages in order', () => {
-    expect(RESEARCH_STAGE_ORDER).toHaveLength(22);
+  it('covers all 23 stages in order', () => {
+    // 23 since Phase 5H added CLAIM_VERIFICATION between claim extraction and
+    // evidence-pack generation (ADR-0032).
+    expect(RESEARCH_STAGE_ORDER).toHaveLength(23);
     expect(RESEARCH_STAGE_ORDER[0]).toBe('REQUEST_CREATED');
-    expect(RESEARCH_STAGE_ORDER[21]).toBe('KNOWLEDGE_BASE_STORAGE');
+    // Assert the LAST stage rather than a hard-coded index, so inserting a
+    // stage mid-pipeline does not require re-numbering this expectation.
+    expect(RESEARCH_STAGE_ORDER.at(-1)).toBe('KNOWLEDGE_BASE_STORAGE');
+    // The new stage sits between claim extraction and evidence-pack assembly.
+    expect(RESEARCH_STAGE_ORDER.indexOf('CLAIM_VERIFICATION')).toBeGreaterThan(
+      RESEARCH_STAGE_ORDER.indexOf('CLAIM_EXTRACTION'),
+    );
+    expect(RESEARCH_STAGE_ORDER.indexOf('CLAIM_VERIFICATION')).toBeLessThan(
+      RESEARCH_STAGE_ORDER.indexOf('EVIDENCE_PACK_GENERATION'),
+    );
   });
 
   it('only allows forward or same-stage transitions', () => {

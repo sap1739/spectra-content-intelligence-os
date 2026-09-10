@@ -42,6 +42,19 @@ function fakePrisma(overrides: { draftStatus?: string } = {}) {
     workspaceBudget: { findFirst: vi.fn(async () => null) },
     organizationBudget: { findFirst: vi.fn(async () => null) },
     budgetOperationLimit: { findMany: vi.fn(async () => []) },
+    // Phase 5H: generation loads verified claims from the pack (ADR-0032).
+    extractedClaim: {
+      findMany: vi.fn(async () => [
+        {
+          id: 'claim-1',
+          text: 'Adoption grew 40% in 2026.',
+          eligibility: 'ELIGIBLE',
+          confidenceLevel: 'HIGH',
+          independentSourceCount: 3,
+          supportingCitationIds: ['cite-1'],
+        },
+      ]),
+    },
     budgetReservation: {
       findMany: vi.fn(async () => []),
       findUnique: vi.fn(async () => null),
@@ -77,6 +90,7 @@ function fakePrisma(overrides: { draftStatus?: string } = {}) {
         summary: 'Summary.',
         findingIds: ['f1'],
         citationIds: ['c1'],
+        claimIds: ['claim-1'],
       })),
       update: vi.fn(async (args: { data: Record<string, unknown> }) => packUpdates.push(args)),
     },

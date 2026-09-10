@@ -33,6 +33,7 @@
 | [0029](0029-transactional-budget-reservations.md)               | Transactional budget reservations: advisory-lock atomic reserve-and-check                      | Accepted             |
 | [0030](0030-research-quality-hardening.md)                      | Research quality: robots compliance, snippet down-weighting, decay, syndication                | Accepted             |
 | [0031](0031-document-extraction.md)                             | Document extraction: PDFs/DOCX/TXT as anchored evidence                                        | Accepted             |
+| [0032](0032-claim-verification.md)                              | Claim verification: corroboration, contradiction, staleness, eligibility                       | Accepted             |
 
 New significant decisions require a new ADR (`NNNN-kebab-title.md`) using the
 Context / Decision / Rationale / Consequences structure.

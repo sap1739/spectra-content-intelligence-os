@@ -15,7 +15,10 @@ enterprises — built around **user-defined custom verticals** and **evidence-ba
 > `UNSUPPORTED`). Phase 5 deepens research: **semantic embeddings** via `@spectra/ai-voyage`,
 > with an honest lexical fallback that says so, **live web/news discovery** (Brave) feeding
 > search-driven research runs, and **usage metering** — an append-only ledger of measured provider
-> spend with clearly-labelled cost estimates and per-run fetch budgets. Every number comes from
+> spend with clearly-labelled cost estimates and per-run fetch budgets, **robots.txt compliance**
+> and snippet-only down-weighting, **document extraction** (PDF/DOCX/TXT with page-level citation
+> anchors), and **claim verification** — corroboration counted by independent sources, with
+> contradictions surfaced for human review rather than auto-resolved. Every number comes from
 > real data.
 
 ## Product workflow (target)
@@ -41,8 +44,10 @@ packages/
   auth/           Principal model + auth/token-vault ports (direction only; superseded by apps/api/src/auth)
   logging/        pino structured logging with mandatory secret redaction
   observability/  Correlation IDs (AsyncLocalStorage), health aggregation
-  research-core/  11 provider-neutral research ports, registry, 22-stage pipeline model
+  research-core/  11 provider-neutral research ports, registry, 23-stage pipeline model
   research-pipeline/ Ingest pipeline: feeds + search normalize to one candidate path (ADR-0015, ADR-0025)
+  claim-verification/ Corroboration, contradiction, staleness, evidence eligibility (ADR-0032)
+  document-extract/ PDF/DOCX/TXT extraction with page/section citation anchors (ADR-0031)
   metering/       Usage ledger + versioned cost ESTIMATES (never invoices; ADR-0026)
   research-brave/ Brave Search adapters for the web/news discovery ports (env-gated; ADR-0024)
   trend-core/     Versioned, explainable TrendScoringEngine + trend lifecycle
@@ -64,7 +69,7 @@ infrastructure/
   docker/         PostgreSQL (pgvector), Redis, MinIO via Docker Compose
   scripts/        bootstrap.sh, verify.sh
 docs/             Product, architecture, security and strategy documentation
-docs/adr/         26 Architecture Decision Records
+docs/adr/         32 Architecture Decision Records
 ```
 
 ## Quick start

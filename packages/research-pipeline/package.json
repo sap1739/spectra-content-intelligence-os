@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@spectra/ai-core": "workspace:*",
+    "@spectra/claim-verification": "workspace:*",
     "@spectra/contracts": "workspace:*",
     "@spectra/database": "workspace:*",
     "@spectra/knowledge-core": "workspace:*",

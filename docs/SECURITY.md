@@ -1,138 +1,18 @@
-# Security
+## 11. Evidence integrity **[P2]**
 
-Threat-informed standards for the platform. Items marked **[P1]** are implemented in this
-foundation; others are designed and land with their features.
+Claim verification (ADR-0032) protects against a specific failure: research evidence that looks
+stronger than it is.
 
-## 1. Tenant isolation **[P1]**
-
-- Every tenant-owned row carries `organizationId`/`workspaceId`; services call
-  `assertTenantOwnership` which throws the **same** error for missing and foreign resources —
-  guessed UUIDs cannot probe existence.
-- Prisma tenant-guard extension blocks unscoped multi-row queries (defence in depth).
-- Object storage keys are tenant-rooted (`org/<id>/ws/<id>/…`) and validated by
-  `assertKeyWithinTenant` before any read/write/signing.
-- Vector retrieval requires tenant scope on every call (port-enforced).
-- Worker jobs carry tenant scope in `JobEnvelope`; handlers re-assert before touching data.
-- Caches (Phase 2+) must namespace keys by tenant; audit logs are tenant-scoped rows.
-- Analytics queries always aggregate within a tenant scope.
-
-## 2. Authentication & authorization **[P2]**
-
-First-party session auth (ADR-0014): scrypt password hashing, opaque Redis sessions,
-httpOnly SameSite=Lax cookies, per-request principal rebuild (instant revocation),
-enumeration-safe login. Guard chain on every route: origin check → principal → tenant
-context → permissions.
-
-Permission-oriented: 33 permissions bundled into 13 roles (`ROLE_PERMISSIONS`), plus explicit
-per-membership grants. Organization budget controls (`org:budget:read`, `org:budget:manage`,
-`org:usage:read`) are deliberately absent from workspace-scoped bundles — a workspace admin can
-see and set their own ceiling, but cannot read or raise the organization-wide one. Checks test permissions only. Client Reviewer/Read Only bundles are
-minimal by construction (unit-tested).
-
-Budget and metering tables (`UsageEvent`, `WorkspaceBudget`, `OrganizationBudget`,
-`BudgetOperationLimit`, `BudgetReservation`) are tenant-guarded, so an un-scoped multi-row query
-throws. Reservation settlement is addressed by tenant **and** idempotency key — a key alone never
-identifies a hold, and a key resolving to another tenant's reservation is refused (ADR-0029). The
-one cross-tenant statement is the expiry sweep, which is raw, documented, and reads no tenant
-content.
-
-## 3. Secrets & credentials
-
-- **[P1]** No hard-coded secrets; env validated at boot; local dev credentials only in
-  `.env.example`/compose. `.env*` gitignored.
-- OAuth/social tokens: AES-256-GCM via `encryptSecret` with a **key ring** —
-  `v1.<keyId>.<iv>.<tag>.<ct>`; rotation = new active key, old ciphertexts stay decryptable
-  until re-encrypted **[P1 primitive]**. Keys come from a secret manager in production.
-- `TokenVaultPort` ensures raw tokens never reach DB rows, logs or API responses.
-
-## 4. Logging hygiene **[P1]**
-
-pino redaction (`MANDATORY_REDACT_PATHS`) + `deepRedact` for manual serialization. Never
-logged: passwords, access/refresh tokens, payment data, encryption keys, uploaded document
-content, sensitive prompt content. Redaction is unit-tested.
-
-## 5. Web application threats
-
-| Threat        | Control                                                                                                                                                                                              |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CSRF          | `SameSite=Lax` session cookies + Origin allow-list check on all mutations **[P2]**; double-submit tokens tracked as further hardening                                                                |
-| XSS           | React escaping; no `dangerouslySetInnerHTML`; CSP on web app; API is JSON-only **[P1 partial]**                                                                                                      |
-| SQL injection | Prisma parameterized queries; no string-built SQL **[P1]**                                                                                                                                           |
-| SSRF          | Research fetchers (Phase 2): URL allow/deny evaluation, no private-IP ranges, no redirects to internal hosts; HTML-to-image renders only sandboxed templates, never arbitrary URLs **[P1 contract]** |
-| Upload abuse  | MIME allow-lists + size caps per storage domain, filename sanitization, malware-scan port gating availability **[P1]**                                                                               |
-| Signed URLs   | Short-lived (15 min default), content-type-bound uploads **[P1]**                                                                                                                                    |
-| Webhooks      | Signature verification before parsing; idempotency keys; raw payloads quarantined to storage **[P1 contract]**                                                                                       |
-| Rate limiting | Global per-IP + per-email+IP login throttle (429) **[P2]**; per-tenant keys at deployment                                                                                                            |
-
-## 6. AI-specific risks
-
-- **Prompt injection**: scanner + isolation wrapper + instruction/data separation — see
-  [PROMPT_INJECTION_DEFENCE.md](PROMPT_INJECTION_DEFENCE.md) **[P1]**.
-- **Malicious source content**: extraction runs injection scanning; HIGH/CRITICAL content is
-  quarantined/blocked before any LLM contact **[P1 primitive]**.
-- **Misinformation**: claim verification statuses, `misinformationRisk` scoring penalty,
-  evidence floors, mandatory human review before approval.
-- **Copyright**: per-source license/rights metadata retained; snapshots stored for
-  verification, not republication; attribution requirements surfaced at generation time.
-- **Impersonation / voice & likeness consent**: TTS contract requires `voiceConsentRef` for
-  cloned voices; adapters must reject requests without verified consent **[P1 contract]**.
-- **Regulated-industry claims**: vertical `regulatoryConsiderations` feed `complianceRisk`
-  penalties and force review flags.
-- **AI content labelling**: `PublishRequest.aiContentDisclosure` propagates platform
-  disclosure flags; generation records (model/prompt versions) are retained for audit.
-- **Platform policy compliance**: capability-gated publishing; official APIs only.
-
-## 7. Data lifecycle
-
-- **Audit trails [P1]**: append-only `audit_logs` with actor, action, resource, correlation
-  id, redacted change sets.
-- **Retention**: per-tenant retention windows for research snapshots and logs (Phase 3).
-- **Deletion**: account/tenant deletion cascades DB rows, storage prefixes and vectors
-  (`deleteByTenant` ports exist **[P1]**).
-- **Export**: tenant data export job producing a signed archive (Phase 3).
-- **Backup/recovery**: managed Postgres PITR + object-store versioning in production
-  (documented in [DEPLOYMENT_STRATEGY.md](DEPLOYMENT_STRATEGY.md)).
-
-## 8. Reporting
-
-Security issues: open a private GitHub security advisory on the repository. Do not file
-public issues for vulnerabilities.
-
-## 9. Crawler conduct (Phase 5F, ADR-0030)
-
-Discovered pages are fetched from sites we have no relationship with, so the pipeline asks before
-it crawls:
-
-- **robots.txt is checked before every discovered-page fetch**, and a disallowed page is never
-  retrieved. There is no bypass or override path.
-- Failure to retrieve robots.txt is recorded as `UNAVAILABLE`, not `ALLOWED` — proceeding under
-  convention is not the same as having permission, and the record says which happened.
-- Fetching is bounded: total in-flight fetches are capped and requests to one host are spaced,
-  honouring `Crawl-delay`. A run cannot hammer a single site.
-- SSRF protection (`safeFetch`: DNS resolution checks, redirect caps, byte limits, timeouts)
-  applies to robots.txt retrieval exactly as it does to page fetches.
-- The robots cache stores only public crawl rules, keyed by origin, and holds no tenant data — it
-  is deliberately shared across tenants because it describes the remote site, not any workspace.
-
-## 10. Document handling **[P1]**
-
-Document extraction (ADR-0031) accepts untrusted binary input, so its defences are layered:
-
-- **Limits before parsers.** A MIME allow-list (PDF, DOCX, TXT, Markdown) and per-type size caps
-  are enforced before any bytes reach a parser — the parser is the largest attack surface here.
-  Legacy binary `.doc` is rejected explicitly rather than fed to the OOXML parser.
-- **Path traversal.** Filenames are stripped of every directory component and of control
-  characters before being used in labels or logs, so a crafted name such as `../../etc/passwd`
-  can never become a path segment.
-- **SSRF.** Documents are fetched through the same `safeFetch` as web pages (DNS resolution
-  checks, redirect caps, byte limits, timeouts). Document links are not followed.
-- **Prompt injection.** Extracted text is scanned and wrapped as untrusted content (see
-  PROMPT_INJECTION_DEFENCE.md).
-- **Logging.** Extracted document text is never logged. Parser error messages are replaced with
-  generic ones because they can echo document content.
-- **Tenancy.** Extraction is invoked with the run's tenant scope; extracted text and chunks are
-  written under that workspace only and never cross tenants.
-
-Remaining gap: the third-party parsers (`unpdf`, `mammoth`) are not sandboxed. Size and MIME
-limits bound the exposure; process isolation would be the next hardening step if untrusted
-document volume grows.
+- **Syndication cannot manufacture corroboration.** Independent-source counts collapse copies of
+  one story, so republication does not raise a claim's standing.
+- **A claim with no supporting citation is BLOCKED.** Content can never cite evidence that does not
+  exist.
+- **Conflicting evidence is never auto-resolved.** Contradictions are stored, surfaced, and routed
+  to a human; the system does not choose a winner.
+- **Human decisions are append-only and attributed.** `claim_reviews` records the reviewer, action
+  and note; rejections and more-research requests require a stated reason.
+- **Ineligible sources cannot support claims.** A source that is not `evidenceEligible` (blocked
+  domain, injection-quarantined, duplicate) is excluded from a claim's support, so a domain block
+  cannot be bypassed one layer up.
+- **Tenant isolation.** Claims, contradictions and reviews are all workspace-scoped; a foreign
+  claim is indistinguishable from a missing one.

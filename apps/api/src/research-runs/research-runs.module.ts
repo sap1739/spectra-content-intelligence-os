@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 
+import { ClaimsService } from '../claims/claims.service';
+
 import { AlertsController } from './alerts.controller';
 import { EvidenceController } from './evidence.controller';
 import { FindingsController } from './findings.controller';
@@ -18,6 +20,6 @@ import { WatchlistsController } from './watchlists.controller';
     AlertsController,
     WatchlistsController,
   ],
-  providers: [ResearchRunsService, FindingsService],
+  providers: [ResearchRunsService, FindingsService, ClaimsService],
 })
 export class ResearchRunsModule {}

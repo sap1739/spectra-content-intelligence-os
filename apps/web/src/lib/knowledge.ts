@@ -99,20 +99,95 @@ export function useEvidencePacks(workspaceId: string, projectId: string) {
   });
 }
 
+export interface ClaimContradictionRow {
+  id: string;
+  claimId: string;
+  conflictingClaimId: string;
+  kind: string;
+  detail: string;
+}
+
 export interface ClaimRow {
   id: string;
   text: string;
   claimType: string;
   verificationStatus: string;
+  /** Supporting sources INCLUDING syndicated copies. */
   sourceCount: number;
+  /** Supporting sources after collapsing syndication — the real number. */
+  independentSourceCount: number;
+  eligibility: 'ELIGIBLE' | 'WEAK' | 'REQUIRES_REVIEW' | 'BLOCKED';
+  eligibilityReason: string | null;
+  confidenceLevel: 'HIGH' | 'MEDIUM' | 'LOW' | 'CONTESTED' | 'UNKNOWN';
+  freshnessStatus: 'CURRENT' | 'AGING' | 'STALE' | 'EVERGREEN' | 'UNKNOWN';
+  latestSupportAt: string | null;
+  reviewStatus: string;
   supportingFindingIds: string[];
+  supportingCitationIds: string[];
+  contradictions: ClaimContradictionRow[];
+}
+
+export interface ClaimsResponse {
+  claims: ClaimRow[];
+  summary: {
+    total: number;
+    eligible: number;
+    weak: number;
+    requiresReview: number;
+    blocked: number;
+    openContradictions: number;
+  };
+  note: string;
 }
 
 export function useClaims(workspaceId: string, projectId: string) {
-  return useQuery<ClaimRow[], ApiError>({
+  return useQuery<ClaimsResponse, ApiError>({
     queryKey: ['workspaces', workspaceId, 'research-projects', projectId, 'claims'],
     queryFn: () =>
-      api.get<ClaimRow[]>(`/v1/workspaces/${workspaceId}/research-projects/${projectId}/claims`),
+      api.get<ClaimsResponse>(
+        `/v1/workspaces/${workspaceId}/research-projects/${projectId}/claims`,
+      ),
+  });
+}
+
+export interface ReviewQueueItem {
+  claimId: string;
+  projectId: string;
+  text: string;
+  decision: string;
+  reason: string | null;
+  confidenceLevel: string;
+  freshnessStatus: string;
+  independentSourceCount: number;
+  contradictionCount: number;
+  reviewStatus: string;
+}
+
+export function useClaimReviewQueue(workspaceId: string) {
+  return useQuery<{ items: ReviewQueueItem[]; total: number }, ApiError>({
+    queryKey: ['workspaces', workspaceId, 'claims', 'review-queue'],
+    queryFn: () =>
+      api.get<{ items: ReviewQueueItem[]; total: number }>(
+        `/v1/workspaces/${workspaceId}/claims/review-queue`,
+      ),
+  });
+}
+
+export function useReviewClaim(workspaceId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<
+    ClaimRow,
+    ApiError,
+    { claimId: string; action: 'APPROVE' | 'REJECT' | 'REQUEST_MORE_RESEARCH'; note?: string }
+  >({
+    mutationFn: ({ claimId, action, note }) =>
+      api.post<ClaimRow>(`/v1/workspaces/${workspaceId}/claims/${claimId}/review`, {
+        action,
+        ...(note ? { note } : {}),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['workspaces', workspaceId] });
+    },
   });
 }
 

@@ -34,6 +34,7 @@ import {
   type FreshnessDecayConfig,
 } from './quality';
 import { RobotsGateway } from './robots';
+import { verifyProjectClaims } from './verify-claims';
 import { HtmlExtractionProvider } from './extraction';
 import { sha256Hex, titleKey, urlHash } from './hashing';
 import { FirstPartyRssProvider } from './rss';
@@ -113,6 +114,9 @@ function emptyStats(): ResearchRunStats {
     snippetOnly: 0,
     documentsExtracted: 0,
     documentExtractionFailures: 0,
+    claimsEligible: 0,
+    claimsRequiringReview: 0,
+    claimContradictions: 0,
     blockedDomainRejected: 0,
     evidenceEligible: 0,
     duplicateClusters: 0,
@@ -696,6 +700,25 @@ export async function executeResearchRun(
     // ----- DUPLICATE_DETECTION marker (work happened inline above) --------
     await setStage('DUPLICATE_DETECTION', 65);
 
+    // ----- CLAIM_VERIFICATION ----------------------------------------------
+    // Assess how well each claim is actually supported BEFORE any evidence pack
+    // is built from it (ADR-0032). Corroboration counts independent sources
+    // only, so syndicated repetition cannot manufacture confidence.
+    await setStage('CLAIM_VERIFICATION', 70);
+    const verification = await verifyProjectClaims(
+      deps.prisma,
+      {
+        organizationId: tenant.organizationId,
+        workspaceId: tenant.workspaceId,
+        projectId: run.projectId,
+        now: now(),
+      },
+      logger,
+    );
+    stats.claimsEligible = verification.eligible;
+    stats.claimsRequiringReview = verification.requiresReview;
+    stats.claimContradictions = verification.contradictionsDetected;
+
     // ----- TREND_SCORING ---------------------------------------------------
     await setStage('TREND_SCORING', 75);
     if (keywords.length > 0) {
@@ -890,13 +913,20 @@ export async function executeResearchRun(
 
         // EVIDENCE_PACK_GENERATION: one living pack per topic per project.
         const topicFindingIds = topicFindings.map((f) => f.id);
+        // Only claims that may ground content enter a pack. BLOCKED claims
+        // (no support at all, or reviewer-rejected) and REQUIRES_REVIEW claims
+        // (contradicted or stale) are deliberately excluded — a pack is the
+        // contract handed to generation, and it must not contain evidence the
+        // system has already judged unusable (ADR-0032).
         const packClaims = await deps.prisma.extractedClaim.findMany({
           where: {
             organizationId: tenant.organizationId,
             projectId: run.projectId,
             supportingFindingIds: { hasSome: topicFindingIds },
+            eligibility: { in: ['ELIGIBLE', 'WEAK'] },
           },
-          select: { id: true },
+          select: { id: true, eligibility: true },
+          orderBy: [{ eligibility: 'asc' }, { independentSourceCount: 'desc' }],
         });
         const packCitations = await deps.prisma.citation.findMany({
           where: {

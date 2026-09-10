@@ -5,7 +5,7 @@ import { preflight, reconcile, release, type UsageRecorder } from '@spectra/mete
 
 import { validateCitations } from './citations';
 import { generateDraft } from './generator';
-import type { DraftEvidence, GroundingCitation, GroundingFinding } from './types';
+import type { DraftEvidence, GroundingCitation, GroundingClaim, GroundingFinding } from './types';
 
 export interface ContentDraftDeps {
   prisma: SpectraPrismaClient;
@@ -80,6 +80,32 @@ async function loadEvidence(
     })
     .slice(0, 12);
 
+  // Claims, strongest first. A pack only ever carries ELIGIBLE/WEAK claims
+  // (ADR-0032), but generation still prefers corroborated ones and marks the
+  // rest so the draft can say when a statement rests on limited evidence.
+  const claimRows = pack.claimIds.length
+    ? await prisma.extractedClaim.findMany({
+        where: {
+          id: { in: pack.claimIds },
+          organizationId: tenant.organizationId,
+          workspaceId: tenant.workspaceId,
+          // Belt and braces: even if a pack went stale, a claim the system has
+          // since judged unusable must never reach the model.
+          eligibility: { in: ['ELIGIBLE', 'WEAK'] },
+        },
+        select: {
+          id: true,
+          text: true,
+          eligibility: true,
+          confidenceLevel: true,
+          independentSourceCount: true,
+          supportingCitationIds: true,
+        },
+        orderBy: [{ eligibility: 'asc' }, { independentSourceCount: 'desc' }],
+        take: 12,
+      })
+    : [];
+
   const citationRows = pack.citationIds.length
     ? await prisma.citation.findMany({
         where: {
@@ -116,7 +142,25 @@ async function loadEvidence(
       findingId: c.findingId,
     }));
 
-  return { packId: pack.id, packTitle: pack.title, packSummary: pack.summary, findings, citations };
+  const claims: GroundingClaim[] = claimRows.map((c) => ({
+    id: c.id,
+    text: c.text,
+    // Surfaced to the prompt so a statement resting on one source can be
+    // written as such rather than asserted flatly.
+    corroborated: c.eligibility === 'ELIGIBLE',
+    independentSourceCount: c.independentSourceCount,
+    confidenceLevel: c.confidenceLevel,
+  }));
+
+  return {
+    packId: pack.id,
+    packTitle: pack.title,
+    packSummary: pack.summary,
+    findings,
+    citations,
+    claims,
+    limitedEvidence: claims.length > 0 && claims.every((c) => !c.corroborated),
+  };
 }
 
 /**
