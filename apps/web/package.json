@@ -2,14 +2,15 @@
   "name": "@spectra/web",
   "version": "0.1.0",
   "private": true,
-  "description": "Spectra web application — Next.js App Router shell.",
+  "description": "Spectra web application \u2014 Next.js App Router shell.",
   "scripts": {
     "build": "next build",
+    "clean": "rm -rf .next .turbo playwright-report test-results",
     "dev": "next dev",
     "start": "next start",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
     "test:e2e": "playwright test",
-    "clean": "rm -rf .next .turbo playwright-report test-results"
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
@@ -27,10 +28,16 @@
   "devDependencies": {
     "@playwright/test": "^1.52.0",
     "@tailwindcss/postcss": "^4.1.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "@testing-library/user-event": "^14.5.2",
     "@types/node": "^22.15.0",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "jsdom": "^25.0.1",
     "tailwindcss": "^4.1.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.0"
   }
 }

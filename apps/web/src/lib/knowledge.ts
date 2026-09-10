@@ -200,6 +200,18 @@ export interface Capabilities {
     providers: Array<{ id: string; kind: string; displayName: string }>;
     note: string;
   };
+  templates: {
+    userEditable: boolean;
+    builtIn: Array<{
+      id: string;
+      version: string;
+      kind: string;
+      displayName: string;
+      description: string;
+    }>;
+    contentTypeFormats: Record<string, string>;
+    note: string;
+  };
   credentialStorage: { configured: boolean; note: string };
 }
 

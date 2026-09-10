@@ -4,7 +4,7 @@ import { languageCodeSchema, slugSchema, uuidSchema } from './common';
 import { imageOperationSchema } from './media';
 import { socialPlatformSchema } from './social';
 import { contentTypeSchema, funnelStageSchema } from './strategy';
-import { roleSchema } from './tenancy';
+import { permissionSchema, roleSchema } from './tenancy';
 import { customVerticalSchema } from './vertical';
 import { brandSchema } from './vertical';
 import { researchProjectSchema } from './research';
@@ -45,6 +45,12 @@ export const membershipSummarySchema = z.object({
   organizationSlug: slugSchema,
   role: z.string(),
   extraPermissions: z.array(z.string()),
+  /**
+   * The permissions this membership actually grants (role bundle + extras),
+   * resolved server-side. The client checks THESE, never role names — role is
+   * a label, permissions are the authority (CLAUDE.md).
+   */
+  effectivePermissions: z.array(permissionSchema),
   /** Empty = all workspaces in the organization. */
   workspaceIds: z.array(uuidSchema),
 });
@@ -81,6 +87,44 @@ export const createWorkspaceInputSchema = z.object({
   timezone: z.string().min(1).max(64).default('UTC'),
 });
 export type CreateWorkspaceInput = z.infer<typeof createWorkspaceInputSchema>;
+
+/**
+ * Editable workspace settings (Phase 6A). Deliberately narrow: only fields the
+ * backend genuinely persists appear here — the Settings UI shows nothing it
+ * cannot actually save.
+ */
+export const updateWorkspaceInputSchema = z
+  .object({
+    name: z.string().min(1).max(200).optional(),
+    description: z.string().max(2000).nullish(),
+    /** IANA timezone for DISPLAY only; storage stays UTC. */
+    timezone: z.string().min(1).max(64).optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: 'Provide at least one field to update' });
+export type UpdateWorkspaceInput = z.infer<typeof updateWorkspaceInputSchema>;
+
+/**
+ * Editable organization settings.
+ *
+ * Only `name`: the Organization table has no timezone column, so offering an
+ * organization timezone would be a setting the backend silently drops. Timezone
+ * is a workspace and user concern (CLAUDE.md: no fake settings).
+ */
+export const updateOrganizationInputSchema = z.object({
+  name: z.string().min(1).max(200),
+});
+export type UpdateOrganizationInput = z.infer<typeof updateOrganizationInputSchema>;
+
+/** User preferences that are genuinely persisted on the User row. */
+export const updateUserPreferencesInputSchema = z
+  .object({
+    name: z.string().min(1).max(200).optional(),
+    /** IANA timezone for DISPLAY only; storage stays UTC. */
+    timezone: z.string().min(1).max(64).optional(),
+    locale: z.string().min(2).max(20).optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: 'Provide at least one field to update' });
+export type UpdateUserPreferencesInput = z.infer<typeof updateUserPreferencesInputSchema>;
 
 // ---------------------------------------------------------------------------
 // Custom verticals

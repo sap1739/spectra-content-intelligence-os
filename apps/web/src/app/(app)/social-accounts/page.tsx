@@ -17,7 +17,7 @@ import { CircleCheck, Share2, TriangleAlert, X } from 'lucide-react';
 import * as React from 'react';
 
 import { PageHeader } from '@/components/page-header';
-import { useWorkspace } from '@/lib/auth';
+import { usePermissions, useWorkspace } from '@/lib/auth';
 import {
   useDisconnectSocialAccount,
   usePlatforms,
@@ -127,15 +127,11 @@ function VariantValidator({ workspaceId }: { workspaceId: string }) {
 }
 
 export default function SocialAccountsPage() {
-  const { me, activeWorkspace } = useWorkspace();
+  const { activeWorkspace } = useWorkspace();
   const workspaceId = activeWorkspace.id;
-  const membership = me.memberships.find(
-    (m) => m.organizationId === activeWorkspace.organizationId,
-  );
-  const canConnect =
-    membership?.role === 'ORG_OWNER' ||
-    membership?.role === 'ORG_ADMIN' ||
-    membership?.role === 'PUBLISHER';
+  // Permission, not role name (CLAUDE.md). The API re-checks regardless.
+  const { can } = usePermissions();
+  const canConnect = can('social:connect');
 
   const platforms = usePlatforms(workspaceId);
   const accounts = useSocialAccounts(workspaceId);

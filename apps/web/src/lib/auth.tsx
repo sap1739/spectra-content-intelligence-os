@@ -1,6 +1,6 @@
 'use client';
 
-import type { AuthMeResponse, LoginRequest, RegisterRequest } from '@spectra/contracts';
+import type { AuthMeResponse, LoginRequest, Permission, RegisterRequest } from '@spectra/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as React from 'react';
 
@@ -98,4 +98,26 @@ export function useWorkspace(): WorkspaceContextValue {
     throw new Error('useWorkspace must be used inside WorkspaceProvider');
   }
   return context;
+}
+
+/**
+ * Permission check for the ACTIVE workspace's organization.
+ *
+ * The API is always the authority — it re-checks every request. This exists so
+ * the UI does not offer controls the server would refuse, and it tests
+ * permissions rather than role names (CLAUDE.md: "Permissions, not roles").
+ */
+export function usePermissions(): {
+  can: (permission: Permission) => boolean;
+  permissions: readonly Permission[];
+} {
+  const { me, activeWorkspace } = useWorkspace();
+  const membership = me.memberships.find(
+    (m) => m.organizationId === activeWorkspace.organizationId,
+  );
+  const permissions = membership?.effectivePermissions ?? [];
+  return {
+    permissions,
+    can: (permission: Permission) => permissions.includes(permission),
+  };
 }

@@ -237,3 +237,20 @@ weakest link in the differentiator: research and evidence quality.
 - Next: anchor-aware citation selection (attach 5G document anchors per claim so citations read
   "p. 12" rather than naming a whole document); hybrid retrieval tuning + reranking; a DomainPolicy
   management UI; uploaded-document ingestion; review-queue prioritisation and bulk actions.
+
+## Phase 6 — Product completeness
+
+- ✅ **Increment A — UI gaps and frontend test foundation.** Removed the three stale placeholder
+  pages that claimed already-shipped capabilities were future work (Brands had a five-route CRUD
+  API since Phase 2 while its page said "arrives in Phase 2"), and deleted the `PlaceholderPage`
+  component so the pattern cannot return. Brands is now full CRUD against the real API; Settings
+  edits exactly the fields the backend persists — and says plainly why there is no organization
+  timezone rather than offering a control that does nothing; Templates reports the one real
+  versioned prompt template instead of implying a template store exists. Fixed a standing violation
+  of the project's own rule: the UI branched on ROLE NAMES, so `/auth/me` now returns
+  server-resolved `effectivePermissions` and the UI checks permissions. Added the missing web unit
+  test framework (Vitest + RTL, 16 tests) and expanded Playwright from 5 unauthenticated smoke
+  tests to 18 covering login, dashboard, brands, settings, templates, research, usage/budgets,
+  publication status, permission-restricted controls and accessibility.
+- Next: anchor-aware citation selection (5G anchors per claim); review-queue prioritisation;
+  a DomainPolicy management UI; uploaded-document ingestion.

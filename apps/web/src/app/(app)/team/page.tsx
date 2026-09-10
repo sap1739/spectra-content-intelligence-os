@@ -17,14 +17,16 @@ import { Copy, Users, X } from 'lucide-react';
 import * as React from 'react';
 
 import { PageHeader } from '@/components/page-header';
-import { useWorkspace } from '@/lib/auth';
+import { usePermissions, useWorkspace } from '@/lib/auth';
 import { useInvitations, useInvite, useMembers, useRevokeInvitation } from '@/lib/team';
 
 export default function TeamPage() {
   const { me, activeWorkspace } = useWorkspace();
   const organizationId = activeWorkspace.organizationId;
   const membership = me.memberships.find((m) => m.organizationId === organizationId);
-  const canManage = membership?.role === 'ORG_OWNER' || membership?.role === 'ORG_ADMIN';
+  // Permission, not role name (CLAUDE.md). The API re-checks regardless.
+  const { can } = usePermissions();
+  const canManage = can('org:members:manage');
 
   const members = useMembers(organizationId);
   const invitations = useInvitations(organizationId, canManage);

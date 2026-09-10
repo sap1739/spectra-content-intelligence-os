@@ -9,7 +9,7 @@ import type { DraftGenerationInput } from './types';
 export const PROMPT_TEMPLATE_ID = 'evidence-grounded-draft';
 export const PROMPT_VERSION = '1.0.0';
 
-const CONTENT_TYPE_FORMAT: Record<string, string> = {
+export const CONTENT_TYPE_FORMAT: Record<string, string> = {
   POST: 'a single concise social media post (no headers, no markdown headings)',
   ARTICLE: 'a structured article with a headline and short sections',
   THREAD: 'a numbered social thread, one idea per line prefixed with its index',

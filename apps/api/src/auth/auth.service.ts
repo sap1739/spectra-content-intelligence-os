@@ -4,8 +4,14 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import type { AuthMeResponse, LoginRequest, RegisterRequest } from '@spectra/contracts';
-import { hashPassword, verifyPassword } from '@spectra/security';
+import type {
+  AuthMeResponse,
+  LoginRequest,
+  Permission,
+  RegisterRequest,
+  Role,
+} from '@spectra/contracts';
+import { hashPassword, permissionsForRole, verifyPassword } from '@spectra/security';
 
 import { slugify, uniqueSuffix } from '../common/slug';
 import { AuditService } from '../infra/audit.service';
@@ -23,6 +29,19 @@ export interface AuthResult {
 /** Per email+IP failed-login throttle (ADR-0014 hardening item). */
 const LOGIN_FAIL_LIMIT = 5;
 const LOGIN_FAIL_WINDOW_SECONDS = 15 * 60;
+
+/**
+ * Effective permissions for one membership: the role's bundle plus any explicit
+ * per-membership grants, de-duplicated. Mirrors `hasPermission` server-side so
+ * the UI can hide controls the API would refuse anyway.
+ */
+function effectivePermissionsFor(membership: {
+  role: string;
+  extraPermissions: readonly string[];
+}): Permission[] {
+  const fromRole = permissionsForRole(membership.role as Role);
+  return [...new Set<Permission>([...fromRole, ...(membership.extraPermissions as Permission[])])];
+}
 
 @Injectable()
 export class AuthService {
@@ -236,6 +255,9 @@ export class AuthService {
         organizationSlug: m.organizationSlug,
         role: m.role,
         extraPermissions: m.extraPermissions,
+        // Resolved server-side so the client never has to re-derive role
+        // bundles — it checks permissions, not role names (CLAUDE.md).
+        effectivePermissions: effectivePermissionsFor(m),
         workspaceIds: m.workspaceIds,
       })),
       workspaces: accessible,

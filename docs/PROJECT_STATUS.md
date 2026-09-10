@@ -1,7 +1,7 @@
 # SpectraContent Intelligence OS — Project Status
 
 **Snapshot date:** 2026-09-09 · **Branch:** `main`
-**Status:** Phases 1–4 complete · Phase 5 in progress (5A–5H shipped)
+**Status:** Phases 1–5 complete · Phase 6 in progress (6A shipped)
 
 > This document is a factual, audited snapshot intended as context for planning further work.
 > Every number below was measured from the repository, not estimated.
@@ -98,7 +98,7 @@ gives real end-to-end coverage of worker logic without running a worker.
 | Migrations           | 16                                                             |
 | ADRs                 | 26                                                             |
 | Permissions          | 26 (permission-oriented authz; never role-name branching)      |
-| Web pages            | 18 (15 real, 3 stale placeholders)                             |
+| Web pages            | 18 (all real — placeholders removed in 6A)                     |
 
 ### Packages
 
@@ -255,16 +255,16 @@ requires OAuth, which is not yet built.
 
 ## 7. Quality gate (current, verified)
 
-| Check                | Result                             |
-| -------------------- | ---------------------------------- |
-| `pnpm build`         | 29/29 tasks pass                   |
-| `pnpm typecheck`     | 53/53 tasks pass                   |
-| `pnpm lint`          | pass                               |
-| Unit tests           | **218 passing** across 23 packages |
-| API integration      | **65 passing** (12 files)          |
-| Pipeline integration | **13 passing** (3 files)           |
-| E2E (Playwright)     | 1 spec file only                   |
-| Web unit tests       | **0**                              |
+| Check                | Result                                 |
+| -------------------- | -------------------------------------- |
+| `pnpm build`         | 29/29 tasks pass                       |
+| `pnpm typecheck`     | 53/53 tasks pass                       |
+| `pnpm lint`          | pass                                   |
+| Unit tests           | **218 passing** across 23 packages     |
+| API integration      | **65 passing** (12 files)              |
+| Pipeline integration | **13 passing** (3 files)               |
+| E2E (Playwright)     | **18 tests** (stubbed-API UI journeys) |
+| Web unit tests       | **16**                                 |
 
 ---
 
@@ -291,7 +291,8 @@ requires OAuth, which is not yet built.
 
 ### 8.3 Product surface gaps
 
-- **3 stale placeholder pages** whose backends already exist:
+- ~~3 stale placeholder pages~~ — **fixed in 6A**; `PlaceholderPage` deleted so the pattern cannot
+  return. Previously:
   - `brands` — claims "arrives in Phase 2"; **a full 5-route CRUD API already exists**. Pure UI gap.
   - `settings` — claims "Phase 2"; workspace/org settings not editable in UI.
   - `templates` — claims "Phase 3"; prompt/visual templates never built.

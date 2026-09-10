@@ -6,6 +6,7 @@ import { EmbeddingService } from '../infra/embedding.service';
 import { SearchProviderService } from '../infra/search.service';
 import { SocialCryptoService } from '../infra/social-crypto.service';
 import { Public } from '../auth/decorators';
+import { CONTENT_TYPE_FORMAT, PROMPT_TEMPLATE_ID, PROMPT_VERSION } from '@spectra/content-pipeline';
 
 const API_VERSION = '0.5.0';
 /** Current delivery phase — keep in step with docs/ROADMAP.md. */
@@ -49,6 +50,24 @@ export class MetaController {
       generation: this.ai.status(),
       retrieval: this.embeddings.status(),
       discovery: this.search.status(),
+      // Templates (Phase 6A): report what genuinely exists — ONE built-in,
+      // versioned prompt template. There is no user-editable template store,
+      // and saying so is better than a page implying one is coming.
+      templates: {
+        userEditable: false,
+        builtIn: [
+          {
+            id: PROMPT_TEMPLATE_ID,
+            version: PROMPT_VERSION,
+            kind: 'PROMPT',
+            displayName: 'Evidence-grounded draft',
+            description:
+              'The prompt used for every generated draft: trusted operator/brand guidance as instructions, evidence wrapped as untrusted data, strict citation rules.',
+          },
+        ],
+        contentTypeFormats: CONTENT_TYPE_FORMAT,
+        note: 'Every generated draft records which prompt template and version produced it, so content remains attributable. Visual and user-defined templates are not implemented.',
+      },
       credentialStorage: {
         configured: this.crypto.isConfigured,
         note: this.crypto.isConfigured
