@@ -1,9 +1,10 @@
 # Social Platform Capability Matrix
 
-**Status (Phase 6C):** WordPress publishes for real (ADR-0022). The eight OAuth platforms below can
-be **connected** — a real OAuth 2.0 flow stores a sealed authorization (ADR-0034) — but **none can
-publish**: no OAuth platform has a publishing adapter, so a post to any of them resolves to
-`UNSUPPORTED`. Email is neither connectable nor publishable.
+**Status (Phase 6D):** WordPress (ADR-0022) and LinkedIn (ADR-0035) publish for real. LinkedIn
+publishes text and one image, as a member or as a page they administer. The other seven OAuth
+platforms can be **connected** — a real OAuth 2.0 flow stores a sealed authorization (ADR-0034) —
+but **cannot publish**: a post to any of them resolves to `UNSUPPORTED`. Email is neither
+connectable nor publishable.
 
 Capability records are _declared_ from official documentation, not fetched from a live API.
 Platform rules change frequently, so `null`/"verify" means unknown-until-verified and the code fails
@@ -52,18 +53,18 @@ analytics, comments, webhooks, stories, drafts — tri-state `true/false/null`),
 Declared in `@spectra/social-oauth` (recorded 2026-09-10), overridable per deployment. "Connect"
 means the OAuth flow works end to end when configured; it says nothing about publishing.
 
-| Platform       | Connect                    | Publish       | PKCE      | Client auth         | Refresh                     | Standard revocation | Default scopes                                                |
-| -------------- | -------------------------- | ------------- | --------- | ------------------- | --------------------------- | ------------------- | ------------------------------------------------------------- |
-| LinkedIn       | if configured              | **not wired** | none      | body                | partners only               | no                  | `openid profile w_member_social`                              |
-| Facebook Pages | if configured              | **not wired** | none      | body                | none (reconnect)            | no                  | `pages_show_list,pages_read_engagement,pages_manage_posts`    |
-| Instagram      | if configured              | **not wired** | none      | body                | none (reconnect)            | no                  | `instagram_business_basic,instagram_business_content_publish` |
-| Threads        | if configured              | **not wired** | none      | body                | none (reconnect)            | no                  | `threads_basic,threads_content_publish`                       |
-| YouTube        | if configured              | **not wired** | supported | body                | standard (offline)          | yes                 | `youtube.upload youtube.readonly`                             |
-| TikTok         | if configured              | **not wired** | none      | body (`client_key`) | standard                    | yes                 | `user.info.basic,video.upload,video.publish`                  |
-| X              | if configured              | **not wired** | required  | HTTP Basic          | standard (`offline.access`) | yes                 | `tweet.read tweet.write users.read offline.access`            |
-| Pinterest      | if configured              | **not wired** | none      | HTTP Basic          | standard                    | no                  | `user_accounts:read,boards:read,pins:read,pins:write`         |
-| WordPress      | n/a — application password | **live**      | —         | —                   | —                           | —                   | —                                                             |
-| Email          | not connectable            | not wired     | —         | —                   | —                           | —                   | —                                                             |
+| Platform       | Connect                    | Publish                   | PKCE      | Client auth         | Refresh                     | Standard revocation | Default scopes                                                |
+| -------------- | -------------------------- | ------------------------- | --------- | ------------------- | --------------------------- | ------------------- | ------------------------------------------------------------- |
+| LinkedIn       | if configured              | **live** (text + 1 image) | none      | body                | partners only               | no                  | `openid profile w_member_social`                              |
+| Facebook Pages | if configured              | **not wired**             | none      | body                | none (reconnect)            | no                  | `pages_show_list,pages_read_engagement,pages_manage_posts`    |
+| Instagram      | if configured              | **not wired**             | none      | body                | none (reconnect)            | no                  | `instagram_business_basic,instagram_business_content_publish` |
+| Threads        | if configured              | **not wired**             | none      | body                | none (reconnect)            | no                  | `threads_basic,threads_content_publish`                       |
+| YouTube        | if configured              | **not wired**             | supported | body                | standard (offline)          | yes                 | `youtube.upload youtube.readonly`                             |
+| TikTok         | if configured              | **not wired**             | none      | body (`client_key`) | standard                    | yes                 | `user.info.basic,video.upload,video.publish`                  |
+| X              | if configured              | **not wired**             | required  | HTTP Basic          | standard (`offline.access`) | yes                 | `tweet.read tweet.write users.read offline.access`            |
+| Pinterest      | if configured              | **not wired**             | none      | HTTP Basic          | standard                    | no                  | `user_accounts:read,boards:read,pins:read,pins:write`         |
+| WordPress      | n/a — application password | **live**                  | —         | —                   | —                           | —                   | —                                                             |
+| Email          | not connectable            | not wired                 | —         | —                   | —                           | —                   | —                                                             |
 
 "Refresh: none (reconnect)" means the platform has no standard `refresh_token` grant — Meta uses
 its own long-lived-token exchange, which arrives with each Meta adapter. Until then those
@@ -91,3 +92,30 @@ boot), `SOCIAL_OAUTH_REDIRECT_BASE_URL`, and `SOCIAL_TOKEN_ENCRYPTION_KEY`. Regi
 `<SOCIAL_OAUTH_REDIRECT_BASE_URL>/v1/social/oauth/<platform>/callback` in the platform's developer
 console; the Social Accounts page shows the exact value. Optional overrides:
 `_SCOPES`, `_AUTHORIZATION_URL`, `_TOKEN_URL`, `_REVOCATION_URL` (https-only in production).
+
+## 5. LinkedIn adapter (Phase 6D, ADR-0035)
+
+Official APIs only, versioned with `LINKEDIN_API_VERSION` (default `202608`, supported by LinkedIn
+for at least a year from its release):
+
+| Step                | Endpoint                                                   | Scope                                                      |
+| ------------------- | ---------------------------------------------------------- | ---------------------------------------------------------- |
+| Identify the member | `GET /v2/userinfo` (OpenID Connect)                        | `openid`, `profile`                                        |
+| Find postable pages | `GET /rest/organizationAcls?q=roleAssignee&state=APPROVED` | `r_organization_admin` or `rw_organization_admin`          |
+| Page names          | `GET /rest/organizationsLookup?ids=List(...)`              | —                                                          |
+| Register an image   | `POST /rest/images?action=initializeUpload`                | `w_member_social` / `w_organization_social`                |
+| Upload the bytes    | `PUT <uploadUrl>` (must be `*.linkedin.com`, bearer token) | same                                                       |
+| Confirm processing  | `GET /rest/images/{urn}` — page authors only               | `w_organization_social`                                    |
+| Publish             | `POST /rest/posts` → `x-restli-id`                         | `w_member_social` (member), `w_organization_social` (page) |
+
+| Capability                                  | Member profile                 | Page                        |
+| ------------------------------------------- | ------------------------------ | --------------------------- |
+| Text (≤ 3,000 characters)                   | live                           | live                        |
+| One image (JPG/PNG/GIF, < 36,152,320 px)    | live, processing unconfirmable | live, waits for `AVAILABLE` |
+| Video, document, multi-image, article, poll | not implemented                | not implemented             |
+| Edit / delete / analytics / comments        | not implemented                | not implemented             |
+
+Pages become targets only for APPROVED roles that can post organically (`ADMINISTRATOR`,
+`CONTENT_ADMINISTRATOR`/`CONTENT_ADMIN`). `commentary` is LinkedIn "little" text: `#word` is kept
+as a hashtag and every other reserved character is escaped. Setup: `docs/LINKEDIN_SETUP.md`; the
+first real run: `docs/LINKEDIN_LIVE_VERIFICATION.md`.

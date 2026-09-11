@@ -6,6 +6,7 @@ export {
   apiEnvSchema,
   databaseEnvSchema,
   loadEnv,
+  linkedInEnvSchema,
   logLevelSchema,
   nodeEnvSchema,
   redisEnvSchema,

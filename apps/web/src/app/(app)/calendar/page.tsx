@@ -14,10 +14,12 @@ import {
   Skeleton,
   cn,
 } from '@spectra/ui';
-import { Calendar, Send, X } from 'lucide-react';
+import { Calendar, ExternalLink, Send, X } from 'lucide-react';
+import Link from 'next/link';
 import * as React from 'react';
 
 import { PageHeader } from '@/components/page-header';
+import { PostTypeBadges } from '@/components/social/capabilities';
 import { useWorkspace } from '@/lib/auth';
 import {
   useCalendar,
@@ -27,7 +29,8 @@ import {
   type CalendarEntryRow,
 } from '@/lib/calendar';
 import { useContentItems } from '@/lib/content';
-import { useSocialAccounts } from '@/lib/social';
+import { useMediaAssets } from '@/lib/media';
+import { capabilitiesOf, useSocialAccounts } from '@/lib/social';
 
 const fieldClass = cn(
   'w-full rounded-md border border-input bg-background px-2.5 py-2 text-sm shadow-sm',
@@ -65,6 +68,7 @@ export default function CalendarPage() {
   const calendar = useCalendar(workspaceId);
   const items = useContentItems(workspaceId);
   const accounts = useSocialAccounts(workspaceId);
+  const media = useMediaAssets(workspaceId);
   const schedule = useScheduleEntry(workspaceId);
   const cancel = useCancelEntry(workspaceId);
   const publish = usePublishNow(workspaceId);
@@ -76,7 +80,19 @@ export default function CalendarPage() {
   const [contentItemId, setContentItemId] = React.useState('');
   const [platform, setPlatform] = React.useState<string>('LINKEDIN');
   const [accountId, setAccountId] = React.useState('');
+  const [mediaAssetId, setMediaAssetId] = React.useState('');
+  const [altText, setAltText] = React.useState('');
   const [when, setWhen] = React.useState('');
+
+  // Only accounts on the chosen platform can be targets.
+  const targets = (accounts.data ?? []).filter((a) => a.platform === platform);
+  const selected = targets.find((a) => a.id === accountId) ?? null;
+  const caps = selected ? capabilitiesOf(selected.capabilities) : null;
+  // An image is offered only where the target can genuinely publish one.
+  const canAttachImage = caps?.postTypes.IMAGE.status === 'AVAILABLE';
+  const images = (media.data ?? []).filter(
+    (m) => m.kind === 'IMAGE' && (caps?.limits.imageMimeTypes ?? []).includes(m.mimeType),
+  );
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -86,8 +102,13 @@ export default function CalendarPage() {
       platform: platform as never,
       scheduledAt: new Date(when).toISOString(),
       ...(accountId ? { socialAccountId: accountId } : {}),
+      ...(canAttachImage && mediaAssetId
+        ? { mediaAssetId, ...(altText.trim() ? { mediaAltText: altText.trim() } : {}) }
+        : {}),
     });
     setWhen('');
+    setMediaAssetId('');
+    setAltText('');
   };
 
   const days = groupByDay(calendar.data ?? []);
@@ -96,7 +117,7 @@ export default function CalendarPage() {
     <>
       <PageHeader
         title="Calendar"
-        description="Schedule approved content across channels (UTC storage, local display). Attach a target account to publish; the dispatcher runs due entries. No platform is wired yet, so publishing resolves to an honest UNSUPPORTED — never a fake success."
+        description="Schedule approved content across channels (UTC storage, local display). Attach a target account to publish; the dispatcher runs due entries. WordPress and connected LinkedIn accounts publish for real; every other platform resolves to an honest UNSUPPORTED — never a fake success."
       />
 
       <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
@@ -133,7 +154,11 @@ export default function CalendarPage() {
                     id="cal-platform"
                     className={fieldClass}
                     value={platform}
-                    onChange={(e) => setPlatform(e.target.value)}
+                    onChange={(e) => {
+                      setPlatform(e.target.value);
+                      setAccountId('');
+                      setMediaAssetId('');
+                    }}
                   >
                     {SOCIAL_PLATFORMS.map((p) => (
                       <option key={p} value={p}>
@@ -148,16 +173,66 @@ export default function CalendarPage() {
                     id="cal-account"
                     className={fieldClass}
                     value={accountId}
-                    onChange={(e) => setAccountId(e.target.value)}
+                    onChange={(e) => {
+                      setAccountId(e.target.value);
+                      setMediaAssetId('');
+                    }}
                   >
                     <option value="">No target (plan only)</option>
-                    {(accounts.data ?? []).map((a) => (
+                    {targets.map((a) => (
                       <option key={a.id} value={a.id}>
-                        {a.displayName} ({a.platform})
+                        {a.displayName}
+                        {a.kind === 'PAGE' ? ' (page)' : ''}
                       </option>
                     ))}
                   </select>
                 </div>
+                {selected && caps ? (
+                  <div className="flex flex-col gap-1" aria-live="polite">
+                    <p className="text-xs text-muted-foreground">This target can publish:</p>
+                    <PostTypeBadges capabilities={caps} />
+                  </div>
+                ) : selected ? (
+                  <p className="text-xs text-muted-foreground">
+                    Registered by hand — what it can publish is checked when the entry runs.
+                  </p>
+                ) : null}
+                {canAttachImage ? (
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="cal-image">Image (optional)</Label>
+                    <select
+                      id="cal-image"
+                      className={fieldClass}
+                      value={mediaAssetId}
+                      onChange={(e) => setMediaAssetId(e.target.value)}
+                    >
+                      <option value="">No image — text only</option>
+                      {images.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.mimeType.replace('image/', '').toUpperCase()} ·{' '}
+                          {m.widthPx && m.heightPx ? `${m.widthPx}×${m.heightPx}` : 'size unknown'}{' '}
+                          · {new Date(m.createdAt).toLocaleDateString()}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[11px] text-muted-foreground">
+                      One JPG, PNG or GIF per post
+                      {images.length === 0 ? ' — none in Media yet' : ''}.
+                    </p>
+                  </div>
+                ) : null}
+                {canAttachImage && mediaAssetId ? (
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="cal-alt">Alt text</Label>
+                    <Input
+                      id="cal-alt"
+                      value={altText}
+                      maxLength={1000}
+                      onChange={(e) => setAltText(e.target.value)}
+                      placeholder="Describe the image for screen readers"
+                    />
+                  </div>
+                ) : null}
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="cal-when">When (local time)</Label>
                   <Input
@@ -215,11 +290,36 @@ export default function CalendarPage() {
                             })}{' '}
                             · {e.platform}
                             {e.socialAccountId ? ' · targeted' : ''}
+                            {e.mediaAssetId ? ' · image' : ''}
                           </p>
                           {e.failureReason ? (
                             <p className="mt-0.5 text-[11px] text-muted-foreground">
                               {e.failureReason}
                             </p>
+                          ) : null}
+                          {e.status === 'PUBLISHED' && e.externalUrl ? (
+                            <a
+                              href={e.externalUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-primary underline-offset-2 hover:underline"
+                            >
+                              View post
+                              <ExternalLink aria-hidden="true" className="size-3" />
+                            </a>
+                          ) : null}
+                          {e.status === 'FAILED' &&
+                          (e.failureCode === 'AUTH' ||
+                            e.failureCode === 'REAUTH_REQUIRED' ||
+                            e.failureCode === 'PERMISSION') ? (
+                            <Link
+                              href="/social-accounts"
+                              className="mt-0.5 block text-[11px] text-primary underline-offset-2 hover:underline"
+                            >
+                              {e.failureCode === 'PERMISSION'
+                                ? 'Check the connection’s permissions on Social Accounts'
+                                : 'Reconnect on Social Accounts'}
+                            </Link>
                           ) : null}
                         </div>
                         <div className="flex shrink-0 items-center gap-1.5">

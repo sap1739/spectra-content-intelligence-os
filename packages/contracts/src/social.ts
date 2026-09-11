@@ -97,6 +97,74 @@ export const socialAccountSchema = z
 export type SocialAccount = z.infer<typeof socialAccountSchema>;
 
 // ---------------------------------------------------------------------------
+// Per-account publishing capabilities and publish failures (Phase 6D, ADR-0035)
+// ---------------------------------------------------------------------------
+
+export const POST_TYPES = ['TEXT', 'IMAGE', 'VIDEO', 'DOCUMENT'] as const;
+export const postTypeSchema = z.enum(POST_TYPES);
+export type PostType = z.infer<typeof postTypeSchema>;
+
+/**
+ * Whether one account can publish one kind of post. NOT_IMPLEMENTED means the
+ * platform supports it but Spectra's adapter does not; MISSING_PERMISSION means
+ * the adapter does but this account's grant lacks a scope; UNKNOWN means the
+ * platform did not report its granted scopes.
+ */
+export const postTypeSupportSchema = z.enum([
+  'AVAILABLE',
+  'MISSING_PERMISSION',
+  'NOT_IMPLEMENTED',
+  'UNKNOWN',
+]);
+export type PostTypeSupport = z.infer<typeof postTypeSupportSchema>;
+
+const postTypeCapabilitySchema = z.object({
+  status: postTypeSupportSchema,
+  reason: z.string().max(500),
+  requiredScopes: z.array(z.string()),
+});
+
+/** Stored on each discovered account; recomputed on every discovery. */
+export const accountCapabilitySnapshotSchema = z.object({
+  adapterVersion: z.string().min(1),
+  checkedAt: isoDateTimeSchema,
+  postTypes: z.object({
+    TEXT: postTypeCapabilitySchema,
+    IMAGE: postTypeCapabilitySchema,
+    VIDEO: postTypeCapabilitySchema,
+    DOCUMENT: postTypeCapabilitySchema,
+  }),
+  limits: z.object({
+    maxCharacters: z.number().int().positive().nullable(),
+    maxImages: z.number().int().nonnegative().nullable(),
+    imageMimeTypes: z.array(z.string()),
+  }),
+  notes: z.array(z.string().max(500)),
+});
+export type AccountCapabilitySnapshot = z.infer<typeof accountCapabilitySnapshotSchema>;
+
+/**
+ * Why a publish attempt did not produce a post, as a code the UI can act on
+ * (reconnect, fix the content, retry later) — the human-readable reason travels
+ * beside it.
+ */
+export const PUBLISH_FAILURE_CODES = [
+  'AUTH',
+  'REAUTH_REQUIRED',
+  'PERMISSION',
+  'VALIDATION',
+  'UNSUPPORTED_MEDIA',
+  'RATE_LIMIT',
+  'TRANSIENT',
+  'AMBIGUOUS',
+  'NOT_CONNECTED',
+  'BUDGET',
+  'UNKNOWN',
+] as const;
+export const publishFailureCodeSchema = z.enum(PUBLISH_FAILURE_CODES);
+export type PublishFailureCode = z.infer<typeof publishFailureCodeSchema>;
+
+// ---------------------------------------------------------------------------
 // OAuth token brokering (Phase 6C, ADR-0034)
 // ---------------------------------------------------------------------------
 

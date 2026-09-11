@@ -6,6 +6,7 @@ import { ConnectionsService } from './oauth/connections.service';
 import { OAuthCallbackController, SocialOAuthController } from './oauth/oauth.controller';
 import { OAuthConfigService } from './oauth/oauth-config.service';
 import { OAuthService } from './oauth/oauth.service';
+import { SocialAdaptersService } from './social-adapters.service';
 import { SocialAccountsController, SocialController } from './social.controller';
 import { SocialService } from './social.service';
 
@@ -21,6 +22,12 @@ registerWordPressAdapter(socialPublisherRegistry);
     SocialOAuthController,
     OAuthCallbackController,
   ],
-  providers: [SocialService, OAuthConfigService, OAuthService, ConnectionsService],
+  providers: [
+    SocialAdaptersService,
+    SocialService,
+    OAuthConfigService,
+    OAuthService,
+    ConnectionsService,
+  ],
 })
 export class SocialModule {}

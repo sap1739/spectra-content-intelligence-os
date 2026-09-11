@@ -38,6 +38,7 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'SocialAccount',
   'SocialConnection',
   'SocialOAuthAttempt',
+  'SocialMediaUpload',
 ]);
 
 const GUARDED_OPERATIONS: ReadonlySet<string> = new Set([

@@ -18,6 +18,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import * as React from 'react';
 
 import { PageHeader } from '@/components/page-header';
+import { AccountCapabilityBadges } from '@/components/social/capabilities';
 import {
   ConnectPlatforms,
   ConnectionsList,
@@ -372,6 +373,13 @@ export default function SocialAccountsPage() {
                   check content fit against real platform limits now.{' '}
                 </>
               )}
+              {wiredPlatforms.includes('LINKEDIN') ? (
+                <>
+                  LinkedIn posts go out for real through LinkedIn&rsquo;s official Posts API, to the
+                  profiles and pages discovered when you connect LinkedIn above — text and one
+                  image; video and documents are not implemented.{' '}
+                </>
+              ) : null}
               Credential storage is{' '}
               {credConfigured ? (
                 <span className="font-medium text-emerald-600 dark:text-emerald-400">enabled</span>
@@ -513,6 +521,9 @@ export default function SocialAccountsPage() {
                           </span>
                         </p>
                         <p className="text-xs text-muted-foreground">{acct.externalAccountId}</p>
+                        <div className="mt-1">
+                          <AccountCapabilityBadges value={acct.capabilities} showReasons={false} />
+                        </div>
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge variant={STATUS_VARIANT[acct.status] ?? 'muted'}>
@@ -541,7 +552,8 @@ export default function SocialAccountsPage() {
             <CardHeader>
               <CardTitle>Platform capabilities</CardTitle>
               <p className="text-xs text-muted-foreground">
-                Declared reference constraints (not live-fetched). No publisher is wired.
+                Declared reference constraints (not live-fetched). &ldquo;Wired&rdquo; means Spectra
+                has a real adapter for the platform.
               </p>
             </CardHeader>
             <CardContent>

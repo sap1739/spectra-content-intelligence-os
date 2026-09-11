@@ -17,7 +17,13 @@ export interface CalendarEntryRow {
   note: string | null;
   socialAccountId: string | null;
   failureReason: string | null;
+  /** PublishFailureCode — what to do next (reconnect, fix content, retry). */
+  failureCode?: string | null;
+  externalPostId?: string | null;
   externalUrl: string | null;
+  mediaAssetId?: string | null;
+  mediaAltText?: string | null;
+  mediaAsset?: { id: string; kind: string; mimeType: string } | null;
   publishedAt: string | null;
   attemptCount: number;
   contentItem: { title: string; contentType: string; lifecycleState: string };

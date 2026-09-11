@@ -125,6 +125,7 @@ model Organization {
   socialAccounts        SocialAccount[]
   socialConnections     SocialConnection[]
   socialOAuthAttempts   SocialOAuthAttempt[]
+  socialMediaUploads    SocialMediaUpload[]
 
   @@map("organizations")
 }
@@ -236,6 +237,7 @@ model Workspace {
   socialAccounts        SocialAccount[]
   socialConnections     SocialConnection[]
   socialOAuthAttempts   SocialOAuthAttempt[]
+  socialMediaUploads    SocialMediaUpload[]
   usageEvents           UsageEvent[]
   workspaceBudget       WorkspaceBudget?
   budgetOperationLimits BudgetOperationLimit[]
@@ -1378,6 +1380,11 @@ model ContentScheduleEntry {
   attemptCount    Int                 @default(0)
   lastAttemptAt   DateTime?           @db.Timestamptz(6)
   failureReason   String?
+  /// PublishFailureCode (contracts) — what the UI should offer next.
+  failureCode     String?
+  /// One image to publish with the post (Phase 6D).
+  mediaAssetId    String?             @db.Uuid
+  mediaAltText    String?
   externalPostId  String?
   externalUrl     String?
   publishedAt     DateTime?           @db.Timestamptz(6)
@@ -1389,6 +1396,7 @@ model ContentScheduleEntry {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   contentItem  ContentItem  @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+  mediaAsset   MediaAsset?  @relation(fields: [mediaAssetId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId, scheduledAt])
   @@index([contentItemId])
@@ -1431,8 +1439,10 @@ model MediaAsset {
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace       Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  scheduleEntries ContentScheduleEntry[]
+  socialUploads   SocialMediaUpload[]
 
   @@index([workspaceId, createdAt])
   @@map("media_assets")
@@ -1479,36 +1489,40 @@ enum SocialAccountKind {
 /// `connectionId` and start CONNECTED — they were verified by the platform,
 /// though publishing still needs a wired adapter.
 model SocialAccount {
-  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId    String              @db.Uuid
-  workspaceId       String              @db.Uuid
-  platform          SocialPlatform
-  externalAccountId String
-  displayName       String
-  kind              SocialAccountKind   @default(PROFILE)
-  status            SocialAccountStatus @default(PENDING)
-  scopes            String[]            @default([])
+  id                    String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId        String              @db.Uuid
+  workspaceId           String              @db.Uuid
+  platform              SocialPlatform
+  externalAccountId     String
+  displayName           String
+  kind                  SocialAccountKind   @default(PROFILE)
+  status                SocialAccountStatus @default(PENDING)
+  scopes                String[]            @default([])
   /// Opaque reference to the sealed credential; never the raw token.
-  tokenRef          String?
+  tokenRef              String?
   /// AES-256-GCM sealed credential. NEVER selected into API responses.
-  encryptedToken    String?
+  encryptedToken        String?
   /// Key id that sealed `encryptedToken` — rotation bookkeeping, not a secret.
-  credentialKeyId   String?
+  credentialKeyId       String?
   /// The OAuth connection this account was discovered through, if any.
-  connectionId      String?             @db.Uuid
+  connectionId          String?             @db.Uuid
   /// Allow-listed discovery metadata (primitives only). Never a provider payload.
-  discoveryMetadata Json                @default("{}")
-  connectedById     String?             @db.Uuid
-  connectedAt       DateTime            @default(now()) @db.Timestamptz(6)
-  lastRefreshedAt   DateTime?           @db.Timestamptz(6)
+  discoveryMetadata     Json                @default("{}")
+  /// What this account can publish through the adapter (AccountCapabilitySnapshot).
+  capabilities          Json                @default("{}")
+  capabilitiesCheckedAt DateTime?           @db.Timestamptz(6)
+  connectedById         String?             @db.Uuid
+  connectedAt           DateTime            @default(now()) @db.Timestamptz(6)
+  lastRefreshedAt       DateTime?           @db.Timestamptz(6)
 
   createdAt DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt DateTime  @updatedAt @db.Timestamptz(6)
   deletedAt DateTime? @db.Timestamptz(6)
 
-  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  workspace    Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  connection   SocialConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connection   SocialConnection?   @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  mediaUploads SocialMediaUpload[]
 
   @@index([workspaceId, platform])
   @@index([connectionId])
@@ -1534,6 +1548,8 @@ enum SocialConnectionStatus {
 enum AccountDiscoveryStatus {
   NOT_AVAILABLE
   COMPLETE
+  /// The authorizing profile was found but page/channel discovery failed.
+  PARTIAL
   FAILED
 }
 
@@ -1630,6 +1646,48 @@ model SocialOAuthAttempt {
   @@index([organizationId, createdAt])
   @@index([expiresAt])
   @@map("social_oauth_attempts")
+}
+
+enum SocialMediaUploadStatus {
+  /// The platform issued an upload slot and a media id; bytes not yet sent.
+  REGISTERED
+  UPLOADED
+  FAILED
+}
+
+/// One asset's upload to one publishing account (Phase 6D, ADR-0035). Lets a
+/// retry reuse media the platform already holds instead of uploading again.
+/// Holds no credential and no upload URL — only the platform's media id.
+model SocialMediaUpload {
+  id                 String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String                  @db.Uuid
+  workspaceId        String                  @db.Uuid
+  socialAccountId    String                  @db.Uuid
+  mediaAssetId       String                  @db.Uuid
+  platform           SocialPlatform
+  /// e.g. urn:li:image:... — the platform's own media id.
+  externalMediaId    String?
+  status             SocialMediaUploadStatus
+  /// true when the platform confirmed processing finished (not every token may check).
+  verified           Boolean                 @default(false)
+  attempts           Int                     @default(0)
+  uploadUrlExpiresAt DateTime?               @db.Timestamptz(6)
+  lastError          String?
+  uploadedAt         DateTime?               @db.Timestamptz(6)
+  /// The last post this media was attached to.
+  lastPostId         String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace     Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccount SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  mediaAsset    MediaAsset    @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+
+  @@unique([socialAccountId, mediaAssetId])
+  @@index([organizationId, createdAt])
+  @@map("social_media_uploads")
 }
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { OAuthPlatform, ProviderRevocation, TokenRefreshResult } from '@spectra/contracts';
+import { Prisma } from '@spectra/database';
 import type { KeyRing } from '@spectra/security';
 import { TenantIsolationError } from '@spectra/security';
 import {
@@ -16,6 +17,7 @@ import {
   openTokenBundle,
   refreshAccessToken,
   resolveConnectionCapabilities,
+  resolveProductAccess,
   revokeToken,
   sealTokenBundle,
   type TokenBundle,
@@ -60,6 +62,8 @@ const CONNECTION_SELECT = {
       kind: true,
       status: true,
       discoveryMetadata: true,
+      capabilities: true,
+      capabilitiesCheckedAt: true,
     },
   },
 } as const;
@@ -122,7 +126,8 @@ export class ConnectionsService {
           adapters: { publishing, discovery },
           canConnect: status.configured && credentialStorageConfigured,
           limitation: publishing
-            ? `${definition.displayName} publishing is wired.`
+            ? (socialPublisherRegistry.summary(status.platform) ??
+              `${definition.displayName} publishing is wired.`)
             : `Connecting stores an authorization only. No ${definition.displayName} publishing adapter is wired, so a post to ${definition.displayName} resolves to UNSUPPORTED and nothing is posted.`,
         };
       }),
@@ -174,7 +179,11 @@ export class ConnectionsService {
         ? `No ${name} account-discovery adapter is wired, so no profiles, pages or channels were looked up.`
         : row.discoveryStatus === 'FAILED'
           ? 'Account discovery failed. The connection itself is stored.'
-          : `${row.accounts.length} account(s) discovered.`;
+          : row.discoveryStatus === 'PARTIAL'
+            ? `${row.accounts.length} account(s) discovered; part of discovery failed (for example, the pages the member administers). Reconnect to retry.`
+            : `${row.accounts.length} account(s) discovered.`;
+    const grantedScopes = row.grantedScopesReported ? row.grantedScopes : null;
+    const publishingWired = socialPublisherRegistry.isWired(platform);
 
     return {
       ...row,
@@ -182,19 +191,35 @@ export class ConnectionsService {
       // A CONNECTED row whose token has lapsed is, honestly, expired.
       status: row.status === 'CONNECTED' && accessTokenExpired ? 'EXPIRED' : row.status,
       accessTokenExpired,
-      grantedScopes: row.grantedScopesReported ? row.grantedScopes : null,
+      grantedScopes,
       refresh: {
         available: definition.refresh === 'standard' && row.hasRefreshToken && status.configured,
         reason: refreshReason,
       },
       discovery: { status: row.discoveryStatus, note: discoveryNote },
       publishing: {
-        wired: socialPublisherRegistry.isWired(platform),
-        note: socialPublisherRegistry.isWired(platform)
-          ? `${name} publishing is wired.`
+        wired: publishingWired,
+        note: publishingWired
+          ? (socialPublisherRegistry.summary(platform) ?? `${name} publishing is wired.`)
           : `No ${name} publishing adapter is wired — nothing is posted from this connection.`,
       },
+      // The platform products this grant carries — "missing scope" in terms an
+      // operator can act on: request the product, then reconnect.
+      permissions: this.productAccess(platform, grantedScopes),
     };
+  }
+
+  private productAccess(platform: OAuthPlatform, grantedScopes: readonly string[] | null) {
+    return resolveProductAccess(getOAuthDefinition(platform), grantedScopes).map((access) => ({
+      id: access.product.id,
+      name: access.product.name,
+      scopes: [...access.product.scopes],
+      anyOf: access.product.anyOf ?? false,
+      reviewRequired: access.product.reviewRequired,
+      enables: access.product.enables,
+      status: access.status,
+      missingScopes: access.missingScopes,
+    }));
   }
 
   /**
@@ -292,33 +317,58 @@ export class ConnectionsService {
 
   /**
    * Runs account discovery when an adapter is registered for the platform.
-   * None is in Phase 6C, so this records NOT_AVAILABLE and creates nothing —
-   * an account is only ever stored because the platform itself reported it.
+   * An account is only ever stored because the platform itself reported it.
+   *
+   * Identity and destinations succeed or fail independently: a member found
+   * but pages refused is PARTIAL, not a failure that hides the member. After a
+   * COMPLETE discovery, accounts this connection found before but the
+   * platform no longer reports (a lost page role) are retired.
    */
   private async discover(
     attempt: GrantAttempt,
     connectionId: string,
     tokens: TokenSet,
     principal: Principal,
-  ): Promise<'NOT_AVAILABLE' | 'COMPLETE' | 'FAILED'> {
+  ): Promise<'NOT_AVAILABLE' | 'COMPLETE' | 'PARTIAL' | 'FAILED'> {
     const adapter = accountDiscoveryRegistry.get(attempt.platform);
     if (!adapter) return 'NOT_AVAILABLE';
 
-    try {
-      const context = {
-        accessToken: tokens.accessToken,
-        grantedScopes: tokens.grantedScopes,
-        signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),
-      };
-      const [identity, destinations] = await Promise.all([
-        adapter.discoverIdentity(context),
-        adapter.discoverDestinations(context),
-      ]);
-      const found = new Map<string, DiscoveredDestination>();
-      for (const account of [identity, ...destinations]) {
-        if (!found.has(account.externalId)) found.set(account.externalId, account);
+    const context = {
+      accessToken: tokens.accessToken,
+      grantedScopes: tokens.grantedScopes,
+      signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),
+    };
+    const [identity, destinations] = await Promise.allSettled([
+      adapter.discoverIdentity(context),
+      adapter.discoverDestinations(context),
+    ]);
+    for (const [part, result] of [
+      ['identity', identity],
+      ['destinations', destinations],
+    ] as const) {
+      if (result.status === 'rejected') {
+        this.logger.warn(
+          {
+            platform: attempt.platform,
+            part,
+            error: result.reason instanceof Error ? result.reason.name : 'unknown',
+            kind: (result.reason as { kind?: string } | null)?.kind ?? null,
+          },
+          'Account discovery step failed',
+        );
       }
-      const now = new Date();
+    }
+
+    const found = new Map<string, DiscoveredDestination>();
+    if (identity.status === 'fulfilled') found.set(identity.value.externalId, identity.value);
+    if (destinations.status === 'fulfilled') {
+      for (const destination of destinations.value) {
+        if (!found.has(destination.externalId)) found.set(destination.externalId, destination);
+      }
+    }
+
+    const now = new Date();
+    try {
       for (const account of found.values()) {
         const existing = await this.prisma.client.socialAccount.findFirst({
           where: {
@@ -333,11 +383,13 @@ export class ConnectionsService {
         const data = {
           displayName: account.displayName.slice(0, 300),
           kind: account.kind,
-          // Verified by the platform through discovery. Publishing still needs an adapter.
+          // Verified by the platform through discovery.
           status: 'CONNECTED' as const,
           connectionId,
           scopes: tokens.grantedScopes ?? [],
           discoveryMetadata: sanitizeDiscoveryMetadata(account.metadata),
+          capabilities: (account.capabilities ?? {}) as Prisma.InputJsonValue,
+          capabilitiesCheckedAt: account.capabilities ? now : null,
           lastRefreshedAt: now,
         };
         if (existing) {
@@ -355,22 +407,10 @@ export class ConnectionsService {
           });
         }
       }
-      await this.prisma.client.socialConnection.update({
-        where: { id: connectionId },
-        data: {
-          discoveryStatus: 'COMPLETE',
-          discoveredAt: now,
-          externalSubjectId: identity.externalId,
-        },
-      });
-      return 'COMPLETE';
     } catch (error) {
       this.logger.warn(
-        {
-          platform: attempt.platform,
-          error: error instanceof Error ? error.name : 'unknown',
-        },
-        'Account discovery failed; the connection is stored without destinations',
+        { platform: attempt.platform, error: error instanceof Error ? error.name : 'unknown' },
+        'Storing discovered accounts failed',
       );
       await this.prisma.client.socialConnection.update({
         where: { id: connectionId },
@@ -378,6 +418,35 @@ export class ConnectionsService {
       });
       return 'FAILED';
     }
+
+    const status =
+      identity.status === 'fulfilled' && destinations.status === 'fulfilled'
+        ? 'COMPLETE'
+        : found.size > 0
+          ? 'PARTIAL'
+          : 'FAILED';
+    if (status === 'COMPLETE') {
+      await this.prisma.client.socialAccount.updateMany({
+        where: {
+          organizationId: attempt.organizationId,
+          connectionId,
+          deletedAt: null,
+          externalAccountId: { notIn: [...found.keys()] },
+        },
+        data: { status: 'REVOKED', deletedAt: now },
+      });
+    }
+    await this.prisma.client.socialConnection.update({
+      where: { id: connectionId },
+      data: {
+        discoveryStatus: status,
+        ...(status === 'FAILED' ? {} : { discoveredAt: now }),
+        ...(identity.status === 'fulfilled'
+          ? { externalSubjectId: identity.value.externalId }
+          : {}),
+      },
+    });
+    return status;
   }
 
   private async findOwned(tenant: TenantContext, id: string) {
@@ -649,6 +718,7 @@ export class ConnectionsService {
       }),
       declared: getPlatformCapability(row.platform),
       approval: definition.approval,
+      permissions: this.productAccess(row.platform, grantedScopes),
       note: 'A capability is available only when the platform granted its scopes AND Spectra has an adapter that uses them.',
     };
   }

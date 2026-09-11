@@ -236,3 +236,38 @@ describe('social OAuth configuration (ADR-0034)', () => {
     expect(env.WEB_APP_URL).toBe('http://localhost:3000');
   });
 });
+
+describe('LinkedIn API configuration (ADR-0035)', () => {
+  it('defaults to LinkedIn itself and a pinned version', () => {
+    const env = loadEnv(apiEnvSchema, validApiEnv as NodeJS.ProcessEnv);
+    expect(env.LINKEDIN_API_BASE_URL).toBe('https://api.linkedin.com');
+    expect(env.LINKEDIN_API_VERSION).toMatch(/^\d{6}$/);
+  });
+
+  it('rejects a version that is not YYYYMM', () => {
+    expectEnvError({ ...validApiEnv, LINKEDIN_API_VERSION: '2026-08' }, 'LINKEDIN_API_VERSION');
+  });
+
+  it('requires https for the LinkedIn API in production', () => {
+    expectEnvError(
+      { ...validApiEnv, NODE_ENV: 'production', LINKEDIN_API_BASE_URL: 'http://mock.local' },
+      'LINKEDIN_API_BASE_URL',
+    );
+  });
+
+  it('gives the worker the OAuth settings it needs to refresh a token', () => {
+    const env = loadEnv(workerEnvSchema, {
+      REDIS_URL: 'redis://localhost:6379',
+      DATABASE_URL: 'postgresql://spectra:secret@localhost:5432/spectra',
+      STORAGE_ENDPOINT: 'http://localhost:9000',
+      STORAGE_ACCESS_KEY: 'a',
+      STORAGE_SECRET_KEY: 'b',
+      STORAGE_BUCKET: 'c',
+      SOCIAL_OAUTH_REDIRECT_BASE_URL: 'http://localhost:4000',
+      SOCIAL_OAUTH_LINKEDIN_CLIENT_ID: 'li-id',
+      SOCIAL_OAUTH_LINKEDIN_CLIENT_SECRET: 'li-secret',
+    } as NodeJS.ProcessEnv);
+    expect(env.SOCIAL_OAUTH_LINKEDIN_CLIENT_ID).toBe('li-id');
+    expect(env.LINKEDIN_API_VERSION).toMatch(/^\d{6}$/);
+  });
+});

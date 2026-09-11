@@ -28,6 +28,8 @@ const ACCOUNT_SELECT = {
   tokenRef: true,
   connectionId: true,
   discoveryMetadata: true,
+  capabilities: true,
+  capabilitiesCheckedAt: true,
   connectedById: true,
   connectedAt: true,
   lastRefreshedAt: true,
@@ -50,6 +52,7 @@ export class SocialService {
       platforms: allPlatformCapabilities().map((capability) => ({
         capability,
         publisherWired: socialPublisherRegistry.isWired(capability.platform),
+        publisherSummary: socialPublisherRegistry.summary(capability.platform),
       })),
     };
   }

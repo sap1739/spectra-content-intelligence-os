@@ -36,6 +36,7 @@
 | [0032](0032-claim-verification.md)                              | Claim verification: corroboration, contradiction, staleness, eligibility                       | Accepted             |
 | [0033](0033-observability-and-operations.md)                    | Observability: optional tracing, first-party metrics, DLQ operations                           | Accepted             |
 | [0034](0034-oauth-token-brokering.md)                           | OAuth token brokering: one provider-neutral broker, grants separate from accounts              | Accepted             |
+| [0035](0035-linkedin-live-adapter.md)                           | LinkedIn: first live OAuth publisher, official APIs only (text + one image)                    | Accepted             |
 
 New significant decisions require a new ADR (`NNNN-kebab-title.md`) using the
 Context / Decision / Rationale / Consequences structure.

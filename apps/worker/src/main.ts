@@ -15,12 +15,14 @@ import { PrismaUsageRecorder, expireStaleReservations } from '@spectra/metering'
 import { METRICS, initTracing, metrics, withSpan } from '@spectra/telemetry';
 import {
   claimDuePublications,
+  createMediaLoader,
+  createPublisherResolver,
   executePublication,
-  type ResolvePublisher,
 } from '@spectra/publishing';
 import { executeReembed, executeResearchRun } from '@spectra/research-pipeline';
-import { type KeyRing, decryptSecret } from '@spectra/security';
-import { WordPressPublisher, parseWordPressCredential } from '@spectra/social-wordpress';
+import type { KeyRing } from '@spectra/security';
+import { linkedInApiOptionsFromEnv } from '@spectra/social-linkedin';
+import { resolveOAuthPlatform } from '@spectra/social-oauth';
 import { S3ObjectStorageProvider } from '@spectra/storage';
 import {
   BullMqJobQueue,
@@ -319,57 +321,46 @@ async function main(): Promise<void> {
     { concurrency: 1, timeoutMs: 60_000 },
   );
 
-  // Live publisher resolution. The worker holds the social token-encryption key
-  // (env-gated). For a WordPress account with a stored credential, it decrypts
-  // the sealed `username:application-password`, parses it, and builds a real
-  // WordPressPublisher. Any missing piece — not WordPress, no credential, no
-  // key — returns undefined, which the executor records as an honest
-  // UNSUPPORTED. The decrypted secret never leaves this closure and is never
-  // logged.
-  // The ring includes retired keys, so credentials sealed before a rotation
-  // stay publishable (ADR-0034).
+  // Live publisher resolution (createPublisherResolver, @spectra/publishing).
+  // The worker holds the social token-encryption key (env-gated). WordPress
+  // accounts carry a sealed application password; LinkedIn accounts discovered
+  // over OAuth use their connection's token, refreshed before expiry where
+  // LinkedIn issued a refresh token (ADR-0035). Any missing piece records an
+  // honest UNSUPPORTED or FAILED with the reason. Decrypted secrets never leave
+  // the resolver and are never logged. The ring includes retired keys, so
+  // credentials sealed before a rotation stay publishable (ADR-0034).
   const socialRing: KeyRing | undefined = socialKeyRingFromEnv(env);
   if (!socialRing) {
     logger.warn(
       'SOCIAL_TOKEN_ENCRYPTION_KEY is not set — publishing resolves to UNSUPPORTED for all platforms',
     );
   }
-
-  const resolvePublisher: ResolvePublisher = async (account) => {
-    if (account.platform !== 'WORDPRESS') return undefined; // WordPress is the only live adapter
-    if (!account.encryptedToken || !socialRing) return undefined; // honest: no cred/key → UNSUPPORTED
-    let secret: string;
-    try {
-      secret = decryptSecret(account.encryptedToken, socialRing);
-    } catch (error) {
-      logger.warn(
-        { accountId: account.id, err: error instanceof Error ? error.message : 'decrypt failed' },
-        'Could not decrypt social credential — treating as UNSUPPORTED',
-      );
-      return undefined;
-    }
-    try {
-      return new WordPressPublisher(parseWordPressCredential(account.externalAccountId, secret));
-    } catch (error) {
-      logger.warn(
-        {
-          accountId: account.id,
-          err: error instanceof Error ? error.message : 'invalid credential',
-        },
-        'Invalid WordPress credential — treating as UNSUPPORTED',
-      );
-      return undefined;
-    }
-  };
+  const linkedinOAuth = resolveOAuthPlatform(env, 'LINKEDIN');
+  const resolvePublisher = createPublisherResolver({
+    prisma,
+    ring: socialRing,
+    linkedin: {
+      api: linkedInApiOptionsFromEnv(env),
+      oauth: linkedinOAuth.configured ? linkedinOAuth.config : null,
+    },
+    logger,
+  });
+  // Attached images are read from tenant-rooted storage, key-checked per entry.
+  const loadMedia = createMediaLoader(storage);
 
   // Publish one entry. With no live publisher resolvable it records an honest
-  // UNSUPPORTED; a WordPress account with a stored credential produces a real
+  // UNSUPPORTED; WordPress and connected LinkedIn accounts produce a real
   // PUBLISHED/FAILED from the platform's own response.
   runtime.register<{ entryId: string }, unknown>(
     JOB_NAMES.publicationPublish,
     instrument('publication.publish', async (envelope, context) => {
       return executePublication(
-        { prisma, resolvePublisher, logger: withCorrelation(logger, context.correlationId) },
+        {
+          prisma,
+          resolvePublisher,
+          loadMedia,
+          logger: withCorrelation(logger, context.correlationId),
+        },
         { entryId: envelope.payload.entryId },
       );
     }),

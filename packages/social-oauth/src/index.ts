@@ -3,12 +3,15 @@ export {
   DEFINITIONS_RECORDED_AT,
   allOAuthDefinitions,
   getOAuthDefinition,
+  resolveProductAccess,
 } from './definitions';
 export type {
   ClientAuthMethod,
   ConnectionCapability,
   OAuthPlatformDefinition,
+  OAuthProduct,
   PkceMode,
+  ProductAccess,
   RefreshStyle,
 } from './definitions';
 export {

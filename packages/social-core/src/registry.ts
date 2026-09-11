@@ -12,6 +12,7 @@ import type { SocialPublisher } from './publisher';
 export class SocialPublisherRegistry {
   private readonly publishers = new Map<SocialPlatform, SocialPublisher>();
   private readonly wired = new Set<SocialPlatform>();
+  private readonly summaries = new Map<SocialPlatform, string>();
 
   register(publisher: SocialPublisher): void {
     this.publishers.set(publisher.platform, publisher);
@@ -27,8 +28,14 @@ export class SocialPublisherRegistry {
    * UI signal by adapters (like WordPress) that build a per-account instance at
    * publish time rather than registering a shared credential-less publisher.
    */
-  markWired(platform: SocialPlatform): void {
+  markWired(platform: SocialPlatform, summary?: string): void {
     this.wired.add(platform);
+    if (summary) this.summaries.set(platform, summary);
+  }
+
+  /** What the wired adapter can and cannot publish, in one sentence. */
+  summary(platform: SocialPlatform): string | null {
+    return this.summaries.get(platform) ?? null;
   }
 
   isWired(platform: SocialPlatform): boolean {

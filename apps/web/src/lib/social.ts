@@ -22,6 +22,8 @@ export interface PlatformCapability {
 export interface PlatformEntry {
   capability: PlatformCapability;
   publisherWired: boolean;
+  /** What the wired adapter can and cannot publish, in one sentence. */
+  publisherSummary?: string | null;
 }
 
 export interface PlatformsResponse {
@@ -40,6 +42,9 @@ export interface SocialAccountRow {
   tokenRef: string | null;
   /** Set when the target was discovered through an OAuth connection. */
   connectionId?: string | null;
+  /** AccountCapabilitySnapshot for discovered accounts; `{}` for manual targets. */
+  capabilities?: unknown;
+  capabilitiesCheckedAt?: string | null;
   connectedAt: string;
   createdAt: string;
 }
@@ -140,13 +145,54 @@ export interface SocialConnectionRow {
   refresh: { available: boolean; reason: string };
   discovery: { status: 'NOT_AVAILABLE' | 'COMPLETE' | 'FAILED'; note: string };
   publishing: { wired: boolean; note: string };
+  /** The platform products this grant carries (Phase 6D). */
+  permissions?: ProductPermission[];
   accounts: Array<{
     id: string;
     displayName: string;
     kind: string;
     externalAccountId: string;
     status: string;
+    capabilities?: unknown;
   }>;
+}
+
+export interface ProductPermission {
+  id: string;
+  name: string;
+  scopes: string[];
+  anyOf: boolean;
+  reviewRequired: boolean;
+  enables: string;
+  status: 'GRANTED' | 'MISSING' | 'UNKNOWN';
+  missingScopes: string[];
+}
+
+export type PostTypeSupport = 'AVAILABLE' | 'MISSING_PERMISSION' | 'NOT_IMPLEMENTED' | 'UNKNOWN';
+export type PostType = 'TEXT' | 'IMAGE' | 'VIDEO' | 'DOCUMENT';
+
+/** What one discovered account can publish — AccountCapabilitySnapshot in contracts. */
+export interface AccountCapabilities {
+  adapterVersion: string;
+  checkedAt: string;
+  postTypes: Record<
+    PostType,
+    { status: PostTypeSupport; reason: string; requiredScopes: string[] }
+  >;
+  limits: { maxCharacters: number | null; maxImages: number | null; imageMimeTypes: string[] };
+  notes: string[];
+}
+
+/** The capability snapshot on an account, or null for a manual target that has none. */
+export function capabilitiesOf(value: unknown): AccountCapabilities | null {
+  if (!value || typeof value !== 'object') return null;
+  const postTypes = (value as { postTypes?: Record<string, { status?: unknown } | undefined> })
+    .postTypes;
+  if (!postTypes || typeof postTypes !== 'object') return null;
+  for (const type of ['TEXT', 'IMAGE', 'VIDEO', 'DOCUMENT']) {
+    if (typeof postTypes[type]?.status !== 'string') return null;
+  }
+  return value as AccountCapabilities;
 }
 
 export interface OAuthStartResponse {

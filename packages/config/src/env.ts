@@ -282,7 +282,8 @@ export const socialOAuthEnvSchema = z.object({
 
 type SocialOAuthEnvShape = z.infer<typeof socialOAuthEnvSchema> & {
   NODE_ENV: z.infer<typeof nodeEnvSchema>;
-  API_CORS_ORIGIN: string[];
+  /** API only: the worker never redirects a browser. */
+  API_CORS_ORIGIN?: string[];
 };
 
 function refineSocialOAuth(env: SocialOAuthEnvShape, ctx: z.RefinementCtx): void {
@@ -326,7 +327,7 @@ function refineSocialOAuth(env: SocialOAuthEnvShape, ctx: z.RefinementCtx): void
     issue('SOCIAL_OAUTH_REDIRECT_BASE_URL', 'must use https in production');
   }
 
-  if (env.WEB_APP_URL) {
+  if (env.WEB_APP_URL && env.API_CORS_ORIGIN) {
     const url = new URL(env.WEB_APP_URL);
     if (url.pathname !== '/' || url.search || url.hash) {
       issue('WEB_APP_URL', 'must be an origin (scheme://host[:port]) with no path');
@@ -345,6 +346,32 @@ export const telemetryEnvSchema = z.object({
   /** Comma-separated `key=value` pairs, e.g. an auth header. NEVER logged. */
   OTEL_EXPORTER_OTLP_HEADERS: z.string().optional(),
 });
+
+/**
+ * LinkedIn API (Phase 6D, ADR-0035). Defaults target LinkedIn itself; the base
+ * URL is overridable only so tests can point at a local mock (https in
+ * production). Every versioned call sends LINKEDIN_API_VERSION.
+ */
+export const linkedInEnvSchema = z.object({
+  LINKEDIN_API_BASE_URL: z.string().url().default('https://api.linkedin.com'),
+  LINKEDIN_API_VERSION: z
+    .string()
+    .regex(/^\d{6}$/, { message: 'must be a LinkedIn API version in YYYYMM form' })
+    .default('202608'),
+});
+
+function refineLinkedIn(
+  env: { NODE_ENV: z.infer<typeof nodeEnvSchema>; LINKEDIN_API_BASE_URL: string },
+  ctx: z.RefinementCtx,
+): void {
+  if (env.NODE_ENV === 'production' && !env.LINKEDIN_API_BASE_URL.startsWith('https://')) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['LINKEDIN_API_BASE_URL'],
+      message: 'must use https in production',
+    });
+  }
+}
 
 export const apiEnvSchema = z
   .object({
@@ -377,9 +404,12 @@ export const apiEnvSchema = z
   .merge(telemetryEnvSchema)
   // Social OAuth (Phase 6C): optional per-platform client credentials.
   .merge(socialOAuthEnvSchema)
+  // LinkedIn adapter (Phase 6D).
+  .merge(linkedInEnvSchema)
   .superRefine((env, ctx) => {
     refineSocialKeyRing(env, ctx);
     refineSocialOAuth(env, ctx);
+    refineLinkedIn(env, ctx);
   });
 
 export const workerEnvSchema = z
@@ -402,7 +432,15 @@ export const workerEnvSchema = z
   .merge(researchEnvSchema)
   // Observability (Phase 6B): optional OTLP tracing.
   .merge(telemetryEnvSchema)
-  .superRefine((env, ctx) => refineSocialKeyRing(env, ctx));
+  // Social OAuth (Phase 6D): the worker refreshes a LinkedIn token before
+  // publishing when the platform issued a refresh token.
+  .merge(socialOAuthEnvSchema)
+  .merge(linkedInEnvSchema)
+  .superRefine((env, ctx) => {
+    refineSocialKeyRing(env, ctx);
+    refineSocialOAuth(env, ctx);
+    refineLinkedIn(env, ctx);
+  });
 
 export const webEnvSchema = z.object({
   NODE_ENV: nodeEnvSchema,

@@ -1,0 +1,24 @@
+{
+  "name": "@spectra/social-linkedin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Real LinkedIn adapter over LinkedIn's official APIs only: OpenID Connect userinfo and Organization Access Control for account discovery, the Images API for uploads, and the Posts API for text and single-image posts. No scraping, no browser automation.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run src",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@spectra/contracts": "workspace:*",
+    "@spectra/social-core": "workspace:*",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.0"
+  }
+}

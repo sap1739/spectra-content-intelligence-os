@@ -94,11 +94,12 @@ cascade; `campaignId`, `brandId`, `verticalId` use `SET NULL`.
 
 ## 8. Phase 4 publishing entities
 
-| Table                 | Purpose                                                | Key constraints / indexes                                             |
-| --------------------- | ------------------------------------------------------ | --------------------------------------------------------------------- |
-| social_accounts       | A publishing target (platform, handle, kind, status)   | index(workspaceId, platform), index(connectionId)                     |
-| social_connections    | One OAuth grant: sealed token bundle + expiry (6C)     | index(workspaceId, platform), index(organizationId, credentialKeyId)  |
-| social_oauth_attempts | A started OAuth flow: state hash, sealed PKCE verifier | unique(stateHash), index(organizationId, createdAt), index(expiresAt) |
+| Table                 | Purpose                                                            | Key constraints / indexes                                               |
+| --------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| social_accounts       | A publishing target (platform, handle, kind, status)               | index(workspaceId, platform), index(connectionId)                       |
+| social_connections    | One OAuth grant: sealed token bundle + expiry (6C)                 | index(workspaceId, platform), index(organizationId, credentialKeyId)    |
+| social_oauth_attempts | A started OAuth flow: state hash, sealed PKCE verifier             | unique(stateHash), index(organizationId, createdAt), index(expiresAt)   |
+| social_media_uploads  | One asset's upload to one account: platform media id + status (6D) | unique(socialAccountId, mediaAssetId), index(organizationId, createdAt) |
 
 `social_accounts` are registered targets, created `PENDING` (not OAuth-verified — no live
 adapter is wired). Any stored credential lives ONLY in `encryptedToken` (AES-256-GCM via
@@ -126,6 +127,17 @@ pruned when a new flow starts.
 existing ciphertexts (`split_part(encryptedToken, '.', 2)`), so rotation can find WordPress
 credentials sealed before 6C. `SocialAccount`, `SocialConnection` and `SocialOAuthAttempt` are all
 in the tenant guard.
+
+**LinkedIn publishing (Phase 6D, ADR-0035).** `social_accounts.capabilities` holds the
+`AccountCapabilitySnapshot` discovery computed for that account (per post type: AVAILABLE,
+MISSING_PERMISSION, NOT_IMPLEMENTED or UNKNOWN, with the reason), `capabilitiesCheckedAt` when.
+`social_media_uploads` records one asset's upload to one account — the platform's media id
+(`urn:li:image:…`), `REGISTERED`/`UPLOADED`/`FAILED`, whether processing was confirmed
+(`verified`), attempts, the last error and the last post it was attached to. It holds no
+credential and no upload URL, and it is what lets a retry reuse an image instead of uploading it
+again. `content_schedule_entries` gained `mediaAssetId` (SET NULL on asset delete), `mediaAltText`
+and `failureCode` (a `PublishFailureCode`). `AccountDiscoveryStatus` gained `PARTIAL` (the member
+was found, pages were not). `SocialMediaUpload` is in the tenant guard.
 
 `content_schedule_entries` double as the **publication record** (ADR-0020): an optional
 `socialAccountId` target, a unique `idempotencyKey`, and `attemptCount`/`lastAttemptAt`/

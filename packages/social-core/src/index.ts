@@ -8,7 +8,16 @@ export {
 export { validateVariant } from './validation';
 export type { ValidationIssue, VariantValidation, VariantValidationInput } from './validation';
 export { SocialPublisherRegistry, socialPublisherRegistry } from './registry';
-export type { PostPublisher, PublishInput, PublishOutcome } from './post-publisher';
+export { unsupportedMediaKinds } from './post-publisher';
+export type {
+  PostPublisher,
+  PublishInput,
+  PublishMediaInput,
+  PublishMediaKind,
+  PublishOutcome,
+  PublishValidationIssue,
+  SupportedMedia,
+} from './post-publisher';
 export {
   AccountDiscoveryRegistry,
   accountDiscoveryRegistry,

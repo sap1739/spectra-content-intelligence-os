@@ -1,4 +1,4 @@
-import type { SocialPlatform } from '@spectra/contracts';
+import type { PublishFailureCode, SocialPlatform } from '@spectra/contracts';
 import type { SpectraPrismaClient } from '@spectra/database';
 import type { Logger } from '@spectra/logging';
 import {
@@ -8,28 +8,58 @@ import {
   reserve,
   type UsageRecorder,
 } from '@spectra/metering';
-import type { PostPublisher } from '@spectra/social-core';
+import {
+  unsupportedMediaKinds,
+  type PostPublisher,
+  type PublishInput,
+  type PublishMediaInput,
+} from '@spectra/social-core';
 import { METRICS, metrics } from '@spectra/telemetry';
 
 /**
  * The subset of a SocialAccount a resolver needs to build a live publisher.
- * `encryptedToken` is the sealed credential — the resolver (in the worker)
- * decrypts it; it is never logged and never leaves that boundary.
+ * `encryptedToken` is a sealed per-account credential (WordPress); accounts
+ * discovered over OAuth carry `connectionId` instead, and their token lives on
+ * the connection (ADR-0034). Neither is ever logged.
  */
 export interface PublishAccount {
   id: string;
+  organizationId: string;
+  workspaceId: string;
   platform: SocialPlatform;
+  kind: string;
   externalAccountId: string;
   encryptedToken: string | null;
+  connectionId: string | null;
 }
 
 /**
- * Builds a live publisher for one account, or `undefined` when publishing is
- * not possible (no adapter for the platform, no stored credential, or no
- * decryption key). Returning `undefined` yields an honest UNSUPPORTED — never a
- * fabricated success. The worker wires this to the real WordPress adapter.
+ * A resolver's honest "no": the target exists but cannot be published to now,
+ * and why. Nothing is sent. UNSUPPORTED = the capability is not there (not
+ * connected, no adapter); FAILED = it is, but this attempt cannot proceed
+ * (expired authorization, missing permission).
  */
-export type ResolvePublisher = (account: PublishAccount) => Promise<PostPublisher | undefined>;
+export interface PublisherUnavailable {
+  unavailable: true;
+  status: 'UNSUPPORTED' | 'FAILED';
+  reason: string;
+  failureCode: PublishFailureCode;
+}
+
+/**
+ * Builds a live publisher for one account, `undefined` when no adapter exists
+ * for it, or a `PublisherUnavailable` explaining why it cannot publish now.
+ * Never a fabricated success.
+ */
+export type ResolvePublisher = (
+  account: PublishAccount,
+) => Promise<PostPublisher | PublisherUnavailable | undefined>;
+
+/** Reads an asset's bytes from tenant-scoped storage, checked against the tenant. */
+export type LoadMedia = (
+  asset: { storageKey: string },
+  tenant: { organizationId: string; workspaceId: string },
+) => Promise<Buffer>;
 
 export interface PublishDeps {
   prisma: SpectraPrismaClient;
@@ -38,10 +68,16 @@ export interface PublishDeps {
    * decryption key) means no live publishing — every attempt is UNSUPPORTED.
    */
   resolvePublisher?: ResolvePublisher;
+  /** Needed only for entries with an attached image. */
+  loadMedia?: LoadMedia;
   logger?: Logger;
   /** Records the publish attempt so per-kind limits can count it. */
   usage?: UsageRecorder;
   now?: () => Date;
+}
+
+function isUnavailable(value: PostPublisher | PublisherUnavailable): value is PublisherUnavailable {
+  return (value as PublisherUnavailable).unavailable === true;
 }
 
 export interface ExecutePublicationInput {
@@ -114,7 +150,7 @@ async function runPublication(
   if (budget.blocked) {
     await prisma.contentScheduleEntry.update({
       where: { id: entry.id },
-      data: { status: 'FAILED', failureReason: budget.reason },
+      data: { status: 'FAILED', failureReason: budget.reason, failureCode: 'BUDGET' },
     });
     logger?.warn({ platform: entry.platform }, 'Publish refused — budget limit');
     return { status: 'FAILED', entryId: entry.id };
@@ -125,23 +161,38 @@ async function runPublication(
     data: { status: 'PUBLISHING', attemptCount: { increment: 1 }, lastAttemptAt: now() },
   });
 
-  const publisher = await resolvePublisherFor(deps, entry.socialAccountId);
-  if (!publisher) {
-    // Honest: nothing published. Either no adapter for the platform, or the
-    // account has no stored credential / no decryption key available.
+  /** Ends the attempt without contacting the platform: the hold is returned, not counted. */
+  const settleWithoutSending = async (
+    status: 'UNSUPPORTED' | 'FAILED',
+    failureReason: string,
+    failureCode: PublishFailureCode | null,
+  ): Promise<PublicationOutcome> => {
     await prisma.contentScheduleEntry.update({
       where: { id: entry.id },
-      data: {
-        status: 'UNSUPPORTED',
-        failureReason: `No live publisher is available for ${entry.platform}. Nothing was published.`,
-      },
+      data: { status, failureReason, failureCode },
     });
-    // Nothing was attempted externally, so the hold is returned rather than
-    // counted — an UNSUPPORTED entry must not consume a publish allowance.
     await release(prisma, tenant, reservationKey, logger);
-    logger?.info({ platform: entry.platform }, 'No publisher resolved — marked UNSUPPORTED');
-    return { status: 'UNSUPPORTED', entryId: entry.id };
+    logger?.info(
+      { platform: entry.platform, status, failureCode },
+      'Publish attempt ended before sending',
+    );
+    return { status, entryId: entry.id };
+  };
+
+  const resolved = await resolvePublisherFor(deps, entry);
+  if (!resolved) {
+    // Honest: nothing published — no adapter for the platform, or no stored
+    // credential / decryption key available.
+    return settleWithoutSending(
+      'UNSUPPORTED',
+      `No live publisher is available for ${entry.platform}. Nothing was published.`,
+      null,
+    );
   }
+  if (isUnavailable(resolved)) {
+    return settleWithoutSending(resolved.status, resolved.reason, resolved.failureCode);
+  }
+  const publisher = resolved;
 
   // Publish the item's current best body. Failures are recorded truthfully; the
   // idempotencyKey makes retries safe.
@@ -150,16 +201,83 @@ async function runPublication(
     select: { title: true, body: true },
   });
 
+  const media: PublishMediaInput[] = [];
+  if (entry.mediaAssetId) {
+    const asset = await prisma.mediaAsset.findFirst({
+      where: {
+        id: entry.mediaAssetId,
+        organizationId: entry.organizationId,
+        workspaceId: entry.workspaceId,
+      },
+      select: {
+        id: true,
+        kind: true,
+        storageKey: true,
+        mimeType: true,
+        sizeBytes: true,
+        widthPx: true,
+        heightPx: true,
+      },
+    });
+    if (!asset) {
+      return settleWithoutSending(
+        'FAILED',
+        'The attached image no longer exists. Attach another or remove it. Nothing was published.',
+        'VALIDATION',
+      );
+    }
+    const loadMedia = deps.loadMedia;
+    if (!loadMedia) {
+      return settleWithoutSending(
+        'UNSUPPORTED',
+        'Media storage is not available to the publisher, so the attached image cannot be uploaded. Nothing was published.',
+        'UNSUPPORTED_MEDIA',
+      );
+    }
+    media.push({
+      assetId: asset.id,
+      kind: asset.kind,
+      mimeType: asset.mimeType,
+      sizeBytes: asset.sizeBytes,
+      widthPx: asset.widthPx,
+      heightPx: asset.heightPx,
+      altText: entry.mediaAltText ?? null,
+      load: () => loadMedia(asset, tenant),
+    });
+  }
+
+  const publishInput: PublishInput = {
+    idempotencyKey: entry.idempotencyKey ?? entry.id,
+    title: item?.title ?? 'Untitled',
+    body: item?.body ?? entry.note ?? '',
+    ...(media.length > 0 ? { media } : {}),
+  };
+
+  // Media the adapter cannot upload at all is UNSUPPORTED — a capability gap,
+  // not a content error — and nothing is sent.
+  const unsupported = unsupportedMediaKinds(publisher, media);
+  if (unsupported.length > 0) {
+    const kinds = [...new Set(unsupported.map((item) => item.kind.toLowerCase()))].join(', ');
+    return settleWithoutSending(
+      'UNSUPPORTED',
+      `The ${entry.platform} adapter does not publish ${kinds} attachments. Nothing was published.`,
+      'UNSUPPORTED_MEDIA',
+    );
+  }
+  const issues = publisher.validate?.(publishInput) ?? [];
+  if (issues.length > 0) {
+    return settleWithoutSending(
+      'FAILED',
+      `${issues.map((issue) => issue.message).join(' ')} Nothing was published.`,
+      'VALIDATION',
+    );
+  }
+
   try {
     const outcome = await metrics.time(
       METRICS.providerLatency,
       { provider: entry.platform, op: 'publish' },
-      () =>
-        publisher.publish({
-          idempotencyKey: entry.idempotencyKey ?? entry.id,
-          title: item?.title ?? 'Untitled',
-          body: item?.body ?? entry.note ?? '',
-        }),
+      () => publisher.publish(publishInput),
     );
     const published = outcome.status === 'PUBLISHED';
     await prisma.contentScheduleEntry.update({
@@ -174,6 +292,7 @@ async function runPublication(
             : now()
           : null,
         failureReason: published ? null : (outcome.failureReason ?? 'Publish failed'),
+        failureCode: published ? null : (outcome.failureCode ?? 'UNKNOWN'),
       },
     });
     if (published) {
@@ -200,7 +319,7 @@ async function runPublication(
     const failureReason = error instanceof Error ? error.message : 'Publish failed';
     await prisma.contentScheduleEntry.update({
       where: { id: entry.id },
-      data: { status: 'FAILED', failureReason },
+      data: { status: 'FAILED', failureReason, failureCode: 'UNKNOWN' },
     });
     // The publisher threw: it may or may not have reached the platform, so
     // reconcile rather than release — the attempt is recorded either way.
@@ -212,15 +331,54 @@ async function runPublication(
 
 async function resolvePublisherFor(
   deps: PublishDeps,
-  socialAccountId: string | null,
-): Promise<PostPublisher | undefined> {
-  if (!socialAccountId || !deps.resolvePublisher) return undefined;
+  entry: { socialAccountId: string | null; organizationId: string; workspaceId: string },
+): Promise<PostPublisher | PublisherUnavailable | undefined> {
+  if (!entry.socialAccountId || !deps.resolvePublisher) return undefined;
   const account = await deps.prisma.socialAccount.findUnique({
-    where: { id: socialAccountId },
-    select: { id: true, platform: true, externalAccountId: true, encryptedToken: true },
+    where: { id: entry.socialAccountId },
+    select: {
+      id: true,
+      organizationId: true,
+      workspaceId: true,
+      platform: true,
+      kind: true,
+      externalAccountId: true,
+      encryptedToken: true,
+      connectionId: true,
+      deletedAt: true,
+    },
   });
-  if (!account) return undefined;
-  return deps.resolvePublisher(account as PublishAccount);
+  // Never publish across a tenant boundary, even if an entry points there.
+  if (
+    !account ||
+    account.organizationId !== entry.organizationId ||
+    account.workspaceId !== entry.workspaceId
+  ) {
+    return {
+      unavailable: true,
+      status: 'UNSUPPORTED',
+      reason: 'The target account does not exist in this workspace. Nothing was published.',
+      failureCode: 'NOT_CONNECTED',
+    };
+  }
+  if (account.deletedAt) {
+    return {
+      unavailable: true,
+      status: 'UNSUPPORTED',
+      reason: 'The target account was disconnected. Nothing was published.',
+      failureCode: 'NOT_CONNECTED',
+    };
+  }
+  return deps.resolvePublisher({
+    id: account.id,
+    organizationId: account.organizationId,
+    workspaceId: account.workspaceId,
+    platform: account.platform as SocialPlatform,
+    kind: account.kind,
+    externalAccountId: account.externalAccountId,
+    encryptedToken: account.encryptedToken,
+    connectionId: account.connectionId,
+  });
 }
 
 /**

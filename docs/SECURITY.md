@@ -296,3 +296,23 @@ the platform's own settings.
    connection needs reconnecting.
 
 A bulk re-seal job for long-idle rows is not built yet; today rotation advances on write.
+
+## 15. LinkedIn publishing **[P1]** (Phase 6D, ADR-0035)
+
+- **Official APIs only.** No scraping, no browser automation, no credential that is not an OAuth
+  grant the member approved.
+- **The upload URL is checked before bytes or token go to it.** The Images API returns an upload
+  URL and requires the bearer token on the PUT; the client sends nothing unless it is
+  `https://*.linkedin.com` (or the configured API origin — how tests reach a local stand-in).
+- **Tokens are opened in the worker, in memory, for one publish.** A refreshed token is re-sealed
+  under the active key before it is stored. Failure reasons carry LinkedIn's status, error code and
+  a trimmed message — never a token (regression-tested).
+- **No cross-tenant publishing, even from a bad row.** The executor refuses an account whose
+  organization or workspace differs from the entry's, and media is read only through a key checked
+  against the entry's tenant (`assertKeyWithinTenant`).
+- **Data minimisation.** OpenID Connect `userinfo` returns the member's email; it is not stored.
+  Discovery metadata is allow-listed primitives only.
+- **Honest outcomes.** A 401 marks the connection `REAUTH_REQUIRED` and stops further attempts
+  before they reach LinkedIn. A timeout after a post request was sent is `AMBIGUOUS` — the reason
+  says the post may exist, so an operator checks before publishing again rather than creating a
+  duplicate.

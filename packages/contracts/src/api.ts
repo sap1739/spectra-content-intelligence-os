@@ -317,6 +317,10 @@ export const scheduleEntryInputSchema = z.object({
   note: z.string().max(2000).optional(),
   /** Optional publishing target; when set, the dispatcher attempts to publish. */
   socialAccountId: uuidSchema.optional(),
+  /** One image to publish with the post (Phase 6D). Checked against the target's capabilities. */
+  mediaAssetId: uuidSchema.optional(),
+  /** Alternative text for that image — read by screen readers on the platform. */
+  mediaAltText: z.string().trim().min(1).max(1000).optional(),
 });
 export type ScheduleEntryInput = z.infer<typeof scheduleEntryInputSchema>;
 

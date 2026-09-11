@@ -38,6 +38,22 @@ export const CONNECTION_CAPABILITIES = [
 ] as const;
 export type ConnectionCapability = (typeof CONNECTION_CAPABILITIES)[number];
 
+/**
+ * A platform product (in its developer console) that grants a set of scopes.
+ * Products are how platforms gate access, so "missing scope" is reported as
+ * "missing product" — the thing an operator actually has to go and request.
+ */
+export interface OAuthProduct {
+  id: string;
+  name: string;
+  scopes: readonly string[];
+  /** true = any ONE of `scopes` satisfies the product (e.g. r_ or rw_ admin). */
+  anyOf?: boolean;
+  /** true = the platform reviews the application before granting it. */
+  reviewRequired: boolean;
+  enables: string;
+}
+
 export interface OAuthPlatformDefinition {
   platform: OAuthPlatform;
   displayName: string;
@@ -58,6 +74,8 @@ export interface OAuthPlatformDefinition {
   capabilityScopes: Readonly<Partial<Record<ConnectionCapability, readonly string[]>>>;
   /** Platform-side approvals needed before real users can connect or publish. */
   approval: { required: boolean; notes: readonly string[] };
+  /** Products that grant this platform's scopes, where they matter to Spectra. */
+  products?: readonly OAuthProduct[];
   docsUrl: string;
 }
 
@@ -88,6 +106,37 @@ const DEFINITIONS: Record<OAuthPlatform, OAuthPlatformDefinition> = {
         'Refresh tokens are issued only to approved partners; otherwise a token lasts about 60 days and the connection must be reconnected.',
       ],
     },
+    products: [
+      {
+        id: 'sign-in-oidc',
+        name: 'Sign In with LinkedIn using OpenID Connect',
+        scopes: ['openid', 'profile'],
+        reviewRequired: false,
+        enables: 'Identifying the member who connected, so posts can be authored as them.',
+      },
+      {
+        id: 'share-on-linkedin',
+        name: 'Share on LinkedIn',
+        scopes: ['w_member_social'],
+        reviewRequired: false,
+        enables: 'Posting text and images as the member.',
+      },
+      {
+        id: 'community-management-pages',
+        name: 'Community Management API — page access',
+        scopes: ['r_organization_admin', 'rw_organization_admin'],
+        anyOf: true,
+        reviewRequired: true,
+        enables: 'Finding the LinkedIn pages the member administers.',
+      },
+      {
+        id: 'community-management-posting',
+        name: 'Community Management API — page posting',
+        scopes: ['w_organization_social'],
+        reviewRequired: true,
+        enables: 'Posting text and images as those pages.',
+      },
+    ],
     docsUrl:
       'https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow',
   },
@@ -299,4 +348,30 @@ export function getOAuthDefinition(platform: OAuthPlatform): OAuthPlatformDefini
 
 export function allOAuthDefinitions(): OAuthPlatformDefinition[] {
   return Object.values(DEFINITIONS);
+}
+
+export interface ProductAccess {
+  product: OAuthProduct;
+  /** GRANTED / MISSING, or UNKNOWN when the platform did not report scopes. */
+  status: 'GRANTED' | 'MISSING' | 'UNKNOWN';
+  missingScopes: string[];
+}
+
+/** Which of a platform's products a grant actually carries. */
+export function resolveProductAccess(
+  definition: OAuthPlatformDefinition,
+  grantedScopes: readonly string[] | null,
+): ProductAccess[] {
+  return (definition.products ?? []).map((product) => {
+    if (grantedScopes === null) {
+      return { product, status: 'UNKNOWN' as const, missingScopes: [] };
+    }
+    const missing = product.scopes.filter((scope) => !grantedScopes.includes(scope));
+    const granted = product.anyOf ? missing.length < product.scopes.length : missing.length === 0;
+    return {
+      product,
+      status: granted ? ('GRANTED' as const) : ('MISSING' as const),
+      missingScopes: granted ? [] : missing,
+    };
+  });
 }

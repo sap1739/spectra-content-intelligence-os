@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { executePublication, type ResolvePublisher } from './executor';
 
-function fakePrisma(entry: { status: string; platform?: string }) {
+function fakePrisma(entry: { status: string; platform?: string; mediaAssetId?: string }) {
   const updates: Array<{ data: Record<string, unknown> }> = [];
   const row = {
     id: 'e1',
@@ -15,6 +15,8 @@ function fakePrisma(entry: { status: string; platform?: string }) {
     socialAccountId: 'acct1',
     idempotencyKey: 'idem-1',
     note: 'hello',
+    mediaAssetId: (entry as { mediaAssetId?: string }).mediaAssetId ?? null,
+    mediaAltText: null,
   };
   const prisma = {
     // Publishing now passes through budget pre-flight (ADR-0028). Nothing
@@ -51,9 +53,25 @@ function fakePrisma(entry: { status: string; platform?: string }) {
     socialAccount: {
       findUnique: vi.fn(async () => ({
         id: 'acct1',
+        organizationId: 'o1',
+        workspaceId: 'w1',
         platform: row.platform,
+        kind: 'SITE',
         externalAccountId: 'https://blog.example.com',
         encryptedToken: 'sealed',
+        connectionId: null,
+        deletedAt: null as Date | null,
+      })),
+    },
+    mediaAsset: {
+      findFirst: vi.fn(async () => ({
+        id: 'asset-1',
+        kind: 'IMAGE',
+        storageKey: 'org/o1/ws/w1/media/asset-1/image.png',
+        mimeType: 'image/png',
+        sizeBytes: 1024,
+        widthPx: 100,
+        heightPx: 100,
       })),
     },
     contentItem: {
@@ -187,5 +205,150 @@ describe('executePublication', () => {
     expect(updates.at(-1)!.data.status).toBe('FAILED');
     expect(String(updates.at(-1)!.data.failureReason)).toContain('401');
     expect(prisma.contentItem.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('executePublication — honest pre-flight (Phase 6D)', () => {
+  it("records a resolver's reason when a target cannot publish now, and sends nothing", async () => {
+    const { prisma, updates } = fakePrisma({ status: 'QUEUED', platform: 'LINKEDIN' });
+    const outcome = await executePublication(
+      {
+        prisma: prisma as never,
+        resolvePublisher: async () => ({
+          unavailable: true,
+          status: 'FAILED',
+          reason: 'LinkedIn needs to be reconnected.',
+          failureCode: 'REAUTH_REQUIRED',
+        }),
+      },
+      { entryId: 'e1' },
+    );
+    expect(outcome.status).toBe('FAILED');
+    expect(updates.at(-1)?.data).toMatchObject({
+      status: 'FAILED',
+      failureReason: 'LinkedIn needs to be reconnected.',
+      failureCode: 'REAUTH_REQUIRED',
+    });
+    // The budget hold is returned, not counted.
+    expect(prisma.budgetReservation.updateMany).toHaveBeenCalled();
+  });
+
+  it('refuses media the adapter cannot upload as UNSUPPORTED, before publishing', async () => {
+    const { prisma, updates } = fakePrisma({ status: 'QUEUED', mediaAssetId: 'asset-1' });
+    prisma.mediaAsset.findFirst = vi.fn(async () => ({
+      id: 'asset-1',
+      kind: 'VIDEO',
+      storageKey: 'org/o1/ws/w1/media/asset-1/clip.mp4',
+      mimeType: 'video/mp4',
+      sizeBytes: 5_000_000,
+      widthPx: null,
+      heightPx: null,
+    })) as never;
+    const publish = vi.fn(async () => ({ status: 'PUBLISHED' as const }));
+    const outcome = await executePublication(
+      {
+        prisma: prisma as never,
+        loadMedia: async () => Buffer.from(''),
+        resolvePublisher: async () => ({
+          platform: 'LINKEDIN',
+          adapterVersion: 'stub',
+          supportedMedia: { kinds: ['IMAGE'], mimeTypes: ['image/png'], maxItems: 1 },
+          publish,
+        }),
+      },
+      { entryId: 'e1' },
+    );
+    expect(outcome.status).toBe('UNSUPPORTED');
+    expect(publish).not.toHaveBeenCalled();
+    expect(updates.at(-1)?.data.failureCode).toBe('UNSUPPORTED_MEDIA');
+    expect(String(updates.at(-1)?.data.failureReason)).toContain('video');
+  });
+
+  it('fails validation before anything is sent', async () => {
+    const { prisma, updates } = fakePrisma({ status: 'QUEUED' });
+    const publish = vi.fn(async () => ({ status: 'PUBLISHED' as const }));
+    const outcome = await executePublication(
+      {
+        prisma: prisma as never,
+        resolvePublisher: async () => ({
+          platform: 'LINKEDIN',
+          adapterVersion: 'stub',
+          validate: () => [{ code: 'MAX_CHARACTERS', message: 'Too long for LinkedIn.' }],
+          publish,
+        }),
+      },
+      { entryId: 'e1' },
+    );
+    expect(outcome.status).toBe('FAILED');
+    expect(publish).not.toHaveBeenCalled();
+    expect(updates.at(-1)?.data).toMatchObject({ failureCode: 'VALIDATION' });
+  });
+
+  it('passes the attached image to the publisher, loaded only on demand', async () => {
+    const { prisma } = fakePrisma({ status: 'QUEUED', mediaAssetId: 'asset-1' });
+    const loadMedia = vi.fn(async () => Buffer.from('png-bytes'));
+    let received: unknown;
+    const outcome = await executePublication(
+      {
+        prisma: prisma as never,
+        loadMedia,
+        resolvePublisher: async () => ({
+          platform: 'LINKEDIN',
+          adapterVersion: 'stub',
+          supportedMedia: { kinds: ['IMAGE'], mimeTypes: ['image/png'], maxItems: 1 },
+          publish: async (input) => {
+            received = input.media?.[0]?.assetId;
+            await input.media?.[0]?.load();
+            return { status: 'PUBLISHED', externalPostId: 'urn:li:share:1' };
+          },
+        }),
+      },
+      { entryId: 'e1' },
+    );
+    expect(outcome.status).toBe('PUBLISHED');
+    expect(received).toBe('asset-1');
+    expect(loadMedia).toHaveBeenCalledWith(
+      expect.objectContaining({ storageKey: 'org/o1/ws/w1/media/asset-1/image.png' }),
+      { organizationId: 'o1', workspaceId: 'w1' },
+    );
+  });
+
+  it('never publishes to an account from another tenant', async () => {
+    const { prisma, updates } = fakePrisma({ status: 'QUEUED' });
+    prisma.socialAccount.findUnique = vi.fn(async () => ({
+      id: 'acct1',
+      organizationId: 'someone-else',
+      workspaceId: 'w9',
+      platform: 'WORDPRESS',
+      kind: 'SITE',
+      externalAccountId: 'https://blog.example.com',
+      encryptedToken: 'sealed',
+      connectionId: null,
+      deletedAt: null,
+    })) as never;
+    const resolvePublisher = vi.fn();
+    const outcome = await executePublication(
+      { prisma: prisma as never, resolvePublisher },
+      { entryId: 'e1' },
+    );
+    expect(outcome.status).toBe('UNSUPPORTED');
+    expect(resolvePublisher).not.toHaveBeenCalled();
+    expect(updates.at(-1)?.data.failureCode).toBe('NOT_CONNECTED');
+  });
+
+  it("records the publisher's failure code", async () => {
+    const { prisma, updates } = fakePrisma({ status: 'QUEUED' });
+    await executePublication(
+      {
+        prisma: prisma as never,
+        resolvePublisher: stubResolver({
+          status: 'FAILED',
+          failureReason: 'LinkedIn responded 429',
+          failureCode: 'RATE_LIMIT',
+        }),
+      },
+      { entryId: 'e1' },
+    );
+    expect(updates.at(-1)?.data.failureCode).toBe('RATE_LIMIT');
   });
 });

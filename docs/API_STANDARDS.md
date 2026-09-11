@@ -136,3 +136,18 @@ Where these depart from the rest of the API, and why:
   revocation is information the caller needs. The local credential is deleted in every case.
 - **No OAuth endpoint ever returns a token, a client id or a client secret.** Missing
   configuration is reported by variable name.
+
+## 13. Publishing to connected accounts (Phase 6D, ADR-0035)
+
+- `POST /v1/workspaces/:workspaceId/calendar` accepts `mediaAssetId` (one image, same workspace)
+  and `mediaAltText`. With a target account it is checked **before** anything is queued: the
+  account must be on the entry's platform, and a discovered account's capability snapshot and the
+  platform's limits must allow the post. Refusals are `422` with the reason ("Needs
+  w_member_social (Share on LinkedIn)…", "LinkedIn accepts JPG, PNG and GIF images…"). A foreign
+  account or asset is the usual `404`.
+- Calendar rows carry `failureCode` beside `failureReason`: `AUTH`, `REAUTH_REQUIRED`, `PERMISSION`,
+  `VALIDATION`, `UNSUPPORTED_MEDIA`, `RATE_LIMIT`, `TRANSIENT`, `AMBIGUOUS`, `NOT_CONNECTED`,
+  `BUDGET` or `UNKNOWN` — so a client can offer the right next step without parsing prose.
+- `GET …/social/platforms` adds `publisherSummary` for wired platforms. `GET …/social/connections`
+  adds `permissions` (each platform product: GRANTED / MISSING / UNKNOWN, missing scopes, whether
+  the platform reviews it) and each discovered account's `capabilities`.

@@ -60,6 +60,7 @@ packages/
   media-sharp/    Real sharp ImageRenderer adapter (resize/crop/rotate/overlay/format; ADR-0018)
   social-core/    SocialPublisher/PostPublisher ports + declared capability matrix + variant validation (ADR-0019)
   social-oauth/   Provider-neutral OAuth broker: state, PKCE, token exchange/refresh/revocation, sealed bundles (ADR-0034)
+  social-linkedin/ Real LinkedIn adapter: discovery, Images API uploads, Posts API — text + one image (ADR-0035)
   social-wordpress/ Real WordPress adapter: REST API + application-password Basic auth — the first live platform (ADR-0022)
   publishing/     Dispatch machinery: claims due entries, resolves a per-account publisher → real PUBLISHED/FAILED or honest UNSUPPORTED (ADR-0020, ADR-0022)
   workflow-core/  Queue-neutral job ports; BullMQ + in-memory adapters

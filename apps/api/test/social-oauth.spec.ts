@@ -273,6 +273,8 @@ describe('API integration: OAuth token brokering (ADR-0034)', () => {
       SOCIAL_OAUTH_TIKTOK_AUTHORIZATION_URL: `${provider.base}/tiktok/authorize`,
       SOCIAL_OAUTH_TIKTOK_TOKEN_URL: `${provider.base}/tiktok/token`,
       SOCIAL_OAUTH_TIKTOK_REVOCATION_URL: `${provider.base}/tiktok/revoke`,
+      // LinkedIn discovery runs on connect (6D): keep it on the local server.
+      LINKEDIN_API_BASE_URL: provider.base,
     });
     resetApiEnvCache();
     app = await createApp(getApiEnv());
@@ -330,8 +332,10 @@ describe('API integration: OAuth token brokering (ADR-0034)', () => {
       ]);
       expect(facebook?.approval.notes.length).toBeGreaterThan(0);
 
-      // No OAuth platform is reported as publishing-capable in this phase.
-      expect(body.platforms.every((p) => !p.adapters.publishing)).toBe(true);
+      // LinkedIn is the one OAuth platform with a publishing adapter (6D).
+      expect(body.platforms.filter((p) => p.adapters.publishing).map((p) => p.platform)).toEqual([
+        'LINKEDIN',
+      ]);
       for (const client of Object.values(CLIENTS)) expect(res.body).not.toContain(client.secret);
     });
 

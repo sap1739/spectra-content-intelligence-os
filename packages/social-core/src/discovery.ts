@@ -1,4 +1,4 @@
-import type { SocialPlatform } from '@spectra/contracts';
+import type { AccountCapabilitySnapshot, SocialPlatform } from '@spectra/contracts';
 
 /**
  * Account discovery ports (Phase 6C, ADR-0034).
@@ -35,6 +35,8 @@ export interface DiscoveredIdentity {
   displayName: string;
   kind: 'PROFILE' | 'BUSINESS_ACCOUNT';
   metadata?: DiscoveryMetadata;
+  /** What this account can publish through the adapter, given the grant. */
+  capabilities?: AccountCapabilitySnapshot;
 }
 
 export interface DiscoveredDestination {
@@ -42,6 +44,7 @@ export interface DiscoveredDestination {
   displayName: string;
   kind: 'PROFILE' | 'PAGE' | 'CHANNEL' | 'BUSINESS_ACCOUNT' | 'SITE';
   metadata?: DiscoveryMetadata;
+  capabilities?: AccountCapabilitySnapshot;
 }
 
 export interface DiscoveredCapabilities {

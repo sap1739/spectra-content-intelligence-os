@@ -152,6 +152,111 @@ export function connectionRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** A LinkedIn account capability snapshot, as discovery stores it. */
+export function linkedInCapabilities(
+  image: 'AVAILABLE' | 'MISSING_PERMISSION' = 'AVAILABLE',
+): Record<string, unknown> {
+  return {
+    adapterVersion: 'linkedin-posts-1.0.0',
+    checkedAt: '2026-09-11T10:00:00.000Z',
+    postTypes: {
+      TEXT: {
+        status: 'AVAILABLE',
+        reason: 'Text posts are published.',
+        requiredScopes: ['w_member_social'],
+      },
+      IMAGE: {
+        status: image,
+        reason:
+          image === 'AVAILABLE'
+            ? 'Single-image posts are published.'
+            : 'Needs w_organization_social (Community Management API).',
+        requiredScopes: ['w_member_social'],
+      },
+      VIDEO: {
+        status: 'NOT_IMPLEMENTED',
+        reason:
+          "LinkedIn supports video posts (Videos API); Spectra's LinkedIn adapter does not upload video yet.",
+        requiredScopes: ['w_member_social'],
+      },
+      DOCUMENT: {
+        status: 'NOT_IMPLEMENTED',
+        reason:
+          "LinkedIn supports document posts; Spectra's LinkedIn adapter does not upload documents yet.",
+        requiredScopes: ['w_member_social'],
+      },
+    },
+    limits: {
+      maxCharacters: 3000,
+      maxImages: 1,
+      imageMimeTypes: ['image/jpeg', 'image/png', 'image/gif'],
+    },
+    notes: [],
+  };
+}
+
+/** A LinkedIn member discovered through a connection. */
+export function linkedInAccount(overrides: Record<string, unknown> = {}) {
+  return {
+    id: '00000000-0000-4000-8000-0000000000d1',
+    platform: 'LINKEDIN',
+    externalAccountId: 'urn:li:person:782bbtaQ',
+    displayName: 'Jane Doe',
+    kind: 'PROFILE',
+    status: 'CONNECTED',
+    scopes: ['openid', 'profile', 'w_member_social'],
+    tokenRef: null,
+    connectionId: '00000000-0000-4000-8000-0000000000c2',
+    capabilities: linkedInCapabilities(),
+    connectedAt: '2026-09-11T09:00:00.000Z',
+    createdAt: '2026-09-11T09:00:00.000Z',
+    ...overrides,
+  };
+}
+
+/** A LinkedIn connection from a self-serve app: page products missing. */
+export function linkedInConnectionRow() {
+  return connectionRow({
+    id: '00000000-0000-4000-8000-0000000000c2',
+    platform: 'LINKEDIN',
+    platformDisplayName: 'LinkedIn',
+    label: 'Acme on LinkedIn',
+    hasRefreshToken: false,
+    refresh: {
+      available: false,
+      reason: 'LinkedIn did not issue a refresh token for this connection; reconnect to renew it.',
+    },
+    discovery: { status: 'COMPLETE', note: '1 account(s) discovered.' },
+    publishing: {
+      wired: true,
+      note: 'Text posts and single-image posts (JPG, PNG, GIF). Video, document, multi-image, article and poll posts are not implemented.',
+    },
+    permissions: [
+      {
+        id: 'share-on-linkedin',
+        name: 'Share on LinkedIn',
+        scopes: ['w_member_social'],
+        anyOf: false,
+        reviewRequired: false,
+        enables: 'Posting text and images as the member.',
+        status: 'GRANTED',
+        missingScopes: [],
+      },
+      {
+        id: 'community-management-posting',
+        name: 'Community Management API — page posting',
+        scopes: ['w_organization_social'],
+        anyOf: false,
+        reviewRequired: true,
+        enables: 'Posting text and images as those pages.',
+        status: 'MISSING',
+        missingScopes: ['w_organization_social'],
+      },
+    ],
+    accounts: [linkedInAccount()],
+  });
+}
+
 export function meResponse(permissions: readonly string[] = ALL_PERMISSIONS) {
   return {
     user: {

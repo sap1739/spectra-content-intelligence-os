@@ -5,6 +5,8 @@ import { CircleCheck, KeyRound, TriangleAlert, X } from 'lucide-react';
 import * as React from 'react';
 
 import { describeExpiry, type OAuthResultMessage } from '@/lib/oauth-results';
+
+import { AccountCapabilityBadges, LinkedInSetupGuide } from './capabilities';
 import type { OAuthPlatformEntry, OAuthPlatformsResponse, SocialConnectionRow } from '@/lib/social';
 
 /**
@@ -127,6 +129,10 @@ function PlatformCard({
         </p>
       ) : null}
 
+      {entry.platform === 'LINKEDIN' ? (
+        <LinkedInSetupGuide redirectUri={entry.redirectUri} />
+      ) : null}
+
       {canManage ? (
         <Button
           size="sm"
@@ -214,6 +220,7 @@ function ConnectionItem({
   onDisconnect: (id: string) => void;
 }) {
   const [confirming, setConfirming] = React.useState(false);
+  const missingProducts = (connection.permissions ?? []).filter((p) => p.status === 'MISSING');
   const status = CONNECTION_STATUS[connection.status] ?? {
     label: connection.status.toLowerCase(),
     variant: 'muted' as const,
@@ -257,14 +264,39 @@ function ConnectionItem({
         </div>
       </dl>
 
+      {missingProducts.length > 0 ? (
+        <div
+          role="note"
+          className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-2 text-xs"
+        >
+          <p className="font-medium">Missing {connection.platformDisplayName} products</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4">
+            {missingProducts.map((product) => (
+              <li key={product.id}>
+                <span className="font-medium">{product.name}</span>
+                {product.reviewRequired ? ' (reviewed by the platform)' : ''} — {product.enables}{' '}
+                {product.anyOf ? 'Needs one of' : 'Needs'} {product.missingScopes.join(', ')}.
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-muted-foreground">Add the product to the app, then reconnect.</p>
+        </div>
+      ) : null}
+
       {connection.accounts.length > 0 ? (
-        <ul className="mt-2 flex flex-col gap-1 text-xs">
+        <ul className="mt-2 flex flex-col gap-2 text-xs">
           {connection.accounts.map((account) => (
-            <li key={account.id}>
-              {account.displayName}{' '}
-              <span className="text-muted-foreground">
-                {account.kind} · {account.externalAccountId}
-              </span>
+            <li key={account.id} className="rounded border border-border/60 p-2">
+              <p>
+                {account.displayName}{' '}
+                <span className="text-muted-foreground">
+                  {account.kind === 'PAGE' ? 'page' : account.kind.toLowerCase()} ·{' '}
+                  {account.externalAccountId}
+                </span>
+              </p>
+              <div className="mt-1">
+                <AccountCapabilityBadges value={account.capabilities} />
+              </div>
             </li>
           ))}
         </ul>

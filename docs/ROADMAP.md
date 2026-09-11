@@ -283,6 +283,20 @@ weakest link in the differentiator: research and evidence quality.
   with discovery ports between them; none is registered, so connections honestly record discovery
   as not available. **No OAuth platform can publish yet**, and every card and connection says so
   (ADR-0034).
-- Next: the first OAuth publishing adapter (X or LinkedIn) behind the discovery + publisher ports;
-  a background refresh sweep ahead of token expiry; a metrics endpoint on the worker; anchor-aware
-  citation selection; review-queue prioritisation; a DomainPolicy management UI.
+- ✅ **Increment D — LinkedIn, the first live OAuth publisher.** `@spectra/social-linkedin`
+  publishes text posts and single-image posts through LinkedIn's official, versioned APIs only
+  (OpenID Connect `userinfo`, Organization Access Control, the Images API and the Posts API) — no
+  scraping, no browser automation. Connecting discovers the member and the pages they can post as,
+  each with a stored capability snapshot that separates "missing permission" from "not
+  implemented", and the connection names the LinkedIn products (with review requirements) that its
+  grant lacks. Images are registered, uploaded to a checked `*.linkedin.com` URL, confirmed where the
+  token may check, and recorded so a retry reuses them rather than uploading twice. Every attempt
+  ends PUBLISHED, FAILED or UNSUPPORTED with a reason and a failure code (reconnect, permission,
+  rate limit, ambiguous); the worker refreshes a token shortly before expiry where LinkedIn issued a
+  refresh token. Video, documents, multi-image, articles and polls are declared not implemented
+  everywhere they could be chosen. Tested end to end against a local stand-in that enforces
+  LinkedIn's rules; **not yet run against LinkedIn itself** (ADR-0035,
+  `docs/LINKEDIN_LIVE_VERIFICATION.md`).
+- Next: run the LinkedIn live-verification checklist against a real app; LinkedIn video via the
+  Videos API; the next OAuth publisher (X); a background refresh sweep ahead of token expiry; a
+  metrics endpoint on the worker; anchor-aware citation selection.

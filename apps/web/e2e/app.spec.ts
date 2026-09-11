@@ -10,6 +10,8 @@ import {
   CONNECTION_ID,
   connectionRow,
   oauthPlatforms,
+  linkedInAccount,
+  linkedInConnectionRow,
 } from './fixtures';
 
 /**
@@ -475,6 +477,111 @@ test.describe('social accounts (OAuth)', () => {
     await expect(page.getByText(/managing platform connections requires the/)).toBeVisible();
     await expect(page.getByRole('button', { name: /^Connect / })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Disconnect' })).toHaveCount(0);
+  });
+});
+
+test.describe('LinkedIn publishing', () => {
+  test('names the products a LinkedIn connection is missing and what each account can publish', async ({
+    page,
+  }) => {
+    await stubApi(page, {
+      routes: {
+        '/social/oauth/platforms': oauthPlatforms(),
+        '/social/connections': [linkedInConnectionRow()],
+      },
+    });
+    await gotoAuthenticated(page, '/social-accounts');
+    const item = page.getByRole('listitem').filter({ hasText: 'Acme on LinkedIn' });
+    await expect(item.getByText('Missing LinkedIn products')).toBeVisible();
+    await expect(item.getByText('Community Management API — page posting')).toBeVisible();
+    await expect(item.getByText(/reviewed by the platform/)).toBeVisible();
+    await expect(item.getByText('Video — not implemented').first()).toBeVisible();
+  });
+
+  test('offers an image only to a target that can publish one, and only matching accounts', async ({
+    page,
+  }) => {
+    await stubApi(page, {
+      routes: {
+        '/content-items': [
+          {
+            id: '00000000-0000-4000-8000-00000000000e',
+            title: 'Q3 results',
+            contentType: 'POST',
+            lifecycleState: 'APPROVED',
+            funnelStage: null,
+            objective: null,
+            body: 'Q3 is up.',
+            evidencePackId: null,
+            topicKey: null,
+            findingIds: [],
+            citationIds: [],
+            approvals: [],
+            moderation: null,
+            createdAt: '2026-09-11T09:00:00.000Z',
+          },
+        ],
+        '/social-accounts': [
+          linkedInAccount(),
+          {
+            ...linkedInAccount(),
+            id: '00000000-0000-4000-8000-0000000000d2',
+            platform: 'WORDPRESS',
+            displayName: 'Company blog',
+            kind: 'SITE',
+            capabilities: {},
+          },
+        ],
+        '/media': [
+          {
+            id: '00000000-0000-4000-8000-0000000000a1',
+            kind: 'IMAGE',
+            storageKey: 'org/x/ws/y/media/a1/chart.png',
+            mimeType: 'image/png',
+            sizeBytes: 2048,
+            widthPx: 1200,
+            heightPx: 627,
+            engine: 'sharp',
+            sourceAssetId: null,
+            createdAt: '2026-09-11T09:00:00.000Z',
+          },
+          {
+            id: '00000000-0000-4000-8000-0000000000a2',
+            kind: 'IMAGE',
+            storageKey: 'org/x/ws/y/media/a2/photo.webp',
+            mimeType: 'image/webp',
+            sizeBytes: 2048,
+            widthPx: 800,
+            heightPx: 800,
+            engine: 'sharp',
+            sourceAssetId: null,
+            createdAt: '2026-09-11T09:00:00.000Z',
+          },
+        ],
+        '/calendar': [],
+      },
+    });
+    await gotoAuthenticated(page, '/calendar');
+
+    await page.getByLabel('Publish to (optional)').selectOption({ label: 'Jane Doe' });
+    await expect(page.getByText('This target can publish:')).toBeVisible();
+    await expect(page.getByText('Video — not implemented')).toBeVisible();
+
+    const imagePicker = page.getByLabel('Image (optional)');
+    await expect(imagePicker).toBeVisible();
+    const options = await imagePicker.locator('option').allTextContents();
+    // LinkedIn takes JPG, PNG and GIF: the WebP image is not offered.
+    expect(options.some((o) => o.startsWith('PNG'))).toBe(true);
+    expect(options.some((o) => o.startsWith('WEBP'))).toBe(false);
+
+    await page.getByLabel('Platform').selectOption('WORDPRESS');
+    const targets = await page
+      .getByLabel('Publish to (optional)')
+      .locator('option')
+      .allTextContents();
+    expect(targets).toContain('Company blog');
+    expect(targets).not.toContain('Jane Doe');
+    await expect(page.getByLabel('Image (optional)')).toHaveCount(0);
   });
 });
 

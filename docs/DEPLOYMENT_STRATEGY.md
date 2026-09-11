@@ -127,3 +127,7 @@ enablement, CDN strategy for media delivery.
   `docs/SECURITY.md` §14.
 - **Metrics:** `spectra_oauth_flows_total{platform,stage,outcome}` counts starts, callbacks,
   refreshes and disconnects by outcome — a rise in `state_invalid` or `replayed` is worth an alert.
+- **LinkedIn (Phase 6D):** the worker publishes, so it needs `SOCIAL_TOKEN_ENCRYPTION_KEY` and —
+  to refresh tokens before publishing — the same `SOCIAL_OAUTH_LINKEDIN_CLIENT_ID/SECRET` and
+  redirect base URL as the API. Pin `LINKEDIN_API_VERSION` and move it forward before LinkedIn
+  sunsets it. Run `docs/LINKEDIN_LIVE_VERIFICATION.md` against a real app before announcing it.
