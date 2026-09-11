@@ -145,3 +145,28 @@ describe('redaction configuration', () => {
     expect(parsed['name']).toBe('redaction-test');
   });
 });
+
+describe('OAuth redaction (ADR-0034)', () => {
+  it.each([
+    ['access_token', { access_token: SECRET }],
+    ['refresh_token', { refresh_token: SECRET }],
+    ['id_token', { id_token: SECRET }],
+    ['client_secret', { client_secret: SECRET }],
+    ['code_verifier', { code_verifier: SECRET }],
+    ['codeVerifier', { codeVerifier: SECRET }],
+    ['encryptedCredential', { encryptedCredential: SECRET }],
+    ['encryptedCodeVerifier', { encryptedCodeVerifier: SECRET }],
+    ['authorizationCode', { authorizationCode: SECRET }],
+    ['a nested token response', { response: { access_token: SECRET, refresh_token: SECRET } }],
+    ['the callback query string', { query: { code: SECRET, state: SECRET } }],
+    ['a nested callback query', { req: { query: { code: SECRET, state: SECRET } } }],
+  ])('redacts %s', (_label, payload) => {
+    expect(captureLog(payload)).not.toContain(SECRET);
+  });
+
+  it('keeps the non-secret parts of an OAuth failure readable', () => {
+    const line = captureLog({ platform: 'X', providerError: 'invalid_grant', status: 400 });
+    expect(line).toContain('invalid_grant');
+    expect(line).toContain('"platform":"X"');
+  });
+});

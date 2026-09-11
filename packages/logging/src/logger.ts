@@ -77,6 +77,32 @@ export const MANDATORY_REDACT_PATHS: readonly string[] = [
   'rawHtml',
   '*.rawHtml',
   'body.content',
+  // --- Phase 6C additions (ADR-0034) -------------------------------------
+  // OAuth wire names. A token-endpoint response or request logged whole would
+  // otherwise carry every one of these in snake_case.
+  'access_token',
+  '*.access_token',
+  'refresh_token',
+  '*.refresh_token',
+  'id_token',
+  '*.id_token',
+  'client_secret',
+  '*.client_secret',
+  'code_verifier',
+  '*.code_verifier',
+  'codeVerifier',
+  '*.codeVerifier',
+  'encryptedCredential',
+  '*.encryptedCredential',
+  'encryptedCodeVerifier',
+  '*.encryptedCodeVerifier',
+  'authorizationCode',
+  '*.authorizationCode',
+  // The callback query string carries a single-use code and the flow's state.
+  'query.code',
+  'query.state',
+  '*.query.code',
+  '*.query.state',
   // Payment data beyond the card number itself.
   'cvv',
   '*.cvv',

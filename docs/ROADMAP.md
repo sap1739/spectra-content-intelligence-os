@@ -84,7 +84,8 @@ providers.**
   resolves to an honest `UNSUPPORTED`, never a fabricated `PUBLISHED`. `publish-now` API,
   live-polling calendar with status + failure reason (ADR-0020).
 - Next: OAuth connection flows (encrypted vault) for the platforms that require them
-  (LinkedIn, YouTube, X); a formal DLQ dashboard.
+  (LinkedIn, YouTube, X); a formal DLQ dashboard. _(Both delivered in Phase 6: the DLQ dashboard in
+  6B, the OAuth foundation in 6C.)_
 - ✅ **Increment C — analytics v1.** Real first-party workspace reporting (`analytics/overview`):
   content funnel by lifecycle, drafts, publications by dispatch status, research runs/findings/
   packs, trends by state — all real counts. External platform engagement is honestly reported as
@@ -268,6 +269,20 @@ weakest link in the differentiator: research and evidence quality.
   Readiness gained queue and object-storage indicators as optional components, so a stalled queue
   degrades the service instead of pulling it out of the load balancer. Log redaction was widened to
   header casings, credential shapes, model input/output and extracted document text (ADR-0033).
-- Next: a metrics endpoint on the worker (pipeline series are emitted there but not yet scrapable);
-  anchor-aware citation selection (5G anchors per claim); review-queue prioritisation;
-  a DomainPolicy management UI; uploaded-document ingestion.
+- ✅ **Increment C — OAuth token brokering foundation.** One provider-neutral broker
+  (`@spectra/social-oauth`) runs the authorization-code flow for LinkedIn, Facebook Pages,
+  Instagram, Threads, YouTube, TikTok, X and Pinterest from declared, env-overridable definitions —
+  instead of eight per-adapter copies of the most security-critical code in the publishing path.
+  State is 256-bit, stored only as a hash, single-use (consumed atomically), time-limited and bound
+  to the user who started the flow, which closes login CSRF; PKCE S256 is used wherever a platform
+  accepts it. The redirect URI is computed, the return path allow-listed and the callback answers
+  every outcome with a redirect carrying one fixed code — provider text is never reflected. A flow
+  is refused before consent when tokens could not be stored; tokens are sealed as one bundle,
+  refresh re-seals under the active key, and a configurable key ring makes rotation a runbook
+  rather than a flag day. A connection (the grant) is separate from an account (the destination),
+  with discovery ports between them; none is registered, so connections honestly record discovery
+  as not available. **No OAuth platform can publish yet**, and every card and connection says so
+  (ADR-0034).
+- Next: the first OAuth publishing adapter (X or LinkedIn) behind the discovery + publisher ports;
+  a background refresh sweep ahead of token expiry; a metrics endpoint on the worker; anchor-aware
+  citation selection; review-queue prioritisation; a DomainPolicy management UI.

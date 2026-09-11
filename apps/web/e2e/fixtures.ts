@@ -65,6 +65,93 @@ export function failedJob(overrides: Record<string, unknown> = {}) {
   };
 }
 
+export const CONNECTION_ID = '00000000-0000-4000-8000-0000000000c1';
+
+const limitation = (name: string) =>
+  `Connecting stores an authorization only. No ${name} publishing adapter is wired, so a post to ${name} resolves to UNSUPPORTED and nothing is posted.`;
+
+/** GET /social/oauth/platforms: X configured, Facebook not. */
+export function oauthPlatforms(options: { credentialStorageConfigured?: boolean } = {}) {
+  const storage = options.credentialStorageConfigured ?? true;
+  return {
+    credentialStorageConfigured: storage,
+    stateTtlSeconds: 600,
+    definitionsRecordedAt: '2026-09-10',
+    platforms: [
+      {
+        platform: 'X',
+        displayName: 'X',
+        configured: true,
+        missingConfiguration: [],
+        redirectUri: 'http://localhost:4000/v1/social/oauth/x/callback',
+        scopes: ['tweet.read', 'tweet.write', 'users.read', 'offline.access'],
+        pkce: 'required',
+        refresh: 'standard',
+        approval: {
+          required: true,
+          notes: ['Posting requires an X developer account; volume depends on the paid API tier.'],
+        },
+        docsUrl: 'https://docs.x.com',
+        adapters: { publishing: false, discovery: false },
+        canConnect: storage,
+        limitation: limitation('X'),
+      },
+      {
+        platform: 'FACEBOOK',
+        displayName: 'Facebook Pages',
+        configured: false,
+        missingConfiguration: [
+          'SOCIAL_OAUTH_FACEBOOK_CLIENT_ID',
+          'SOCIAL_OAUTH_FACEBOOK_CLIENT_SECRET',
+        ],
+        redirectUri: 'http://localhost:4000/v1/social/oauth/facebook/callback',
+        scopes: ['pages_show_list', 'pages_read_engagement', 'pages_manage_posts'],
+        pkce: 'none',
+        refresh: 'none',
+        approval: {
+          required: true,
+          notes: ['Meta App Review is required for pages_manage_posts.'],
+        },
+        docsUrl: 'https://developers.facebook.com',
+        adapters: { publishing: false, discovery: false },
+        canConnect: false,
+        limitation: limitation('Facebook Pages'),
+      },
+    ],
+  };
+}
+
+/** One row of GET /social/connections, as the API presents it. */
+export function connectionRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: CONNECTION_ID,
+    platform: 'X',
+    platformDisplayName: 'X',
+    status: 'CONNECTED',
+    label: 'Acme on X',
+    externalSubjectId: null,
+    requestedScopes: ['tweet.read', 'tweet.write', 'users.read', 'offline.access'],
+    grantedScopes: ['tweet.read', 'tweet.write', 'users.read', 'offline.access'],
+    hasRefreshToken: true,
+    accessTokenExpiresAt: '2099-01-01T00:00:00.000Z',
+    accessTokenExpired: false,
+    lastRefreshedAt: null,
+    lastErrorCode: null,
+    connectedAt: '2026-09-10T09:00:00.000Z',
+    refresh: { available: true, reason: 'The access token can be refreshed.' },
+    discovery: {
+      status: 'NOT_AVAILABLE',
+      note: 'No X account-discovery adapter is wired, so no profiles, pages or channels were looked up.',
+    },
+    publishing: {
+      wired: false,
+      note: 'No X publishing adapter is wired — nothing is posted from this connection.',
+    },
+    accounts: [],
+    ...overrides,
+  };
+}
+
 export function meResponse(permissions: readonly string[] = ALL_PERMISSIONS) {
   return {
     user: {

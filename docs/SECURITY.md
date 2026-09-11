@@ -42,8 +42,14 @@ content.
   `.env.example`/compose. `.env*` gitignored.
 - OAuth/social tokens: AES-256-GCM via `encryptSecret` with a **key ring** —
   `v1.<keyId>.<iv>.<tag>.<ct>`; rotation = new active key, old ciphertexts stay decryptable
-  until re-encrypted **[P1 primitive]**. Keys come from a secret manager in production.
-- `TokenVaultPort` ensures raw tokens never reach DB rows, logs or API responses.
+  until re-encrypted **[P1]**. Keys come from a secret manager in production.
+- The ring is configured, not hard-coded (Phase 6C): `SOCIAL_TOKEN_ENCRYPTION_KEY` +
+  `SOCIAL_TOKEN_ENCRYPTION_KEY_ID` (active) and `SOCIAL_TOKEN_ENCRYPTION_RETIRED_KEYS`
+  (decrypt-only). Boot rejects a key that is not 32 bytes, a malformed retired entry, or a retired
+  id equal to the active one — naming the variable, never the value. See §14 for the runbook.
+- Raw tokens never reach DB rows, logs or API responses: credentials are stored only sealed
+  (`encryptedToken`, `encryptedCredential`, `encryptedCodeVerifier`), and those columns are never
+  selected into a response.
 
 ## 4. Logging hygiene **[P1]**
 
@@ -212,3 +218,81 @@ The operations dashboard can re-run customer work, so it is permissioned and aud
 - **Failure reasons are surfaced; payloads are not.** The listing carries a truncated error message
   and one identifying resource id, never the job payload.
 - **Every retry is audited** as `ops.job.retried` with the actor, tenant and job id.
+
+## 14. OAuth token brokering **[P1]** (Phase 6C, ADR-0034)
+
+The OAuth callback is a URL anyone can craft and send a signed-in user to, and the token endpoint
+is called with a client secret and a single-use code. Both are treated accordingly.
+
+**State and CSRF**
+
+- `state` is 32 random bytes; only its SHA-256 is stored.
+- It is **single-use**: consumed by one atomic `UPDATE … WHERE consumedAt IS NULL`. A second
+  callback with the same state is a replay — rejected with no token exchange and audited as
+  `social.oauth.replay_rejected`.
+- It **expires** after `SOCIAL_OAUTH_STATE_TTL_SECONDS` (default 600, bounded 60–1800).
+- It is **bound to the user who started the flow**. The callback requires that user's session; a
+  state presented by anyone else — including another member of the same organization — is
+  rejected and audited (`user_mismatch`), and stays usable by its owner. This is the login-CSRF
+  defence: an attacker cannot get their account attached to a victim's workspace.
+- Starting a flow is a `POST` behind the Origin check (§5). The callback is a `GET` and relies on
+  the state binding. It needs the `SameSite=Lax` session cookie to arrive on the platform's
+  top-level redirect — **do not tighten that cookie to `Strict`**, or every callback fails.
+- `social:connect` is re-checked at the callback; losing it mid-flow yields `forbidden`.
+
+**PKCE** — S256 whenever the platform accepts it (required for X); `plain` is never used. The
+verifier is sealed at rest.
+
+**Redirect allow-list**
+
+- The OAuth `redirect_uri` is computed from `SOCIAL_OAUTH_REDIRECT_BASE_URL` and a fixed path per
+  platform. No endpoint accepts one from a caller.
+- The browser is returned only to `WEB_APP_URL`, which boot validation requires to be one of
+  `API_CORS_ORIGIN`, plus a path from `OAUTH_RETURN_PATHS`.
+- The callback appends one outcome code from a fixed enum. The web app renders fixed copy for known
+  codes and ignores anything else; provider `error_description` is never reflected.
+- In production every OAuth URL — redirect base and any endpoint override — must be https.
+
+**Token handling**
+
+- Access and refresh tokens are stored as **one sealed bundle**; a flow is refused before consent
+  when `SOCIAL_TOKEN_ENCRYPTION_KEY` is missing, so no token is ever held unsealed or discarded
+  after a user approved it.
+- The token client refuses redirects (a redirect would re-send the secret and code elsewhere),
+  times out, and reports errors as platform + HTTP status + provider error code only.
+- Log redaction covers `access_token`, `refresh_token`, `id_token`, `client_secret`,
+  `code_verifier`, `codeVerifier`, `encryptedCredential`, `encryptedCodeVerifier`,
+  `authorizationCode`, and the callback's `query.code`/`query.state` (regression-tested).
+- Unexpected callback failures log the error **name** only — a database error message can quote
+  the values it was given.
+- Client secrets never appear in a response, a URL or a log. Missing configuration is reported by
+  environment-variable **name**.
+
+**Tenant isolation** — `SocialConnection`, `SocialOAuthAttempt` and (now) `SocialAccount` are in
+the tenant guard. The callback's lookup is scoped to the caller's own organizations; every
+connection route is workspace-scoped, and a foreign connection returns the same 404 as a missing
+one.
+
+**Audit** — `social.oauth.started`, `.denied`, `.failed`, `.state_rejected`, `.replay_rejected`,
+`social.connection.created`, `.reconnected`, `.refreshed`, `.refresh_failed`, `.disconnected`.
+Change sets carry platform, scopes, outcome and key id — never a token.
+
+**Disconnect** asks the platform to revoke where it has a standard endpoint and reports the result
+(`REVOKED`/`NOT_SUPPORTED`/`FAILED`/`SKIPPED`), then deletes the stored credential regardless.
+Where revocation is unsupported (LinkedIn, the Meta family) the user is told to remove access in
+the platform's own settings.
+
+**Key rotation runbook**
+
+1. Generate a key: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`.
+2. In the API **and** the worker set `SOCIAL_TOKEN_ENCRYPTION_KEY=<new>`,
+   `SOCIAL_TOKEN_ENCRYPTION_KEY_ID=social-v2`, and
+   `SOCIAL_TOKEN_ENCRYPTION_RETIRED_KEYS=social-v1:<old>`. Deploy both.
+3. New credentials seal under `social-v2`; old ones stay readable. Every refresh or reconnect
+   re-seals a connection under the active key.
+4. Track progress: `credentialKeyId = 'social-v1'` on `social_connections` and `social_accounts`.
+5. When no row still uses the old id, remove it from `SOCIAL_TOKEN_ENCRYPTION_RETIRED_KEYS`.
+   Removing it earlier makes those credentials unreadable — refresh reports `FAILED` and the
+   connection needs reconnecting.
+
+A bulk re-seal job for long-idle rows is not built yet; today rotation advances on write.

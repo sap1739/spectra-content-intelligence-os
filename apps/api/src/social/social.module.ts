@@ -2,6 +2,10 @@ import { Module } from '@nestjs/common';
 import { socialPublisherRegistry } from '@spectra/social-core';
 import { registerWordPressAdapter } from '@spectra/social-wordpress';
 
+import { ConnectionsService } from './oauth/connections.service';
+import { OAuthCallbackController, SocialOAuthController } from './oauth/oauth.controller';
+import { OAuthConfigService } from './oauth/oauth-config.service';
+import { OAuthService } from './oauth/oauth.service';
 import { SocialAccountsController, SocialController } from './social.controller';
 import { SocialService } from './social.service';
 
@@ -11,7 +15,12 @@ import { SocialService } from './social.service';
 registerWordPressAdapter(socialPublisherRegistry);
 
 @Module({
-  controllers: [SocialController, SocialAccountsController],
-  providers: [SocialService],
+  controllers: [
+    SocialController,
+    SocialAccountsController,
+    SocialOAuthController,
+    OAuthCallbackController,
+  ],
+  providers: [SocialService, OAuthConfigService, OAuthService, ConnectionsService],
 })
 export class SocialModule {}

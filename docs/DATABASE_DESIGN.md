@@ -94,15 +94,38 @@ cascade; `campaignId`, `brandId`, `verticalId` use `SET NULL`.
 
 ## 8. Phase 4 publishing entities
 
-| Table           | Purpose                                              | Key constraints / indexes    |
-| --------------- | ---------------------------------------------------- | ---------------------------- |
-| social_accounts | A publishing target (platform, handle, kind, status) | index(workspaceId, platform) |
+| Table                 | Purpose                                                | Key constraints / indexes                                             |
+| --------------------- | ------------------------------------------------------ | --------------------------------------------------------------------- |
+| social_accounts       | A publishing target (platform, handle, kind, status)   | index(workspaceId, platform), index(connectionId)                     |
+| social_connections    | One OAuth grant: sealed token bundle + expiry (6C)     | index(workspaceId, platform), index(organizationId, credentialKeyId)  |
+| social_oauth_attempts | A started OAuth flow: state hash, sealed PKCE verifier | unique(stateHash), index(organizationId, createdAt), index(expiresAt) |
 
 `social_accounts` are registered targets, created `PENDING` (not OAuth-verified — no live
 adapter is wired). Any stored credential lives ONLY in `encryptedToken` (AES-256-GCM via
 `@spectra/security`, env-gated on `SOCIAL_TOKEN_ENCRYPTION_KEY`) and is **never** selected into
 an API response; `tokenRef` is an opaque handle. Disconnect soft-deletes and purges the sealed
 credential (ADR-0019). Org/workspace cascade.
+
+**OAuth connections (Phase 6C, ADR-0034).** `social_connections` holds one grant per row: status
+(`CONNECTED`/`EXPIRED`/`REAUTH_REQUIRED`/`REVOKED`/`ERROR`), requested and granted scopes,
+`grantedScopesReported` (false = the platform did not say — `grantedScopes` is then _unknown_, not
+empty), the access and refresh tokens as ONE sealed JSON bundle in `encryptedCredential`
+(never selected into a response), `credentialKeyId`, `hasRefreshToken`, access/refresh expiry,
+`lastErrorCode` (a code such as `invalid_grant`, never a provider body) and `discoveryStatus`
+(`NOT_AVAILABLE` = no discovery adapter ran, distinct from `COMPLETE` with zero accounts).
+Disconnect sets `disconnectedAt`, `REVOKED` and nulls the credential; rows are kept for audit.
+
+`social_oauth_attempts` records each started flow, bound to the initiating `userId`: the SHA-256 of
+the state (unique), the sealed PKCE verifier, the computed redirect URI, the allow-listed return
+path, `expiresAt`, and `consumedAt` — set by one atomic update, which is what makes a replay
+detectable. `outcome`/`failureCode` record denials and failures. Attempts older than a day are
+pruned when a new flow starts.
+
+`social_accounts` gained `connectionId` (SET NULL on connection delete), `discoveryMetadata`
+(allow-listed primitives only) and `credentialKeyId`. The migration backfills `credentialKeyId` from
+existing ciphertexts (`split_part(encryptedToken, '.', 2)`), so rotation can find WordPress
+credentials sealed before 6C. `SocialAccount`, `SocialConnection` and `SocialOAuthAttempt` are all
+in the tenant guard.
 
 `content_schedule_entries` double as the **publication record** (ADR-0020): an optional
 `socialAccountId` target, a unique `idempotencyKey`, and `attemptCount`/`lastAttemptAt`/

@@ -38,6 +38,7 @@
     "@spectra/research-core": "workspace:*",
     "@spectra/security": "workspace:*",
     "@spectra/social-core": "workspace:*",
+    "@spectra/social-oauth": "workspace:*",
     "@spectra/social-wordpress": "workspace:*",
     "@spectra/storage": "workspace:*",
     "@spectra/telemetry": "workspace:*",

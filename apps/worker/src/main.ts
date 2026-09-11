@@ -6,7 +6,7 @@ import { AnthropicTextGenerationProvider } from '@spectra/ai-anthropic';
 import { VoyageEmbeddingProvider } from '@spectra/ai-voyage';
 import { BraveNewsSearchProvider, BraveWebSearchProvider } from '@spectra/research-brave';
 import { ResearchProviderRegistry } from '@spectra/research-core';
-import { loadEnv, storageEnvSchema, workerEnvSchema } from '@spectra/config';
+import { loadEnv, socialKeyRingFromEnv, storageEnvSchema, workerEnvSchema } from '@spectra/config';
 import { executeContentDraft } from '@spectra/content-pipeline';
 import { createPrismaClient } from '@spectra/database';
 import { FirstPartyDocumentExtractor } from '@spectra/document-extract';
@@ -326,10 +326,9 @@ async function main(): Promise<void> {
   // key — returns undefined, which the executor records as an honest
   // UNSUPPORTED. The decrypted secret never leaves this closure and is never
   // logged.
-  const SOCIAL_KEY_ID = 'social-v1';
-  const socialRing: KeyRing | undefined = env.SOCIAL_TOKEN_ENCRYPTION_KEY
-    ? { keys: { [SOCIAL_KEY_ID]: env.SOCIAL_TOKEN_ENCRYPTION_KEY }, activeKeyId: SOCIAL_KEY_ID }
-    : undefined;
+  // The ring includes retired keys, so credentials sealed before a rotation
+  // stay publishable (ADR-0034).
+  const socialRing: KeyRing | undefined = socialKeyRingFromEnv(env);
   if (!socialRing) {
     logger.warn(
       'SOCIAL_TOKEN_ENCRYPTION_KEY is not set — publishing resolves to UNSUPPORTED for all platforms',

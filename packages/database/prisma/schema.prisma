@@ -57,6 +57,7 @@ model User {
   domainPolicies        DomainPolicy[]
   extractedClaims       ExtractedClaim[]
   claimReviews          ClaimReview[]
+  socialOAuthAttempts   SocialOAuthAttempt[]
 
   @@index([status])
   @@map("users")
@@ -122,6 +123,8 @@ model Organization {
   scheduleEntries       ContentScheduleEntry[]
   mediaAssets           MediaAsset[]
   socialAccounts        SocialAccount[]
+  socialConnections     SocialConnection[]
+  socialOAuthAttempts   SocialOAuthAttempt[]
 
   @@map("organizations")
 }
@@ -231,6 +234,8 @@ model Workspace {
   scheduleEntries       ContentScheduleEntry[]
   mediaAssets           MediaAsset[]
   socialAccounts        SocialAccount[]
+  socialConnections     SocialConnection[]
+  socialOAuthAttempts   SocialOAuthAttempt[]
   usageEvents           UsageEvent[]
   workspaceBudget       WorkspaceBudget?
   budgetOperationLimits BudgetOperationLimit[]
@@ -1469,8 +1474,10 @@ enum SocialAccountKind {
 
 /// A publishing target. Any stored credential lives ONLY in `encryptedToken`
 /// (AES-256-GCM via @spectra/security) and is NEVER returned by the API;
-/// `tokenRef` is an opaque handle. No live platform is wired in Phase 4A —
-/// accounts stay PENDING until an adapter verifies them.
+/// `tokenRef` is an opaque handle. Registered targets start PENDING. Targets
+/// found by account discovery through an OAuth connection (ADR-0034) carry
+/// `connectionId` and start CONNECTED — they were verified by the platform,
+/// though publishing still needs a wired adapter.
 model SocialAccount {
   id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId    String              @db.Uuid
@@ -1485,6 +1492,12 @@ model SocialAccount {
   tokenRef          String?
   /// AES-256-GCM sealed credential. NEVER selected into API responses.
   encryptedToken    String?
+  /// Key id that sealed `encryptedToken` — rotation bookkeeping, not a secret.
+  credentialKeyId   String?
+  /// The OAuth connection this account was discovered through, if any.
+  connectionId      String?             @db.Uuid
+  /// Allow-listed discovery metadata (primitives only). Never a provider payload.
+  discoveryMetadata Json                @default("{}")
   connectedById     String?             @db.Uuid
   connectedAt       DateTime            @default(now()) @db.Timestamptz(6)
   lastRefreshedAt   DateTime?           @db.Timestamptz(6)
@@ -1493,11 +1506,130 @@ model SocialAccount {
   updatedAt DateTime  @updatedAt @db.Timestamptz(6)
   deletedAt DateTime? @db.Timestamptz(6)
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connection   SocialConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId, platform])
+  @@index([connectionId])
   @@map("social_accounts")
+}
+
+// ---------------------------------------------------------------------------
+// Publishing — OAuth connections (Phase 6C, ADR-0034)
+// ---------------------------------------------------------------------------
+
+enum SocialConnectionStatus {
+  CONNECTED
+  /// The access token has expired. Refreshable connections recover via refresh.
+  EXPIRED
+  /// The platform rejected a refresh; only a new authorization fixes it.
+  REAUTH_REQUIRED
+  REVOKED
+  ERROR
+}
+
+/// NOT_AVAILABLE = no discovery adapter is wired for the platform, so nothing
+/// was looked up. Distinct from COMPLETE with zero accounts.
+enum AccountDiscoveryStatus {
+  NOT_AVAILABLE
+  COMPLETE
+  FAILED
+}
+
+enum OAuthAttemptMode {
+  CONNECT
+  RECONNECT
+}
+
+enum OAuthAttemptOutcome {
+  CONNECTED
+  DENIED
+  FAILED
+}
+
+/// One OAuth grant: the platform authorized Spectra, and this row holds the
+/// resulting tokens as ONE sealed bundle (`encryptedCredential`). A connection
+/// can yield several publishing destinations (SocialAccount rows) through
+/// discovery. `encryptedCredential` is NEVER selected into API responses.
+model SocialConnection {
+  id                    String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId        String                 @db.Uuid
+  workspaceId           String                 @db.Uuid
+  platform              SocialPlatform
+  status                SocialConnectionStatus @default(CONNECTED)
+  label                 String
+  /// The platform's subject id when its token response carried one. NULL = not
+  /// reported; never invented.
+  externalSubjectId     String?
+  requestedScopes       String[]               @default([])
+  grantedScopes         String[]               @default([])
+  /// False when the platform did not say what it granted. `grantedScopes` is
+  /// then empty because it is UNKNOWN — not because nothing was granted.
+  grantedScopesReported Boolean                @default(false)
+  /// AES-256-GCM sealed JSON { accessToken, refreshToken, tokenType }.
+  encryptedCredential   String?
+  /// Key id that sealed `encryptedCredential` — lets rotation find stale rows.
+  credentialKeyId       String?
+  hasRefreshToken       Boolean                @default(false)
+  accessTokenExpiresAt  DateTime?              @db.Timestamptz(6)
+  refreshTokenExpiresAt DateTime?              @db.Timestamptz(6)
+  lastRefreshedAt       DateTime?              @db.Timestamptz(6)
+  /// Code of the last token failure (e.g. `invalid_grant`). Never a provider body.
+  lastErrorCode         String?
+  discoveryStatus       AccountDiscoveryStatus @default(NOT_AVAILABLE)
+  discoveredAt          DateTime?              @db.Timestamptz(6)
+  connectedById         String?                @db.Uuid
+  connectedAt           DateTime               @default(now()) @db.Timestamptz(6)
+  disconnectedAt        DateTime?              @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  accounts     SocialAccount[]
+  attempts     SocialOAuthAttempt[]
+
+  @@index([workspaceId, platform])
+  @@index([organizationId, credentialKeyId])
+  @@map("social_connections")
+}
+
+/// A started OAuth flow, bound to the user and browser session that started
+/// it. Only the SHA-256 of `state` is stored. `consumedAt` is set atomically on
+/// first use, so a second callback with the same state is a detectable replay.
+model SocialOAuthAttempt {
+  id                    String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId        String               @db.Uuid
+  workspaceId           String               @db.Uuid
+  userId                String               @db.Uuid
+  platform              SocialPlatform
+  mode                  OAuthAttemptMode     @default(CONNECT)
+  /// Set for RECONNECT (the connection being renewed) and on success.
+  connectionId          String?              @db.Uuid
+  label                 String
+  stateHash             String               @unique
+  /// Sealed PKCE verifier; NULL when the platform does not use PKCE.
+  encryptedCodeVerifier String?
+  redirectUri           String
+  requestedScopes       String[]             @default([])
+  /// Allow-listed web path the callback returns to.
+  returnPath            String
+  expiresAt             DateTime             @db.Timestamptz(6)
+  consumedAt            DateTime?            @db.Timestamptz(6)
+  outcome               OAuthAttemptOutcome?
+  failureCode           String?
+  createdAt             DateTime             @default(now()) @db.Timestamptz(6)
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  connection   SocialConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([expiresAt])
+  @@map("social_oauth_attempts")
 }
 
 // ---------------------------------------------------------------------------

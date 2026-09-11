@@ -110,3 +110,20 @@ re-registered on boot).
 
 Multi-region posture, per-tenant rate-limit tiers, queue partitioning by tenant size, RLS
 enablement, CDN strategy for media delivery.
+
+## 7. Social OAuth (Phase 6C, ADR-0034)
+
+- **Secrets:** `SOCIAL_OAUTH_<PLATFORM>_CLIENT_SECRET` and `SOCIAL_TOKEN_ENCRYPTION_KEY` come from the
+  secret manager, never the image. Half a client pair, a non-32-byte key, or an http OAuth URL in
+  production fails boot with the variable named.
+- **Redirect URIs:** register `<SOCIAL_OAUTH_REDIRECT_BASE_URL>/v1/social/oauth/<platform>/callback`
+  for each platform in its developer console. The base must be the API's public https origin (and
+  path prefix, if the API is served under one).
+- **Return origin:** `WEB_APP_URL` must be one of `API_CORS_ORIGIN`; the callback only ever
+  redirects there.
+- **Session cookie:** keep it `SameSite=Lax`. The callback arrives as a cross-site top-level
+  redirect; `Strict` would drop the session and fail every connection with `session_required`.
+- **Key rotation:** set the same key ring in the API and the worker; the runbook is
+  `docs/SECURITY.md` §14.
+- **Metrics:** `spectra_oauth_flows_total{platform,stage,outcome}` counts starts, callbacks,
+  refreshes and disconnects by outcome — a rise in `state_invalid` or `replayed` is worth an alert.

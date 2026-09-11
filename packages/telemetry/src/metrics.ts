@@ -212,6 +212,7 @@ export const METRICS = {
   publishAttemptDuration: 'spectra_publish_attempt_duration_ms',
   budgetBlocked: 'spectra_budget_blocked_total',
   opsJobRetries: 'spectra_ops_job_retries_total',
+  oauthFlows: 'spectra_oauth_flows_total',
 } as const;
 
 /** Registers every metric the platform reports. */
@@ -231,6 +232,10 @@ export function createRegistry(): MetricsRegistry {
   registry.histogram(METRICS.publishAttemptDuration, 'Publish attempt duration in milliseconds.');
   registry.counter(METRICS.budgetBlocked, 'Operations refused by a budget pre-flight.');
   registry.counter(METRICS.opsJobRetries, 'Failed jobs re-run from the operations dashboard.');
+  registry.counter(
+    METRICS.oauthFlows,
+    'OAuth start, callback, refresh and disconnect outcomes by platform.',
+  );
   return registry;
 }
 

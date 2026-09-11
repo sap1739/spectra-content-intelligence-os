@@ -1,5 +1,7 @@
 export {
   EnvValidationError,
+  SOCIAL_OAUTH_KEY_SUFFIXES,
+  SOCIAL_OAUTH_PLATFORM_IDS,
   aiEnvSchema,
   apiEnvSchema,
   databaseEnvSchema,
@@ -8,10 +10,22 @@ export {
   nodeEnvSchema,
   redisEnvSchema,
   researchEnvSchema,
+  parseRetiredEncryptionKeys,
   socialEnvSchema,
+  socialKeyRingFromEnv,
+  socialOAuthEnvKey,
+  socialOAuthEnvSchema,
   telemetryEnvSchema,
   storageEnvSchema,
   webEnvSchema,
   workerEnvSchema,
 } from './env';
-export type { ApiEnv, StorageEnv, WebEnv, WorkerEnv } from './env';
+export type {
+  ApiEnv,
+  SocialOAuthEnvKey,
+  SocialOAuthKeySuffix,
+  SocialOAuthPlatformId,
+  StorageEnv,
+  WebEnv,
+  WorkerEnv,
+} from './env';

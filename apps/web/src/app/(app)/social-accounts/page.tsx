@@ -13,17 +13,31 @@ import {
   Skeleton,
   cn,
 } from '@spectra/ui';
-import { CircleCheck, Share2, TriangleAlert, X } from 'lucide-react';
+import { CircleCheck, Lock, Share2, TriangleAlert, X } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import * as React from 'react';
 
 import { PageHeader } from '@/components/page-header';
-import { usePermissions, useWorkspace } from '@/lib/auth';
 import {
+  ConnectPlatforms,
+  ConnectionsList,
+  OAuthResultBanner,
+} from '@/components/social/oauth-panels';
+import { usePermissions, useWorkspace } from '@/lib/auth';
+import { oauthPlatformFrom, oauthResultFrom } from '@/lib/oauth-results';
+import {
+  useConnections,
+  useDisconnectConnection,
   useDisconnectSocialAccount,
+  useOAuthPlatforms,
   usePlatforms,
+  useReconnectConnection,
+  useRefreshConnection,
   useRegisterSocialAccount,
   useSocialAccounts,
+  useStartOAuth,
   useValidateVariant,
+  type OAuthPlatformEntry,
   type PlatformCapability,
 } from '@/lib/social';
 
@@ -126,6 +140,150 @@ function VariantValidator({ workspaceId }: { workspaceId: string }) {
   );
 }
 
+/**
+ * The outcome of an OAuth callback, read from the URL. Only known codes and
+ * known platforms render — the query string itself is never shown.
+ */
+function OAuthResultFromUrl({ platforms }: { platforms: OAuthPlatformEntry[] }) {
+  const params = useSearchParams();
+  const router = useRouter();
+  const message = oauthResultFrom(params.get('oauth'));
+  if (!message) return null;
+  const platformId = oauthPlatformFrom(params.get('platform'));
+  const platformName = platformId
+    ? (platforms.find((p) => p.platform === platformId)?.displayName ?? platformId)
+    : null;
+  return (
+    <OAuthResultBanner
+      message={message}
+      platformName={platformName}
+      onDismiss={() => router.replace('/social-accounts')}
+    />
+  );
+}
+
+/** OAuth connections (Phase 6C). Rendered only for callers with social:connect. */
+function OAuthSection({ workspaceId }: { workspaceId: string }) {
+  const platforms = useOAuthPlatforms(workspaceId);
+  const connections = useConnections(workspaceId);
+  const startOAuth = useStartOAuth(workspaceId);
+  const reconnect = useReconnectConnection(workspaceId);
+  const refresh = useRefreshConnection(workspaceId);
+  const disconnect = useDisconnectConnection(workspaceId);
+
+  const [pendingPlatform, setPendingPlatform] = React.useState<string | null>(null);
+  const [busyId, setBusyId] = React.useState<string | null>(null);
+  const [feedback, setFeedback] = React.useState<{
+    tone: 'success' | 'error';
+    text: string;
+  } | null>(null);
+
+  const platformEntries =
+    platforms.data && Array.isArray(platforms.data.platforms) ? platforms.data.platforms : [];
+
+  const onConnect = async (platform: string) => {
+    setPendingPlatform(platform);
+    try {
+      const { authorizationUrl } = await startOAuth.mutateAsync(platform);
+      // The platform's consent screen. It returns to the API callback, which
+      // redirects back here with an outcome code.
+      window.location.assign(authorizationUrl);
+    } catch {
+      setPendingPlatform(null);
+    }
+  };
+
+  const onReconnect = async (id: string) => {
+    setBusyId(id);
+    setFeedback(null);
+    try {
+      const { authorizationUrl } = await reconnect.mutateAsync(id);
+      window.location.assign(authorizationUrl);
+    } catch (error) {
+      setBusyId(null);
+      setFeedback({ tone: 'error', text: (error as Error).message });
+    }
+  };
+
+  const onRefresh = async (id: string) => {
+    setBusyId(id);
+    setFeedback(null);
+    try {
+      const result = await refresh.mutateAsync(id);
+      setFeedback({
+        tone: result.status === 'REFRESHED' ? 'success' : 'error',
+        text: result.detail,
+      });
+    } catch (error) {
+      setFeedback({ tone: 'error', text: (error as Error).message });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const onDisconnect = async (id: string) => {
+    setBusyId(id);
+    setFeedback(null);
+    try {
+      const result = await disconnect.mutateAsync(id);
+      setFeedback({
+        tone: result.providerRevocation === 'REVOKED' ? 'success' : 'error',
+        text: result.note,
+      });
+    } catch (error) {
+      setFeedback({ tone: 'error', text: (error as Error).message });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <div className="mb-6 flex flex-col gap-6">
+      <React.Suspense fallback={null}>
+        <OAuthResultFromUrl platforms={platformEntries} />
+      </React.Suspense>
+
+      {connections.isPending ? (
+        <Skeleton className="h-24 w-full" />
+      ) : connections.isError ? (
+        <EmptyState
+          icon={<Share2 />}
+          title="Could not load connections"
+          description={connections.error.message}
+        />
+      ) : (
+        <ConnectionsList
+          connections={Array.isArray(connections.data) ? connections.data : []}
+          canManage
+          busyId={busyId}
+          onRefresh={onRefresh}
+          onReconnect={onReconnect}
+          onDisconnect={onDisconnect}
+          feedback={feedback}
+        />
+      )}
+
+      {platforms.isPending ? (
+        <Skeleton className="h-40 w-full" />
+      ) : platforms.isError ? (
+        <EmptyState
+          icon={<Share2 />}
+          title="Could not load platform configuration"
+          description={platforms.error.message}
+        />
+      ) : platforms.data && Array.isArray(platforms.data.platforms) ? (
+        <ConnectPlatforms
+          data={platforms.data}
+          canManage
+          pendingPlatform={pendingPlatform}
+          onConnect={onConnect}
+          error={startOAuth.isError ? startOAuth.error.message : null}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 export default function SocialAccountsPage() {
   const { activeWorkspace } = useWorkspace();
   const workspaceId = activeWorkspace.id;
@@ -172,8 +330,20 @@ export default function SocialAccountsPage() {
     <>
       <PageHeader
         title="Social Accounts"
-        description="Register publishing targets and validate content against each platform’s capabilities. Live posting activates when a platform adapter is configured."
+        description="Connect platforms over OAuth, register publishing targets, and validate content against each platform’s capabilities. Live posting activates only where a platform adapter is wired."
       />
+
+      {canConnect ? (
+        <OAuthSection workspaceId={workspaceId} />
+      ) : (
+        <Card className="mb-6">
+          <CardContent className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+            <Lock aria-hidden="true" className="size-4 shrink-0" />
+            Viewing and managing platform connections requires the{' '}
+            <code className="rounded bg-muted px-1">social:connect</code> permission.
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="mb-6 border-amber-500/40 bg-amber-500/5">
         <CardContent className="flex items-start gap-3 py-4">

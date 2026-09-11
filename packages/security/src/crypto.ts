@@ -69,6 +69,26 @@ export function decryptSecret(payload: string, ring: KeyRing): string {
   }
 }
 
+/**
+ * The key id a ciphertext was sealed with, or null when the payload is not a
+ * v1 ciphertext. Key ids are not secret — this is what lets rotation find the
+ * credentials still sealed under a retired key.
+ */
+export function sealedKeyId(payload: string): string | null {
+  const parts = payload.split('.');
+  if (parts.length !== 5 || parts[0] !== FORMAT_VERSION) return null;
+  return parts[1] || null;
+}
+
+/**
+ * True when a ciphertext was sealed with a key other than the ring's active
+ * key, i.e. rotation has not reached it yet. Re-sealing it (decrypt, then
+ * encrypt) moves it onto the active key.
+ */
+export function needsReseal(payload: string, ring: KeyRing): boolean {
+  return sealedKeyId(payload) !== ring.activeKeyId;
+}
+
 /** Generates a new base64 key suitable for the key ring (dev/test tooling). */
 export function generateEncryptionKey(): string {
   return randomBytes(KEY_LENGTH_BYTES).toString('base64');

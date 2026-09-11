@@ -1,0 +1,25 @@
+{
+  "name": "@spectra/social-oauth",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Provider-neutral OAuth 2.0 token brokering for social platforms: declared endpoints, PKCE, state, token exchange/refresh/revocation and sealed token bundles. Brokers authorization only — it publishes nothing.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run src",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@spectra/config": "workspace:*",
+    "@spectra/contracts": "workspace:*",
+    "@spectra/security": "workspace:*",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.0"
+  }
+}

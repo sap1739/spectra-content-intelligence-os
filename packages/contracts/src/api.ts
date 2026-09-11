@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { languageCodeSchema, slugSchema, uuidSchema } from './common';
 import { imageOperationSchema } from './media';
-import { socialPlatformSchema } from './social';
+import { oauthReturnPathSchema, socialPlatformSchema } from './social';
 import { contentTypeSchema, funnelStageSchema } from './strategy';
 import { permissionSchema, roleSchema } from './tenancy';
 import { customVerticalSchema } from './vertical';
@@ -430,6 +430,21 @@ export const validateVariantInputSchema = z.object({
     .optional(),
 });
 export type ValidateVariantInput = z.infer<typeof validateVariantInputSchema>;
+
+// ---------------------------------------------------------------------------
+// Publishing — OAuth connections (Phase 6C, ADR-0034)
+// ---------------------------------------------------------------------------
+
+export const startOAuthInputSchema = z.object({
+  /** Operator-facing name for the connection, e.g. "Acme LinkedIn". */
+  label: z.string().trim().min(1).max(120).optional(),
+  /** Allow-listed return path on the web app — never a URL. */
+  returnPath: oauthReturnPathSchema.default('/social-accounts'),
+});
+export type StartOAuthInput = z.infer<typeof startOAuthInputSchema>;
+
+export const reconnectOAuthInputSchema = startOAuthInputSchema.pick({ returnPath: true });
+export type ReconnectOAuthInput = z.infer<typeof reconnectOAuthInputSchema>;
 
 // ---------------------------------------------------------------------------
 // Workspace budgets (Phase 5E)

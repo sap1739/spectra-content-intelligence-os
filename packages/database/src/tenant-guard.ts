@@ -33,6 +33,11 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'OrganizationBudget',
   'BudgetOperationLimit',
   'BudgetReservation',
+  // Publishing credentials (ADR-0019, ADR-0034). These rows hold sealed tokens,
+  // so an unscoped multi-row read is exactly the query that must never run.
+  'SocialAccount',
+  'SocialConnection',
+  'SocialOAuthAttempt',
 ]);
 
 const GUARDED_OPERATIONS: ReadonlySet<string> = new Set([

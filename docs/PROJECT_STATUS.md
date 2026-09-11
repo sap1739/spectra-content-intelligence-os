@@ -1,7 +1,7 @@
 # SpectraContent Intelligence OS — Project Status
 
-**Snapshot date:** 2026-09-10 · **Branch:** `main`
-**Status:** Phases 1–5 complete · Phase 6 in progress (6A, 6B shipped)
+**Snapshot date:** 2026-09-11 · **Branch:** `main`
+**Status:** Phases 1–5 complete · Phase 6 in progress (6A, 6B, 6C shipped)
 
 > This document is a factual, audited snapshot intended as context for planning further work.
 > Every number below was measured from the repository, not estimated.
@@ -89,14 +89,14 @@ gives real end-to-end coverage of worker logic without running a worker.
 
 | Metric               | Value                                                           |
 | -------------------- | --------------------------------------------------------------- |
-| Commits              | 29                                                              |
-| Packages             | 29                                                              |
+| Commits              | 31                                                              |
+| Packages             | 30                                                              |
 | Apps                 | 3 (`api`, `web`, `worker`)                                      |
-| TypeScript/TSX lines | ~43,300 (api 10,555 · web 9,367 · worker 532 · packages 22,834) |
-| API routes           | 110 across 28 controllers                                       |
-| Prisma models        | 40                                                              |
-| Migrations           | 24                                                              |
-| ADRs                 | 33                                                              |
+| TypeScript/TSX lines | ~47,300 (api 12,822 · web 9,935 · worker 531 · packages 24,036) |
+| API routes           | 118 across 29 controller files                                  |
+| Prisma models        | 42                                                              |
+| Migrations           | 25                                                              |
+| ADRs                 | 34                                                              |
 | Permissions          | 35 (permission-oriented authz; never role-name branching)       |
 | Web pages            | 21 (all real — placeholders removed in 6A)                      |
 
@@ -125,7 +125,8 @@ claim-verification/ Corroboration, contradiction, staleness, eligibility  [Phase
 document-extract/ PDF/DOCX/TXT extraction with citation anchors           [Phase 5G]
 media-core/       Rendering ports (image/video/audio/subtitles)
 media-sharp/      Real sharp ImageRenderer adapter
-social-core/      SocialPublisher + PostPublisher ports, capability matrix, validation
+social-core/      SocialPublisher + PostPublisher + account-discovery ports, capability matrix
+social-oauth/     Provider-neutral OAuth broker: state, PKCE, tokens, sealed bundles [Phase 6C]
 social-wordpress/ Real WordPress adapter (REST + application password)   [Phase 4D]
 publishing/       Dispatch machinery + per-account publisher resolution
 workflow-core/    Queue-neutral job ports; BullMQ + in-memory adapters; queue inspector
@@ -254,49 +255,80 @@ standards, health/readiness endpoints, OpenAPI at `/docs`.
   optional `job-queue` and `object-storage` indicators, so a stalled queue degrades the service
   instead of pulling it out of the load balancer. Log redaction widened to header casings,
   credential shapes, model input/output and extracted document text (ADR-0033).
+- **6C:** **OAuth token brokering foundation.** One provider-neutral broker
+  (`@spectra/social-oauth`) runs the authorization-code flow for LinkedIn, Facebook Pages,
+  Instagram, Threads, YouTube, TikTok, X and Pinterest from declared, env-overridable endpoint
+  definitions — replacing a Phase 1 port that would have put OAuth in every adapter. State is
+  256-bit, stored only as a hash, single-use (consumed atomically), time-limited and bound to the
+  user who started the flow, closing login CSRF; PKCE S256 wherever the platform accepts it. The
+  redirect URI is computed, the return path allow-listed, and the callback answers every outcome
+  with a redirect carrying one fixed code — provider text is never reflected. Flows are refused
+  **before consent** when tokens could not be stored; access and refresh tokens are sealed as one
+  bundle; refresh re-seals under the active key; a configurable key ring
+  (`SOCIAL_TOKEN_ENCRYPTION_KEY_ID` / `_RETIRED_KEYS`) turns key rotation into a runbook. A
+  connection (the grant) is separate from an account (the destination), with identity /
+  destination / capability discovery ports between them — none registered, so connections
+  honestly record discovery as not available. Disconnect asks the platform to revoke where it can,
+  reports whether it did, and purges the credential regardless. **No OAuth platform can publish
+  yet**; every platform card and connection says so (ADR-0034).
 
 ---
 
 ## 6. Integration status (what is actually live)
 
-| Integration                                                                  | Status                                     | Gate                                                    |
-| ---------------------------------------------------------------------------- | ------------------------------------------ | ------------------------------------------------------- |
-| Anthropic (text generation)                                                  | **Real, working**                          | `ANTHROPIC_API_KEY`                                     |
-| Voyage (embeddings)                                                          | **Real, working**                          | `VOYAGE_API_KEY`                                        |
-| Brave (web + news search)                                                    | **Real, working**                          | `BRAVE_SEARCH_API_KEY`                                  |
-| WordPress (publishing)                                                       | **Real, working**                          | Per-account credential + `SOCIAL_TOKEN_ENCRYPTION_KEY`  |
-| sharp (image rendering)                                                      | **Real, working**                          | none (local)                                            |
-| PostgreSQL / Redis / MinIO                                                   | **Real, working**                          | docker-compose                                          |
-| RSS/Atom ingestion                                                           | **Real, working** (first-party parser)     | none                                                    |
-| X, LinkedIn, Facebook, Instagram, TikTok, YouTube, Threads, Pinterest, Email | **Declared capabilities only — NOT wired** | resolve `UNSUPPORTED`                                   |
-| External engagement analytics                                                | **Not built**                              | reports `externalAvailable: false`                      |
-| Payments / billing / plans                                                   | **Not built**                              | usage page states nothing is charged                    |
-| OpenTelemetry tracing                                                        | **Real, optional**                         | `OTEL_EXPORTER_OTLP_ENDPOINT` (unset => SDK not loaded) |
-| Prometheus metrics                                                           | **Real, working**                          | `GET /v1/meta/metrics` (API series only — see below)    |
+| Integration                                                                                | Status                                                                    | Gate                                                                                       |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Anthropic (text generation)                                                                | **Real, working**                                                         | `ANTHROPIC_API_KEY`                                                                        |
+| Voyage (embeddings)                                                                        | **Real, working**                                                         | `VOYAGE_API_KEY`                                                                           |
+| Brave (web + news search)                                                                  | **Real, working**                                                         | `BRAVE_SEARCH_API_KEY`                                                                     |
+| WordPress (publishing)                                                                     | **Real, working**                                                         | Per-account credential + `SOCIAL_TOKEN_ENCRYPTION_KEY`                                     |
+| sharp (image rendering)                                                                    | **Real, working**                                                         | none (local)                                                                               |
+| PostgreSQL / Redis / MinIO                                                                 | **Real, working**                                                         | docker-compose                                                                             |
+| RSS/Atom ingestion                                                                         | **Real, working** (first-party parser)                                    | none                                                                                       |
+| OAuth connect: LinkedIn, Facebook Pages, Instagram, Threads, YouTube, TikTok, X, Pinterest | **Real flow, when configured** (6C) — not yet run against a live platform | `SOCIAL_OAUTH_<PLATFORM>_CLIENT_ID/SECRET` + redirect base + `SOCIAL_TOKEN_ENCRYPTION_KEY` |
+| Publishing to those eight platforms, and Email                                             | **NOT wired**                                                             | resolves `UNSUPPORTED`                                                                     |
+| External engagement analytics                                                              | **Not built**                                                             | reports `externalAvailable: false`                                                         |
+| Payments / billing / plans                                                                 | **Not built**                                                             | usage page states nothing is charged                                                       |
+| OpenTelemetry tracing                                                                      | **Real, optional**                                                        | `OTEL_EXPORTER_OTLP_ENDPOINT` (unset => SDK not loaded)                                    |
+| Prometheus metrics                                                                         | **Real, working**                                                         | `GET /v1/meta/metrics` (API series only — see below)                                       |
 
 **Note on metrics:** provider-latency, research-run and publish-attempt series are emitted from
 the pipeline packages, which run on the **worker** — and the worker does not expose a scrape
 endpoint yet, so only the API's own series are scrapable today. A worker metrics listener is the
 next observability increment.
 
+**Note on OAuth (6C):** the flow is exercised end to end against a real HTTP server acting as the
+platform — it issues single-use codes, verifies the PKCE verifier, checks client authentication and
+rotates refresh tokens. It has **not** been run against a real platform's production endpoints (no
+platform credentials exist in this environment). Endpoint definitions are declared from public
+documentation, dated, and overridable per deployment; the first live adapter must re-verify its
+platform's definition.
+
 **Note on WordPress:** the adapter targets **self-hosted WordPress** (WordPress.org software with
 application passwords, WP 5.6+). WordPress.com (the hosted service) is _not_ supported — it
-requires OAuth, which is not yet built.
+requires OAuth; the OAuth broker exists since 6C, but WordPress.com is not one of its declared
+platforms.
 
 ---
 
 ## 7. Quality gate (current, verified)
 
-| Check                | Result                                 |
-| -------------------- | -------------------------------------- |
-| `pnpm build`         | 29/29 tasks pass                       |
-| `pnpm typecheck`     | 53/53 tasks pass                       |
-| `pnpm lint`          | pass                                   |
-| Unit tests           | **218 passing** across 23 packages     |
-| API integration      | **65 passing** (12 files)              |
-| Pipeline integration | **13 passing** (3 files)               |
-| E2E (Playwright)     | **18 tests** (stubbed-API UI journeys) |
-| Web unit tests       | **16**                                 |
+| Check                | Result                                                 |
+| -------------------- | ------------------------------------------------------ |
+| `pnpm build`         | 33/33 tasks pass                                       |
+| `pnpm typecheck`     | 61/61 tasks pass                                       |
+| `pnpm lint`          | pass                                                   |
+| `pnpm format`        | clean                                                  |
+| Unit tests           | **550 passing** across 28 packages/apps (incl. web 31) |
+| API integration      | **136 passing** (17 files)                             |
+| Pipeline integration | **95 passing** (11 files, `research-pipeline`)         |
+| Metering integration | **74 passing** (7 files)                               |
+| E2E (Playwright)     | **28 tests** (stubbed-API UI journeys)                 |
+| Prisma               | schema valid · 25 migrations · database up to date     |
+
+Known flake (pre-existing, not introduced by 6B/6C): `budget-hardening.spec.ts` "concurrent
+research-run starts cannot all pass the last allowance" intermittently admits more than one run. It
+passed in the 6C gate run; the investigation is tracked separately.
 
 ---
 
@@ -304,9 +336,10 @@ requires OAuth, which is not yet built.
 
 ### 8.1 Immediate next candidates (highest value)
 
-1. **OAuth token brokering** **OAuth token brokering** for the platforms that need it (X, LinkedIn, Facebook/Instagram,
-   YouTube, TikTok). The `resolvePublisher` seam already exists — adapters slot in behind it with
-   no pipeline change.
+1. **First OAuth publishing adapter** (X or LinkedIn). The broker, sealed storage, refresh,
+   revocation and the `resolvePublisher` seam are in place (6C): an adapter implements the discovery
+   ports and a `PostPublisher` and registers them. It must re-verify its platform's declared
+   endpoints against the live API.
 2. **Live `AnalyticsProvider` adapters** feeding real engagement metrics, which would also
    calibrate the `engagementPotential` input to trend scoring.
 
@@ -336,17 +369,22 @@ requires OAuth, which is not yet built.
 - Per-attempt publication history table (the queue shows the current failure, not the attempt
   history).
 - A metrics scrape endpoint on the worker — pipeline series are emitted there but not scrapable.
+- OAuth follow-ups (6C): a background refresh sweep ahead of token expiry; a bulk re-seal job for
+  key rotation (today rotation advances on write); Meta's long-lived token and per-Page token
+  exchange; revocation is unavailable for LinkedIn and the Meta family (users are told to revoke in
+  the platform's settings).
 
 ### 8.4 Engineering debt
 
-- **E2E coverage is very thin** — 1 spec file for an 18-page app.
-- **Zero web unit tests** — all frontend logic is untested.
+- ~~E2E coverage is very thin~~ — 28 Playwright journeys now (6A–6C); still one spec file, against a
+  stubbed API.
+- ~~Zero web unit tests~~ — 31 now (6A, 6C); coverage is concentrated on a few pages.
 - Rate table in `@spectra/metering` is hand-maintained list pricing; will drift from vendor
   pricing. `RATE_VERSION` makes drift visible but does not fix it.
 - Usage ledger writes are best-effort (failures swallowed so metering never breaks metered work),
   so it is an operational signal, not an audit-grade financial record.
 - Discovery page fetches are sequential; no concurrency control.
-- No OpenTelemetry tracing/metrics despite `observability` package being "OTel-ready".
+- ~~No OpenTelemetry tracing/metrics~~ — **shipped in 6B**.
 
 ### 8.5 Not started at all
 
@@ -387,7 +425,8 @@ These are enforced by CLAUDE.md and must be honored by any further development:
 
 - `prisma migrate dev --create-only` silently fails to create migrations in this repo. Workaround:
   `prisma migrate diff --from-schema-datasource … --to-schema-datamodel … --script > migration.sql`
-  then `prisma migrate deploy`.
+  then `prisma migrate deploy`. It worked normally for the 6C migration, so the failure is
+  intermittent.
 - API dev server must run on SWC (`node --watch -r @swc-node/register`) — tsx/esbuild cannot emit
   `emitDecoratorMetadata`, which breaks NestJS dependency injection.
 - API integration tests that enqueue real jobs race a running dev/docker worker on the same Redis.

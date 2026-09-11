@@ -26,6 +26,8 @@ const ACCOUNT_SELECT = {
   status: true,
   scopes: true,
   tokenRef: true,
+  connectionId: true,
+  discoveryMetadata: true,
   connectedById: true,
   connectedAt: true,
   lastRefreshedAt: true,
@@ -118,6 +120,8 @@ export class SocialService {
         status: 'PENDING',
         tokenRef,
         encryptedToken,
+        // Rotation bookkeeping: which key sealed it (not a secret).
+        credentialKeyId: encryptedToken ? this.crypto.activeKeyId : null,
         connectedById: principal.userId,
       },
       select: ACCOUNT_SELECT,

@@ -3,17 +3,12 @@ import type {
   AnalyticsResult,
   MediaUploadRequest,
   MediaUploadResult,
-  OAuthCallbackPayload,
-  OAuthInitiationRequest,
-  OAuthInitiationResult,
   PlatformCapability,
   PublishRequest,
   PublishResult,
-  SocialAccount,
   SocialComment,
   SocialPlatform,
   TenantScope,
-  TokenRefreshResult,
   WebhookEnvelope,
 } from '@spectra/contracts';
 
@@ -30,14 +25,10 @@ export interface SocialPublisher {
   readonly platform: SocialPlatform;
   readonly adapterVersion: string;
 
-  // --- OAuth & accounts -----------------------------------------------------
-  initiateOAuth(request: OAuthInitiationRequest): Promise<OAuthInitiationResult>;
-  handleOAuthCallback(payload: OAuthCallbackPayload, tenant: TenantScope): Promise<SocialAccount>;
-  refreshToken(accountId: string, tenant: TenantScope): Promise<TokenRefreshResult>;
-  /** Personal/root account discovery after OAuth. */
-  discoverAccounts(accountId: string, tenant: TenantScope): Promise<SocialAccount[]>;
-  /** Pages / channels / business accounts under a root account. */
-  discoverPages(accountId: string, tenant: TenantScope): Promise<SocialAccount[]>;
+  // OAuth is NOT part of this port. Authorization is brokered once, platform-
+  // neutrally, by @spectra/social-oauth (state, PKCE, token exchange, refresh,
+  // sealed storage), and accounts are found through the discovery ports in
+  // ./discovery (ADR-0034). An adapter receives an already-opened token.
 
   // --- Capabilities ----------------------------------------------------------
   getCapabilities(): Promise<PlatformCapability>;

@@ -7,6 +7,9 @@ import {
   failedJob,
   gotoAuthenticated,
   stubApi,
+  CONNECTION_ID,
+  connectionRow,
+  oauthPlatforms,
 } from './fixtures';
 
 /**
@@ -365,6 +368,113 @@ test.describe('operations', () => {
 
     await expect(page.getByText('ops:read')).toBeVisible();
     await expect(page.getByText('Failed jobs')).toHaveCount(0);
+  });
+});
+
+test.describe('social accounts (OAuth)', () => {
+  test('names missing configuration and never offers a dead connect button', async ({ page }) => {
+    await stubApi(page, {
+      routes: { '/social/oauth/platforms': oauthPlatforms(), '/social/connections': [] },
+    });
+    await gotoAuthenticated(page, '/social-accounts');
+
+    await expect(page.getByText('SOCIAL_OAUTH_FACEBOOK_CLIENT_ID')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Connect Facebook Pages' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Connect X' })).toBeEnabled();
+    // Connecting is never presented as publishing.
+    await expect(page.getByText(/X resolves to UNSUPPORTED/)).toBeVisible();
+    await expect(page.getByText('No platform connected yet.')).toBeVisible();
+  });
+
+  test('refuses to connect anything while credential storage is off', async ({ page }) => {
+    await stubApi(page, {
+      routes: {
+        '/social/oauth/platforms': oauthPlatforms({ credentialStorageConfigured: false }),
+        '/social/connections': [],
+      },
+    });
+    await gotoAuthenticated(page, '/social-accounts');
+    await expect(page.getByText(/Credential storage is off/)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Connect X' })).toBeDisabled();
+  });
+
+  test('starts the flow, follows the consent URL and shows the outcome', async ({ page }) => {
+    await stubApi(page, {
+      routes: {
+        // The "consent screen" here sends the browser straight back with a result.
+        '/social/oauth/x/start': {
+          authorizationUrl: 'http://localhost:3100/social-accounts?oauth=connected&platform=x',
+          expiresAt: '2026-09-10T12:10:00.000Z',
+        },
+        '/social/oauth/platforms': oauthPlatforms(),
+        '/social/connections': [],
+      },
+    });
+    await gotoAuthenticated(page, '/social-accounts');
+    await page.getByRole('button', { name: 'Connect X' }).click();
+    await page.waitForURL(/oauth=connected/);
+    await expect(page.getByRole('status').filter({ hasText: 'Connected — X' })).toBeVisible();
+  });
+
+  test('ignores an unrecognised outcome code — nothing from the URL is rendered', async ({
+    page,
+  }) => {
+    await stubApi(page, {
+      routes: { '/social/oauth/platforms': oauthPlatforms(), '/social/connections': [] },
+    });
+    await gotoAuthenticated(page, '/social-accounts?oauth=%3Cimg%20src%3Dx%3E&platform=myspace');
+    await expect(page.getByRole('button', { name: 'Connect X' })).toBeVisible();
+    await expect(page.getByText('<img src=x>')).toHaveCount(0);
+    await expect(page.getByText(/myspace/i)).toHaveCount(0);
+  });
+
+  test('shows a connection honestly and confirms before disconnecting', async ({ page }) => {
+    await stubApi(page, {
+      routes: {
+        '/social/oauth/platforms': oauthPlatforms(),
+        '/social/connections': [connectionRow()],
+      },
+    });
+    await page.route('**/v1/workspaces/*/social/connections/*', (route) =>
+      route.request().method() === 'DELETE'
+        ? route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              connectionId: CONNECTION_ID,
+              disconnected: true,
+              providerRevocation: 'NOT_SUPPORTED',
+              note: 'X has no standard revocation endpoint, so remove Spectra in your X account settings. The stored credential was deleted.',
+            }),
+          })
+        : route.fallback(),
+    );
+    await gotoAuthenticated(page, '/social-accounts');
+
+    const item = page.getByRole('listitem').filter({ hasText: 'Acme on X' });
+    await expect(item.getByText('connected', { exact: true })).toBeVisible();
+    await expect(item.getByText(/No X publishing adapter is wired/)).toBeVisible();
+    await expect(item.getByText('Access token expires on 2099-01-01')).toBeVisible();
+
+    await item.getByRole('button', { name: 'Disconnect' }).click();
+    await item.getByRole('button', { name: 'Confirm disconnect' }).click();
+    await expect(page.getByText(/remove Spectra in your X account settings/)).toBeVisible();
+  });
+
+  test('hides connection management without social:connect and names the permission', async ({
+    page,
+  }) => {
+    await stubApi(page, {
+      permissions: ALL_PERMISSIONS.filter((p) => p !== 'social:connect'),
+      routes: {
+        '/social/oauth/platforms': oauthPlatforms(),
+        '/social/connections': [connectionRow()],
+      },
+    });
+    await gotoAuthenticated(page, '/social-accounts');
+    await expect(page.getByText(/managing platform connections requires the/)).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Connect / })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Disconnect' })).toHaveCount(0);
   });
 });
 

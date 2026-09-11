@@ -15,6 +15,14 @@ import { PrismaService } from '../src/prisma/prisma.service';
  * so every target stays PENDING and no post is ever claimed to go out.
  */
 
+// X is configured for OAuth here, but the encryption key is NOT — so starting a
+// flow must be refused before anyone is sent to consent (ADR-0034). The URLs
+// point at a closed local port: nothing may ever be requested.
+process.env['SOCIAL_OAUTH_REDIRECT_BASE_URL'] ??= 'http://localhost:4100';
+process.env['SOCIAL_OAUTH_X_CLIENT_ID'] ??= 'x-client-without-storage';
+process.env['SOCIAL_OAUTH_X_CLIENT_SECRET'] ??= 'x-secret-without-storage';
+process.env['SOCIAL_OAUTH_X_TOKEN_URL'] ??= 'http://127.0.0.1:9/token';
+
 const runId = randomBytes(4).toString('hex');
 const ownerEmail = `social-owner-${runId}@itest.local`;
 const PASSWORD = 'integration-test-password-1';
@@ -22,6 +30,12 @@ const PASSWORD = 'integration-test-password-1';
 interface MeBody {
   memberships: Array<{ organizationId: string }>;
   workspaces: Array<{ id: string }>;
+}
+
+/** Nest puts an HttpException's message in `title`; read both, as clients do. */
+function problemText(body: unknown): string {
+  const problem = body as { title?: string; detail?: string };
+  return `${problem.title ?? ''} ${problem.detail ?? ''}`;
 }
 
 function cookieOf(setCookie: string | string[] | undefined): string {
@@ -158,6 +172,22 @@ describe('API integration: social accounts, capabilities, honest publishing foun
     expect(wp).toBeDefined();
     expect(wp).not.toHaveProperty('encryptedToken');
     expect(JSON.stringify(rows)).not.toContain('v1.social-v1');
+  });
+
+  it('refuses to start OAuth when tokens could not be stored (no encryption key)', async () => {
+    const res = await inject().inject({
+      method: 'POST',
+      url: `/v1/workspaces/${workspaceId}/social/oauth/x/start`,
+      headers: { cookie },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(503);
+    expect(problemText(res.json())).toContain('SOCIAL_TOKEN_ENCRYPTION_KEY');
+    // Nothing was started, so there is no state to complete.
+    const attempts = await prisma.client.socialOAuthAttempt.count({
+      where: { organizationId: orgId },
+    });
+    expect(attempts).toBe(0);
   });
 
   it('disconnects a target and does not leak foreign accounts', async () => {

@@ -35,6 +35,7 @@
 | [0031](0031-document-extraction.md)                             | Document extraction: PDFs/DOCX/TXT as anchored evidence                                        | Accepted             |
 | [0032](0032-claim-verification.md)                              | Claim verification: corroboration, contradiction, staleness, eligibility                       | Accepted             |
 | [0033](0033-observability-and-operations.md)                    | Observability: optional tracing, first-party metrics, DLQ operations                           | Accepted             |
+| [0034](0034-oauth-token-brokering.md)                           | OAuth token brokering: one provider-neutral broker, grants separate from accounts              | Accepted             |
 
 New significant decisions require a new ADR (`NNNN-kebab-title.md`) using the
 Context / Decision / Rationale / Consequences structure.

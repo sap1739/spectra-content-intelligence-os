@@ -104,3 +104,35 @@ from the rest of the surface:
 - **Ops endpoints are ordinary tenant-scoped `/v1` routes** and follow every normal rule: guard
   chain, problem+json errors, and a `404` for a foreign job that is indistinguishable from a `404`
   for one that never existed.
+
+## 12. OAuth connection endpoints (Phase 6C, ADR-0034)
+
+| Endpoint                                                              | Permission       | Success                                  |
+| --------------------------------------------------------------------- | ---------------- | ---------------------------------------- |
+| `GET /v1/workspaces/:workspaceId/social/oauth/platforms`              | `social:connect` | `200` configuration per platform         |
+| `POST /v1/workspaces/:workspaceId/social/oauth/:platform/start`       | `social:connect` | `201` `{ authorizationUrl, expiresAt }`  |
+| `GET /v1/social/oauth/:platform/callback`                             | session (public) | **`302`** to the web app — never JSON    |
+| `GET /v1/workspaces/:workspaceId/social/connections`                  | `social:connect` | `200` connections (no credential fields) |
+| `GET /v1/workspaces/:workspaceId/social/connections/:id/capabilities` | `social:connect` | `200` scopes × adapter wiring            |
+| `POST /v1/workspaces/:workspaceId/social/connections/:id/refresh`     | `social:connect` | `200` `{ status, detail, … }`            |
+| `POST /v1/workspaces/:workspaceId/social/connections/:id/reconnect`   | `social:connect` | `201` `{ authorizationUrl, expiresAt }`  |
+| `DELETE /v1/workspaces/:workspaceId/social/connections/:id`           | `social:connect` | `200` `{ providerRevocation, note }`     |
+
+Where these depart from the rest of the API, and why:
+
+- **The callback is not workspace-scoped and always redirects.** Its URL is registered with each
+  platform, so it cannot carry a workspace id; the attempt row carries the tenant. It is `@Public`
+  so an expired session gets a redirect with `oauth=session_required` rather than a JSON 401 in a
+  browser tab. Every outcome — success, denial, replay, internal error — is a `302` to
+  `WEB_APP_URL` + an allow-listed path with one `oauth=<code>` from `OAUTH_CALLBACK_RESULTS`. It
+  sends `Cache-Control: no-store` and `Referrer-Policy: no-referrer`.
+- **`start` answers `503` when a flow cannot succeed** — the platform is not configured, or
+  credential storage is not — naming the missing environment variables. It is refused before the
+  user is sent to consent. A non-OAuth platform (`wordpress`) is a `400`.
+- **Refresh reports its outcome in the body, not the status code.** `NOT_SUPPORTED`,
+  `REAUTH_REQUIRED` and `FAILED` are answers about the platform, not failures of the request, so
+  the response is `200` with a `status` and a human-readable `detail`.
+- **Disconnect returns `200` with a body** rather than `204`: whether the platform confirmed
+  revocation is information the caller needs. The local credential is deleted in every case.
+- **No OAuth endpoint ever returns a token, a client id or a client secret.** Missing
+  configuration is reported by variable name.
