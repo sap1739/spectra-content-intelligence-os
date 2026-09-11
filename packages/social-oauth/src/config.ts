@@ -17,7 +17,11 @@ export interface ResolvedOAuthConfig {
   platform: OAuthPlatform;
   definition: OAuthPlatformDefinition;
   clientId: string;
-  /** Secret. Never logged, never returned by the API, never placed in a URL. */
+  /**
+   * Secret. Never logged, never returned by the API, and never placed in a
+   * URL — except in the token request itself where the platform documents
+   * only GET (Meta), sent straight to the platform over TLS and not logged.
+   */
   clientSecret: string;
   authorizationUrl: string;
   tokenUrl: string;

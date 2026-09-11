@@ -257,6 +257,64 @@ export function linkedInConnectionRow() {
   });
 }
 
+/** An Instagram account capability snapshot, as Meta discovery stores it. */
+export function instagramCapabilities(eligible = true): Record<string, unknown> {
+  const notSupported = (reason: string) => ({
+    status: 'NOT_SUPPORTED',
+    reason,
+    requiredScopes: [],
+  });
+  const personal =
+    'Instagram only allows publishing through its API to professional (Business or Creator) accounts linked to a Facebook Page.';
+  return {
+    adapterVersion: 'meta-graph-1.0.0',
+    checkedAt: '2026-09-11T10:00:00.000Z',
+    postTypes: eligible
+      ? {
+          TEXT: notSupported('Instagram posts need an image; Instagram has no text-only posts.'),
+          IMAGE: {
+            status: 'AVAILABLE',
+            reason: 'Single-image JPEG posts are published through Instagram content publishing.',
+            requiredScopes: ['instagram_basic', 'instagram_content_publish'],
+          },
+          VIDEO: {
+            status: 'NOT_IMPLEMENTED',
+            reason:
+              "Instagram supports video and Reels; Spectra's Meta adapter does not publish them yet.",
+            requiredScopes: ['instagram_basic', 'instagram_content_publish'],
+          },
+          DOCUMENT: notSupported('Instagram has no document posts.'),
+        }
+      : {
+          TEXT: notSupported(personal),
+          IMAGE: notSupported(personal),
+          VIDEO: notSupported(personal),
+          DOCUMENT: notSupported(personal),
+        },
+    limits: { maxCharacters: 2200, maxImages: 1, imageMimeTypes: ['image/jpeg'] },
+    notes: [],
+  };
+}
+
+/** An Instagram professional account found through a Meta (Facebook) connection. */
+export function instagramAccount(overrides: Record<string, unknown> = {}) {
+  return {
+    id: '00000000-0000-4000-8000-0000000000d3',
+    platform: 'INSTAGRAM',
+    externalAccountId: '17841400000000001',
+    displayName: '@acmecoffee',
+    kind: 'BUSINESS_ACCOUNT',
+    status: 'CONNECTED',
+    scopes: ['pages_show_list', 'instagram_basic', 'instagram_content_publish'],
+    tokenRef: null,
+    connectionId: '00000000-0000-4000-8000-0000000000c3',
+    capabilities: instagramCapabilities(),
+    connectedAt: '2026-09-11T09:00:00.000Z',
+    createdAt: '2026-09-11T09:00:00.000Z',
+    ...overrides,
+  };
+}
+
 export function meResponse(permissions: readonly string[] = ALL_PERMISSIONS) {
   return {
     user: {

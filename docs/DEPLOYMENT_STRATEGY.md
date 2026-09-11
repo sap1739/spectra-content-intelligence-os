@@ -131,3 +131,10 @@ enablement, CDN strategy for media delivery.
   to refresh tokens before publishing — the same `SOCIAL_OAUTH_LINKEDIN_CLIENT_ID/SECRET` and
   redirect base URL as the API. Pin `LINKEDIN_API_VERSION` and move it forward before LinkedIn
   sunsets it. Run `docs/LINKEDIN_LIVE_VERIFICATION.md` against a real app before announcing it.
+
+- **Meta (Phase 6E):** the worker needs `SOCIAL_TOKEN_ENCRYPTION_KEY` and
+  `SOCIAL_OAUTH_FACEBOOK_CLIENT_SECRET` (every Graph call carries `appsecret_proof`). Instagram
+  fetches images from 15-minute signed links, so object storage must be served from a public
+  address; with a local or private `STORAGE_ENDPOINT` the worker logs that Instagram is unavailable
+  and those posts resolve `UNSUPPORTED`. Pin `META_GRAPH_API_VERSION`, complete Meta App Review
+  before customers connect, and run `docs/META_LIVE_VERIFICATION.md` before announcing it.

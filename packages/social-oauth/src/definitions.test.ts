@@ -57,4 +57,13 @@ describe('declared OAuth platform definitions', () => {
       .map((d) => d.platform);
     expect(sorted(reconnectOnly)).toEqual(['FACEBOOK', 'INSTAGRAM', 'THREADS']);
   });
+
+  it('describe Meta: GET token requests, a long-lived exchange, and reviewed products', () => {
+    const meta = getOAuthDefinition('FACEBOOK');
+    expect(meta.tokenRequestMethod).toBe('GET');
+    expect(meta.longLivedExchange).toBe('fb_exchange_token');
+    expect(meta.defaultScopes).toContain('instagram_content_publish');
+    expect(meta.products?.every((p) => p.reviewRequired)).toBe(true);
+    expect(meta.authorizationUrl).toContain('/v26.0/');
+  });
 });

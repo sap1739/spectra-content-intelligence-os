@@ -151,3 +151,17 @@ Where these depart from the rest of the API, and why:
 - `GET …/social/platforms` adds `publisherSummary` for wired platforms. `GET …/social/connections`
   adds `permissions` (each platform product: GRANTED / MISSING / UNKNOWN, missing scopes, whether
   the platform reviews it) and each discovered account's `capabilities`.
+
+## 14. Meta publishing (Phase 6E, ADR-0036)
+
+- Capability snapshots may carry `NOT_SUPPORTED` — the platform itself does not allow it (an
+  Instagram text-only post, a personal Facebook profile) — distinct from `NOT_IMPLEMENTED` and
+  `MISSING_PERMISSION`. Failure codes gained `UNSUPPORTED_ACCOUNT`.
+- `GET …/social/oauth/platforms` and `GET …/social/connections` add `tokenNote` (how the platform's
+  tokens live — for Meta, that Page tokens outlive the user token). Each account under a connection
+  carries its `platform`, so an Instagram account found through a Facebook connection says so.
+- `POST …/calendar` to an Instagram account requires `mediaAssetId` (one JPEG, 4:5 to 1.91:1,
+  ≤ 8 MB); a personal profile or an Instagram account that is not professional is refused `422`
+  with the reason, before anything is queued.
+- The OAuth callback's `token_exchange_failed` also covers a refused long-lived exchange (audited
+  as `long_lived_<code>`).

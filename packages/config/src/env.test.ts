@@ -271,3 +271,22 @@ describe('LinkedIn API configuration (ADR-0035)', () => {
     expect(env.LINKEDIN_API_VERSION).toMatch(/^\d{6}$/);
   });
 });
+
+describe('Meta Graph API configuration (ADR-0036)', () => {
+  it('defaults to Meta itself and a pinned Graph version', () => {
+    const env = loadEnv(apiEnvSchema, validApiEnv as NodeJS.ProcessEnv);
+    expect(env.META_GRAPH_API_BASE_URL).toBe('https://graph.facebook.com');
+    expect(env.META_GRAPH_API_VERSION).toBe('v26.0');
+  });
+
+  it('rejects a version that is not vNN.N', () => {
+    expectEnvError({ ...validApiEnv, META_GRAPH_API_VERSION: '26' }, 'META_GRAPH_API_VERSION');
+  });
+
+  it('requires https for the Graph API in production', () => {
+    expectEnvError(
+      { ...validApiEnv, NODE_ENV: 'production', META_GRAPH_API_BASE_URL: 'http://graph.mock' },
+      'META_GRAPH_API_BASE_URL',
+    );
+  });
+});

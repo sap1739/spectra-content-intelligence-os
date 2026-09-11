@@ -113,6 +113,8 @@ export interface OAuthPlatformEntry {
   refresh: 'standard' | 'none';
   approval: { required: boolean; notes: string[] };
   docsUrl: string;
+  /** How this platform's tokens live and die (Meta: Page tokens outlive the user token). */
+  tokenNote?: string | null;
   adapters: { publishing: boolean; discovery: boolean };
   /** Configured AND credential storage available. */
   canConnect: boolean;
@@ -143,12 +145,15 @@ export interface SocialConnectionRow {
   lastErrorCode: string | null;
   connectedAt: string;
   refresh: { available: boolean; reason: string };
-  discovery: { status: 'NOT_AVAILABLE' | 'COMPLETE' | 'FAILED'; note: string };
+  discovery: { status: 'NOT_AVAILABLE' | 'COMPLETE' | 'PARTIAL' | 'FAILED'; note: string };
   publishing: { wired: boolean; note: string };
+  tokenNote?: string | null;
   /** The platform products this grant carries (Phase 6D). */
   permissions?: ProductPermission[];
   accounts: Array<{
     id: string;
+    /** An Instagram account found through a Facebook connection says so here. */
+    platform?: string;
     displayName: string;
     kind: string;
     externalAccountId: string;
@@ -168,7 +173,8 @@ export interface ProductPermission {
   missingScopes: string[];
 }
 
-export type PostTypeSupport = 'AVAILABLE' | 'MISSING_PERMISSION' | 'NOT_IMPLEMENTED' | 'UNKNOWN';
+export type PostTypeSupport =
+  'AVAILABLE' | 'MISSING_PERMISSION' | 'NOT_IMPLEMENTED' | 'NOT_SUPPORTED' | 'UNKNOWN';
 export type PostType = 'TEXT' | 'IMAGE' | 'VIDEO' | 'DOCUMENT';
 
 /** What one discovered account can publish — AccountCapabilitySnapshot in contracts. */
@@ -193,6 +199,28 @@ export function capabilitiesOf(value: unknown): AccountCapabilities | null {
     if (typeof postTypes[type]?.status !== 'string') return null;
   }
   return value as AccountCapabilities;
+}
+
+/**
+ * The platform's reason when an account can publish nothing at all — a
+ * personal Facebook profile, an Instagram account that is not professional.
+ * Null when at least one kind of post is possible or unconfirmed.
+ */
+export function cannotPublishReason(value: unknown): string | null {
+  const capabilities = capabilitiesOf(value);
+  if (!capabilities) return null;
+  const types = Object.values(capabilities.postTypes);
+  return types.every((type) => type.status === 'NOT_SUPPORTED') ? (types[0]?.reason ?? null) : null;
+}
+
+/** How an account is described next to its name. */
+export function accountKindLabel(platform: string | undefined, kind: string): string {
+  if (kind === 'PAGE') return platform === 'FACEBOOK' ? 'Facebook Page' : 'page';
+  if (platform === 'INSTAGRAM') {
+    return kind === 'BUSINESS_ACCOUNT' ? 'Instagram professional account' : 'Instagram account';
+  }
+  if (platform === 'FACEBOOK' && kind === 'PROFILE') return 'personal profile';
+  return kind.toLowerCase().replace('_', ' ');
 }
 
 export interface OAuthStartResponse {

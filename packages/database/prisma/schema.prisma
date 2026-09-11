@@ -1363,32 +1363,35 @@ enum ScheduleEntryStatus {
 /// One scheduled placement of a content item on a platform at a UTC instant.
 /// Publishing itself arrives in Phase 4; entries stay SCHEDULED until then.
 model ContentScheduleEntry {
-  id              String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId  String              @db.Uuid
-  workspaceId     String              @db.Uuid
-  contentItemId   String              @db.Uuid
+  id                  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId      String              @db.Uuid
+  workspaceId         String              @db.Uuid
+  contentItemId       String              @db.Uuid
   /// Optional publishing target; when set, the dispatcher attempts to publish.
-  socialAccountId String?             @db.Uuid
+  socialAccountId     String?             @db.Uuid
   /// Social platform label (validated against socialPlatformSchema at the API).
-  platform        String
+  platform            String
   /// UTC instant; rendered in the workspace/calendar display timezone.
-  scheduledAt     DateTime            @db.Timestamptz(6)
-  status          ScheduleEntryStatus @default(SCHEDULED)
-  note            String?
+  scheduledAt         DateTime            @db.Timestamptz(6)
+  status              ScheduleEntryStatus @default(SCHEDULED)
+  note                String?
   /// Publish idempotency key — dispatching the same entry twice is safe.
-  idempotencyKey  String?             @unique
-  attemptCount    Int                 @default(0)
-  lastAttemptAt   DateTime?           @db.Timestamptz(6)
-  failureReason   String?
+  idempotencyKey      String?             @unique
+  attemptCount        Int                 @default(0)
+  lastAttemptAt       DateTime?           @db.Timestamptz(6)
+  failureReason       String?
   /// PublishFailureCode (contracts) — what the UI should offer next.
-  failureCode     String?
+  failureCode         String?
   /// One image to publish with the post (Phase 6D).
-  mediaAssetId    String?             @db.Uuid
-  mediaAltText    String?
-  externalPostId  String?
-  externalUrl     String?
-  publishedAt     DateTime?           @db.Timestamptz(6)
-  createdById     String?             @db.Uuid
+  mediaAssetId        String?             @db.Uuid
+  mediaAltText        String?
+  /// A platform staging object made for this entry (an Instagram media
+  /// container), reused on retry so a publish is never staged twice.
+  externalContainerId String?
+  externalPostId      String?
+  externalUrl         String?
+  publishedAt         DateTime?           @db.Timestamptz(6)
+  createdById         String?             @db.Uuid
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)

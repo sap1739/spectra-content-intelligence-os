@@ -107,6 +107,9 @@ importers:
       '@spectra/social-linkedin':
         specifier: workspace:*
         version: link:../../packages/social-linkedin
+      '@spectra/social-meta':
+        specifier: workspace:*
+        version: link:../../packages/social-meta
       '@spectra/social-oauth':
         specifier: workspace:*
         version: link:../../packages/social-oauth
@@ -295,6 +298,9 @@ importers:
       '@spectra/social-linkedin':
         specifier: workspace:*
         version: link:../../packages/social-linkedin
+      '@spectra/social-meta':
+        specifier: workspace:*
+        version: link:../../packages/social-meta
       '@spectra/social-oauth':
         specifier: workspace:*
         version: link:../../packages/social-oauth
@@ -674,6 +680,9 @@ importers:
       '@spectra/social-linkedin':
         specifier: workspace:*
         version: link:../social-linkedin
+      '@spectra/social-meta':
+        specifier: workspace:*
+        version: link:../social-meta
       '@spectra/social-oauth':
         specifier: workspace:*
         version: link:../social-oauth
@@ -820,6 +829,28 @@ importers:
         version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(jsdom@25.0.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0)
 
   packages/social-linkedin:
+    dependencies:
+      '@spectra/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@spectra/social-core':
+        specifier: workspace:*
+        version: link:../social-core
+      zod:
+        specifier: ^3.25.0
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.15.0
+        version: 22.20.0
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(jsdom@25.0.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0)
+
+  packages/social-meta:
     dependencies:
       '@spectra/contracts':
         specifier: workspace:*

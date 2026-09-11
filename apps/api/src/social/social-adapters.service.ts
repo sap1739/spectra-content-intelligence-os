@@ -1,20 +1,26 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { accountDiscoveryRegistry, socialPublisherRegistry } from '@spectra/social-core';
 import { linkedInApiOptionsFromEnv, registerLinkedInAdapter } from '@spectra/social-linkedin';
+import { metaGraphOptionsFromEnv, registerMetaAdapters } from '@spectra/social-meta';
+import { resolveOAuthPlatform } from '@spectra/social-oauth';
 
 import { getApiEnv } from '../config/env';
 
 /**
- * Registers the platform adapters this deployment runs (ADR-0035). Done at
- * module init rather than import time, so the adapters see the validated
- * environment the app was created with.
+ * Registers the platform adapters this deployment runs (ADR-0035, ADR-0036).
+ * Done at module init rather than import time, so the adapters see the
+ * validated environment the app was created with.
  */
 @Injectable()
 export class SocialAdaptersService implements OnModuleInit {
   onModuleInit(): void {
-    registerLinkedInAdapter(
-      { publishers: socialPublisherRegistry, discovery: accountDiscoveryRegistry },
-      linkedInApiOptionsFromEnv(getApiEnv()),
+    const env = getApiEnv();
+    const registries = { publishers: socialPublisherRegistry, discovery: accountDiscoveryRegistry };
+    registerLinkedInAdapter(registries, linkedInApiOptionsFromEnv(env));
+    const facebook = resolveOAuthPlatform(env, 'FACEBOOK');
+    registerMetaAdapters(
+      registries,
+      metaGraphOptionsFromEnv(env, facebook.configured ? facebook.config.clientSecret : null),
     );
   }
 }

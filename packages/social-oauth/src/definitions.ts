@@ -17,7 +17,7 @@ import type { OAuthPlatform } from '@spectra/contracts';
 export const DEFINITIONS_RECORDED_AT = '2026-09-10';
 
 /** Meta versions its Graph endpoints; override the URLs to move to a newer one. */
-const META_GRAPH_VERSION = 'v23.0';
+const META_GRAPH_VERSION = 'v26.0';
 
 /**
  * `required`: the platform rejects a flow without PKCE.
@@ -76,6 +76,15 @@ export interface OAuthPlatformDefinition {
   approval: { required: boolean; notes: readonly string[] };
   /** Products that grant this platform's scopes, where they matter to Spectra. */
   products?: readonly OAuthProduct[];
+  /**
+   * How the token endpoint is called. Default POST (RFC 6749). Meta documents
+   * GET with query parameters, so its requests follow that.
+   */
+  tokenRequestMethod?: 'GET' | 'POST';
+  /** A platform-specific upgrade applied right after the code exchange. */
+  longLivedExchange?: 'fb_exchange_token';
+  /** How this platform's tokens live and die, in one or two sentences. */
+  tokenNote?: string;
   docsUrl: string;
 }
 
@@ -142,11 +151,19 @@ const DEFINITIONS: Record<OAuthPlatform, OAuthPlatformDefinition> = {
   },
   FACEBOOK: {
     platform: 'FACEBOOK',
-    displayName: 'Facebook Pages',
+    displayName: 'Meta — Facebook Pages & Instagram',
     authorizationUrl: `https://www.facebook.com/${META_GRAPH_VERSION}/dialog/oauth`,
     tokenUrl: `https://graph.facebook.com/${META_GRAPH_VERSION}/oauth/access_token`,
     revocationUrl: null,
-    defaultScopes: ['pages_show_list', 'pages_read_engagement', 'pages_manage_posts'],
+    // Pages publishing plus Instagram professional accounts linked to them
+    // (Instagram API with Facebook Login).
+    defaultScopes: [
+      'pages_show_list',
+      'pages_read_engagement',
+      'pages_manage_posts',
+      'instagram_basic',
+      'instagram_content_publish',
+    ],
     scopeSeparator: ',',
     pkce: 'none',
     clientAuth: 'client_secret_post',
@@ -161,11 +178,39 @@ const DEFINITIONS: Record<OAuthPlatform, OAuthPlatformDefinition> = {
     approval: {
       required: true,
       notes: [
-        "Meta App Review is required for pages_manage_posts and pages_read_engagement before anyone outside the app's own roles can connect.",
-        'Advanced access may also require Meta Business Verification.',
-        'The token issued here is short-lived. Exchanging it for a long-lived token and per-Page tokens is Meta-specific and arrives with the Facebook adapter.',
+        "Meta App Review (Advanced Access) is required for pages_manage_posts, pages_read_engagement, instagram_basic and instagram_content_publish before anyone outside the app's own roles can connect.",
+        'Advanced access may also require Meta Business Verification. Pages or Instagram accounts owned through a Business portfolio may also need business_management.',
+        'Instagram publishing works only for professional (Business or Creator) accounts linked to a Facebook Page.',
       ],
     },
+    products: [
+      {
+        id: 'pages-access',
+        name: 'Pages API — Page access',
+        scopes: ['pages_show_list', 'pages_read_engagement'],
+        reviewRequired: true,
+        enables: 'Listing the Pages you manage and reading their metadata.',
+      },
+      {
+        id: 'pages-publishing',
+        name: 'Pages API — Page publishing',
+        scopes: ['pages_manage_posts'],
+        reviewRequired: true,
+        enables: 'Publishing text and photo posts to those Pages.',
+      },
+      {
+        id: 'instagram-publishing',
+        name: 'Instagram API with Facebook Login — content publishing',
+        scopes: ['instagram_basic', 'instagram_content_publish'],
+        reviewRequired: true,
+        enables:
+          'Finding Instagram professional accounts linked to your Pages and publishing to them.',
+      },
+    ],
+    tokenRequestMethod: 'GET',
+    longLivedExchange: 'fb_exchange_token',
+    tokenNote:
+      'Meta issues no refresh tokens. The user token is exchanged for a long-lived one (about 60 days); Page tokens obtained with it do not expire, so publishing to Pages and Instagram continues after it lapses. Reconnect to find new Pages or after permissions change.',
     docsUrl: 'https://developers.facebook.com/docs/facebook-login/guides/advanced/manual-flow',
   },
   INSTAGRAM: {
@@ -188,9 +233,9 @@ const DEFINITIONS: Record<OAuthPlatform, OAuthPlatformDefinition> = {
     approval: {
       required: true,
       notes: [
+        'Spectra publishes to Instagram through a Facebook connection: connect Meta (Facebook) and the professional Instagram accounts linked to your Pages are found. A direct Instagram Login connection stores an authorization only.',
         'Only Instagram professional accounts (Business or Creator) can publish through the API.',
         'Meta App Review is required for instagram_business_content_publish.',
-        'Long-lived token exchange and refresh use Instagram-specific endpoints and arrive with the Instagram adapter.',
       ],
     },
     docsUrl:

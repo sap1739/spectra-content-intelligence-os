@@ -16,12 +16,15 @@ import { METRICS, initTracing, metrics, withSpan } from '@spectra/telemetry';
 import {
   claimDuePublications,
   createMediaLoader,
+  createMediaUrlSigner,
   createPublisherResolver,
   executePublication,
+  publicMediaLinkProblem,
 } from '@spectra/publishing';
 import { executeReembed, executeResearchRun } from '@spectra/research-pipeline';
 import type { KeyRing } from '@spectra/security';
 import { linkedInApiOptionsFromEnv } from '@spectra/social-linkedin';
+import { metaGraphOptionsFromEnv } from '@spectra/social-meta';
 import { resolveOAuthPlatform } from '@spectra/social-oauth';
 import { S3ObjectStorageProvider } from '@spectra/storage';
 import {
@@ -150,7 +153,8 @@ async function main(): Promise<void> {
 
   // Research pipeline dependencies (Prisma + tenant-scoped object storage).
   const prisma = createPrismaClient({ datasourceUrl: env.DATABASE_URL });
-  const storage = new S3ObjectStorageProvider(loadEnv(storageEnvSchema));
+  const storageEnv = loadEnv(storageEnvSchema);
+  const storage = new S3ObjectStorageProvider(storageEnv);
   await storage.ensureBucket();
 
   // Semantic embedder (Phase 5A). Env-gated: without VOYAGE_API_KEY the
@@ -325,7 +329,8 @@ async function main(): Promise<void> {
   // The worker holds the social token-encryption key (env-gated). WordPress
   // accounts carry a sealed application password; LinkedIn accounts discovered
   // over OAuth use their connection's token, refreshed before expiry where
-  // LinkedIn issued a refresh token (ADR-0035). Any missing piece records an
+  // LinkedIn issued a refresh token (ADR-0035). Facebook Pages and Instagram
+  // accounts carry their own sealed Page token (ADR-0036). Any missing piece records an
   // honest UNSUPPORTED or FAILED with the reason. Decrypted secrets never leave
   // the resolver and are never logged. The ring includes retired keys, so
   // credentials sealed before a rotation stay publishable (ADR-0034).
@@ -336,6 +341,15 @@ async function main(): Promise<void> {
     );
   }
   const linkedinOAuth = resolveOAuthPlatform(env, 'LINKEDIN');
+  const facebookOAuth = resolveOAuthPlatform(env, 'FACEBOOK');
+  // Instagram fetches images itself, from a short-lived signed link to
+  // storage — possible only when storage is reachable from the internet.
+  const instagramMediaProblem = publicMediaLinkProblem(storageEnv.STORAGE_ENDPOINT);
+  if (instagramMediaProblem) {
+    logger.warn(
+      'Object storage is not publicly reachable — Instagram publishing resolves to UNSUPPORTED',
+    );
+  }
   const resolvePublisher = createPublisherResolver({
     prisma,
     ring: socialRing,
@@ -343,10 +357,18 @@ async function main(): Promise<void> {
       api: linkedInApiOptionsFromEnv(env),
       oauth: linkedinOAuth.configured ? linkedinOAuth.config : null,
     },
+    meta: {
+      api: metaGraphOptionsFromEnv(
+        env,
+        facebookOAuth.configured ? facebookOAuth.config.clientSecret : null,
+      ),
+      instagramMediaProblem,
+    },
     logger,
   });
   // Attached images are read from tenant-rooted storage, key-checked per entry.
   const loadMedia = createMediaLoader(storage);
+  const mediaUrl = instagramMediaProblem ? undefined : createMediaUrlSigner(storage);
 
   // Publish one entry. With no live publisher resolvable it records an honest
   // UNSUPPORTED; WordPress and connected LinkedIn accounts produce a real
@@ -359,6 +381,7 @@ async function main(): Promise<void> {
           prisma,
           resolvePublisher,
           loadMedia,
+          ...(mediaUrl ? { mediaUrl } : {}),
           logger: withCorrelation(logger, context.correlationId),
         },
         { entryId: envelope.payload.entryId },

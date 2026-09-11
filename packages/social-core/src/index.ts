@@ -6,6 +6,7 @@ export {
   getPlatformCapability,
 } from './capabilities';
 export { validateVariant } from './validation';
+export { toPlainText } from './text';
 export type { ValidationIssue, VariantValidation, VariantValidationInput } from './validation';
 export { SocialPublisherRegistry, socialPublisherRegistry } from './registry';
 export { unsupportedMediaKinds } from './post-publisher';

@@ -1,7 +1,7 @@
 # SpectraContent Intelligence OS — Project Status
 
 **Snapshot date:** 2026-09-11 · **Branch:** `main`
-**Status:** Phases 1–5 complete · Phase 6 in progress (6A–6D shipped)
+**Status:** Phases 1–5 complete · Phase 6 in progress (6A–6E shipped)
 
 > This document is a factual, audited snapshot intended as context for planning further work.
 > Every number below was measured from the repository, not estimated.
@@ -89,14 +89,14 @@ gives real end-to-end coverage of worker logic without running a worker.
 
 | Metric               | Value                                                            |
 | -------------------- | ---------------------------------------------------------------- |
-| Commits              | 32                                                               |
-| Packages             | 31                                                               |
+| Commits              | 33                                                               |
+| Packages             | 32                                                               |
 | Apps                 | 3 (`api`, `web`, `worker`)                                       |
-| TypeScript/TSX lines | ~52,000 (api 14,005 · web 10,426 · worker 522 · packages 27,013) |
+| TypeScript/TSX lines | ~59,000 (api 15,293 · web 11,939 · worker 545 · packages 31,327) |
 | API routes           | 118 across 29 controller files                                   |
 | Prisma models        | 43                                                               |
-| Migrations           | 26                                                               |
-| ADRs                 | 35                                                               |
+| Migrations           | 27                                                               |
+| ADRs                 | 36                                                               |
 | Permissions          | 35 (permission-oriented authz; never role-name branching)        |
 | Web pages            | 21 (all real — placeholders removed in 6A)                       |
 
@@ -128,8 +128,9 @@ media-sharp/      Real sharp ImageRenderer adapter
 social-core/      SocialPublisher + PostPublisher + account-discovery ports, capability matrix
 social-oauth/     Provider-neutral OAuth broker: state, PKCE, tokens, sealed bundles [Phase 6C]
 social-linkedin/  Real LinkedIn adapter: discovery, Images API, Posts API (text + 1 image) [Phase 6D]
+social-meta/      Real Meta adapters: Facebook Pages (text + photo), Instagram (1 JPEG) [Phase 6E]
 social-wordpress/ Real WordPress adapter (REST + application password)   [Phase 4D]
-publishing/       Dispatch machinery + shared publisher resolver (WordPress, LinkedIn) + media loader
+publishing/       Dispatch + shared publisher resolver (WordPress, LinkedIn, Meta) + media loader/links
 workflow-core/    Queue-neutral job ports; BullMQ + in-memory adapters; queue inspector
 storage/          Object storage port + S3/MinIO, tenant-scoped keys
 testing/          Deterministic, schema-validated factories
@@ -287,27 +288,43 @@ standards, health/readiness endpoints, OpenAPI at `/docs`.
   expiry when LinkedIn issued a refresh token. One resolver (`createPublisherResolver`) now serves
   the worker and the tests. Video, documents, multi-image, articles and polls are declared not
   implemented wherever they could be chosen (ADR-0035).
+- **6E:** **Meta — Facebook Pages and Instagram professional accounts.** `@spectra/social-meta`
+  publishes text and single-photo posts to Facebook Pages and single-image (JPEG) posts to
+  Instagram professional accounts through the Graph API only (`META_GRAPH_API_VERSION`, default
+  `v26.0`; `appsecret_proof` on every call). One Facebook connection finds both: the one-hour token
+  is exchanged for a long-lived one before anything is stored (a refused exchange stores nothing),
+  the grant is read from `/me/permissions`, and each Page's never-expiring token is sealed on its
+  own account (Instagram accounts hold their linked Page's). Only an Instagram account Facebook
+  reports as the Page's professional account is publishable; the personal profile and settings-only
+  Instagram links are listed with the reason under a new `NOT_SUPPORTED` capability status and an
+  `UNSUPPORTED_ACCOUNT` failure code. Instagram fetches the image from a 15-minute signed link —
+  offered only when storage is internet-reachable — and the media container is recorded on the
+  entry (`externalContainerId`) so a retry never publishes twice; the 24-hour allowance is read
+  from Instagram before each post. The user token lapsing does not stop publishing; a Page token
+  Meta invalidates marks the connection for reconnect, and Reconnect re-seals fresh tokens in place
+  (ADR-0036).
 
 ---
 
 ## 6. Integration status (what is actually live)
 
-| Integration                                                                                | Status                                                                    | Gate                                                                                                 |
-| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Anthropic (text generation)                                                                | **Real, working**                                                         | `ANTHROPIC_API_KEY`                                                                                  |
-| Voyage (embeddings)                                                                        | **Real, working**                                                         | `VOYAGE_API_KEY`                                                                                     |
-| Brave (web + news search)                                                                  | **Real, working**                                                         | `BRAVE_SEARCH_API_KEY`                                                                               |
-| WordPress (publishing)                                                                     | **Real, working**                                                         | Per-account credential + `SOCIAL_TOKEN_ENCRYPTION_KEY`                                               |
-| sharp (image rendering)                                                                    | **Real, working**                                                         | none (local)                                                                                         |
-| PostgreSQL / Redis / MinIO                                                                 | **Real, working**                                                         | docker-compose                                                                                       |
-| RSS/Atom ingestion                                                                         | **Real, working** (first-party parser)                                    | none                                                                                                 |
-| OAuth connect: LinkedIn, Facebook Pages, Instagram, Threads, YouTube, TikTok, X, Pinterest | **Real flow, when configured** (6C) — not yet run against a live platform | `SOCIAL_OAUTH_<PLATFORM>_CLIENT_ID/SECRET` + redirect base + `SOCIAL_TOKEN_ENCRYPTION_KEY`           |
-| LinkedIn (publishing: text + one image, member or page)                                    | **Real — tested against a LinkedIn stand-in, not yet LinkedIn itself**    | LinkedIn connection with `w_member_social` / `w_organization_social` + `SOCIAL_TOKEN_ENCRYPTION_KEY` |
-| Publishing to the other seven OAuth platforms, and Email                                   | **NOT wired**                                                             | resolves `UNSUPPORTED`                                                                               |
-| External engagement analytics                                                              | **Not built**                                                             | reports `externalAvailable: false`                                                                   |
-| Payments / billing / plans                                                                 | **Not built**                                                             | usage page states nothing is charged                                                                 |
-| OpenTelemetry tracing                                                                      | **Real, optional**                                                        | `OTEL_EXPORTER_OTLP_ENDPOINT` (unset => SDK not loaded)                                              |
-| Prometheus metrics                                                                         | **Real, working**                                                         | `GET /v1/meta/metrics` (API series only — see below)                                                 |
+| Integration                                                                                  | Status                                                                    | Gate                                                                                                                                      |
+| -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Anthropic (text generation)                                                                  | **Real, working**                                                         | `ANTHROPIC_API_KEY`                                                                                                                       |
+| Voyage (embeddings)                                                                          | **Real, working**                                                         | `VOYAGE_API_KEY`                                                                                                                          |
+| Brave (web + news search)                                                                    | **Real, working**                                                         | `BRAVE_SEARCH_API_KEY`                                                                                                                    |
+| WordPress (publishing)                                                                       | **Real, working**                                                         | Per-account credential + `SOCIAL_TOKEN_ENCRYPTION_KEY`                                                                                    |
+| sharp (image rendering)                                                                      | **Real, working**                                                         | none (local)                                                                                                                              |
+| PostgreSQL / Redis / MinIO                                                                   | **Real, working**                                                         | docker-compose                                                                                                                            |
+| RSS/Atom ingestion                                                                           | **Real, working** (first-party parser)                                    | none                                                                                                                                      |
+| OAuth connect: LinkedIn, Facebook Pages, Instagram, Threads, YouTube, TikTok, X, Pinterest   | **Real flow, when configured** (6C) — not yet run against a live platform | `SOCIAL_OAUTH_<PLATFORM>_CLIENT_ID/SECRET` + redirect base + `SOCIAL_TOKEN_ENCRYPTION_KEY`                                                |
+| LinkedIn (publishing: text + one image, member or page)                                      | **Real — tested against a LinkedIn stand-in, not yet LinkedIn itself**    | LinkedIn connection with `w_member_social` / `w_organization_social` + `SOCIAL_TOKEN_ENCRYPTION_KEY`                                      |
+| Facebook Pages (text + one photo) and Instagram professional accounts (one JPEG)             | **Real — tested against a Graph API stand-in, not yet Meta itself**       | Meta (Facebook) connection with App-Reviewed permissions + `SOCIAL_TOKEN_ENCRYPTION_KEY`; Instagram also needs internet-reachable storage |
+| Publishing to Threads, YouTube, TikTok, X, Pinterest, Instagram Login connections, and Email | **NOT wired**                                                             | resolves `UNSUPPORTED`                                                                                                                    |
+| External engagement analytics                                                                | **Not built**                                                             | reports `externalAvailable: false`                                                                                                        |
+| Payments / billing / plans                                                                   | **Not built**                                                             | usage page states nothing is charged                                                                                                      |
+| OpenTelemetry tracing                                                                        | **Real, optional**                                                        | `OTEL_EXPORTER_OTLP_ENDPOINT` (unset => SDK not loaded)                                                                                   |
+| Prometheus metrics                                                                           | **Real, working**                                                         | `GET /v1/meta/metrics` (API series only — see below)                                                                                      |
 
 **Note on metrics:** provider-latency, research-run and publish-attempt series are emitted from
 the pipeline packages, which run on the **worker** — and the worker does not expose a scrape
@@ -329,6 +346,14 @@ for the first real run; its largest open question is whether LinkedIn's versione
 member posts from a self-serve "Share on LinkedIn" app (LinkedIn documents that product with the
 legacy `ugcPosts` API).
 
+**Note on Meta (6E):** the adapters are exercised end to end against a local server that enforces
+Meta's documented rules (`appsecret_proof`, Page tokens for Page and Instagram writes,
+per-permission refusals, single-use codes, the GET token endpoint and the long-lived exchange) and
+that fetches Instagram images from the real signed MinIO link. They have **not** been run against
+Meta itself. `docs/META_LIVE_VERIFICATION.md` lists the open questions: whether the GET code
+exchange accepts the standard `grant_type` parameter Spectra sends, whether
+`content_publishing_limit` answers a Page token, and Business-portfolio permission needs.
+
 **Note on WordPress:** the adapter targets **self-hosted WordPress** (WordPress.org software with
 application passwords, WP 5.6+). WordPress.com (the hosted service) is _not_ supported — it
 requires OAuth; the OAuth broker exists since 6C, but WordPress.com is not one of its declared
@@ -340,20 +365,21 @@ platforms.
 
 | Check                | Result                                                 |
 | -------------------- | ------------------------------------------------------ |
-| `pnpm build`         | 34/34 tasks pass                                       |
-| `pnpm typecheck`     | 63/63 tasks pass                                       |
+| `pnpm build`         | 35/35 tasks pass                                       |
+| `pnpm typecheck`     | 65/65 tasks pass                                       |
 | `pnpm lint`          | pass                                                   |
 | `pnpm format`        | clean                                                  |
-| Unit tests           | **626 passing** across 29 packages/apps (incl. web 37) |
-| API integration      | **148 passing** (18 files)                             |
+| Unit tests           | **712 passing** across 30 packages/apps (incl. web 43) |
+| API integration      | **164 passing** (19 files)                             |
 | Pipeline integration | **95 passing** (11 files, `research-pipeline`)         |
 | Metering integration | **74 passing** (7 files)                               |
-| E2E (Playwright)     | **30 tests** (stubbed-API UI journeys)                 |
-| Prisma               | schema valid · 26 migrations · database up to date     |
+| E2E (Playwright)     | **32 tests** (stubbed-API UI journeys)                 |
+| Prisma               | schema valid · 27 migrations · database up to date     |
 
-Known flake (pre-existing, not introduced by 6B–6D): `budget-hardening.spec.ts` "concurrent
+Known flake (pre-existing, not introduced by 6B–6E): `budget-hardening.spec.ts` "concurrent
 research-run starts cannot all pass the last allowance" intermittently admits more than one run. It
-passed in the 6D gate run; the investigation is tracked separately.
+failed once in the full 6E gate run and passed when that file was re-run; the investigation is
+tracked separately.
 
 ---
 
@@ -361,9 +387,9 @@ passed in the 6D gate run; the investigation is tracked separately.
 
 ### 8.1 Immediate next candidates (highest value)
 
-1. **Run the LinkedIn live-verification checklist** (`docs/LINKEDIN_LIVE_VERIFICATION.md`)
-   against a real LinkedIn app — the adapter is built and tested against a stand-in only. Then the
-   next OAuth publisher (X): discovery ports + a `PostPublisher`, registered; the broker, sealed
+1. **Run the LinkedIn and Meta live-verification checklists** (`docs/LINKEDIN_LIVE_VERIFICATION.md`,
+   `docs/META_LIVE_VERIFICATION.md`) against real apps — both are built and tested against
+   stand-ins only. Then the next OAuth publisher (X): discovery ports + a `PostPublisher`, registered; the broker, sealed
    storage, refresh and the shared resolver are in place.
 2. **Live `AnalyticsProvider` adapters** feeding real engagement metrics, which would also
    calibrate the `engagementPotential` input to trend scoring.
@@ -395,18 +421,20 @@ passed in the 6D gate run; the investigation is tracked separately.
   history).
 - A metrics scrape endpoint on the worker — pipeline series are emitted there but not scrapable.
 - OAuth follow-ups (6C): a background refresh sweep ahead of token expiry; a bulk re-seal job for
-  key rotation (today rotation advances on write); Meta's long-lived token and per-Page token
-  exchange; revocation is unavailable for LinkedIn and the Meta family (users are told to revoke in
+  key rotation (today rotation advances on write); revocation is unavailable for LinkedIn and the Meta family (users are told to revoke in
   the platform's settings).
 - LinkedIn follow-ups (6D): video (Videos API, initialize → upload parts → finalize), documents,
   multi-image, articles and polls; mentions; editing and deleting posts; engagement analytics; a
   `ugcPosts` fallback if self-serve apps turn out not to be accepted by the Posts API.
+- Meta follow-ups (6E): Facebook video and multi-photo posts; Instagram Reels, stories, carousels
+  and video; Facebook photo alt text; the Instagram Login publishing path; Threads; insights; a
+  public media proxy for deployments whose object storage is private.
 
 ### 8.4 Engineering debt
 
-- ~~E2E coverage is very thin~~ — 28 Playwright journeys now (6A–6C); still one spec file, against a
+- ~~E2E coverage is very thin~~ — 32 Playwright journeys now (6A–6E); still one spec file, against a
   stubbed API.
-- ~~Zero web unit tests~~ — 31 now (6A, 6C); coverage is concentrated on a few pages.
+- ~~Zero web unit tests~~ — 43 now (6A–6E); coverage is concentrated on a few pages.
 - Rate table in `@spectra/metering` is hand-maintained list pricing; will drift from vendor
   pricing. `RATE_VERSION` makes drift visible but does not fix it.
 - Usage ledger writes are best-effort (failures swallowed so metering never breaks metered work),

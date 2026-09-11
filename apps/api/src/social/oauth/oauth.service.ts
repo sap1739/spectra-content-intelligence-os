@@ -24,6 +24,7 @@ import {
   generateState,
   hashState,
   isWellFormedState,
+  upgradeToLongLivedToken,
   usesPkce,
   type TokenSet,
 } from '@spectra/social-oauth';
@@ -349,13 +350,20 @@ export class OAuthService {
     }
 
     let tokens: TokenSet;
+    let stage: 'token' | 'long_lived' = 'token';
     try {
       tokens = await exchangeAuthorizationCode(config, { code, codeVerifier });
+      // Meta: trade the ~1-hour token for a long-lived one BEFORE discovery,
+      // so the Page tokens derived from it do not expire either. Fail closed:
+      // a grant that would silently die within the hour is not stored.
+      stage = 'long_lived';
+      tokens = await upgradeToLongLivedToken(config, tokens);
     } catch (exchangeError) {
       if (!(exchangeError instanceof OAuthTokenError)) throw exchangeError;
       this.logger.warn(
         {
           platform,
+          stage,
           code: exchangeError.code,
           providerError: exchangeError.providerError,
           httpStatus: exchangeError.httpStatus,
@@ -366,7 +374,7 @@ export class OAuthService {
         attempt,
         principal,
         'FAILED',
-        `token_${exchangeError.code}`,
+        `${stage}_${exchangeError.code}`,
         'token_exchange_failed',
       );
     }

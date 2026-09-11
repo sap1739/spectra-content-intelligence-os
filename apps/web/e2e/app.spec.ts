@@ -10,6 +10,8 @@ import {
   CONNECTION_ID,
   connectionRow,
   oauthPlatforms,
+  instagramAccount,
+  instagramCapabilities,
   linkedInAccount,
   linkedInConnectionRow,
 } from './fixtures';
@@ -380,7 +382,8 @@ test.describe('social accounts (OAuth)', () => {
     });
     await gotoAuthenticated(page, '/social-accounts');
 
-    await expect(page.getByText('SOCIAL_OAUTH_FACEBOOK_CLIENT_ID')).toBeVisible();
+    // Exact: the collapsed Meta setup guide on the same card also mentions the variable.
+    await expect(page.getByText('SOCIAL_OAUTH_FACEBOOK_CLIENT_ID', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Connect Facebook Pages' })).toBeDisabled();
     await expect(page.getByRole('button', { name: 'Connect X' })).toBeEnabled();
     // Connecting is never presented as publishing.
@@ -582,6 +585,101 @@ test.describe('LinkedIn publishing', () => {
     expect(targets).toContain('Company blog');
     expect(targets).not.toContain('Jane Doe');
     await expect(page.getByLabel('Image (optional)')).toHaveCount(0);
+  });
+});
+
+test.describe('Meta publishing', () => {
+  const image = (id: string, mimeType: string, widthPx: number, heightPx: number) => ({
+    id,
+    kind: 'IMAGE',
+    storageKey: `org/x/ws/y/media/${id}/photo`,
+    mimeType,
+    sizeBytes: 2048,
+    widthPx,
+    heightPx,
+    engine: 'sharp',
+    sourceAssetId: null,
+    createdAt: '2026-09-11T09:00:00.000Z',
+  });
+
+  test('asks for an image for Instagram, offers only JPEGs, and marks an ineligible account', async ({
+    page,
+  }) => {
+    await stubApi(page, {
+      routes: {
+        '/content-items': [
+          {
+            id: '00000000-0000-4000-8000-00000000000e',
+            title: 'Fresh roast',
+            contentType: 'POST',
+            lifecycleState: 'APPROVED',
+            funnelStage: null,
+            objective: null,
+            body: 'Fresh roast Friday.',
+            evidencePackId: null,
+            topicKey: null,
+            findingIds: [],
+            citationIds: [],
+            approvals: [],
+            moderation: null,
+            createdAt: '2026-09-11T09:00:00.000Z',
+          },
+        ],
+        '/social-accounts': [
+          instagramAccount(),
+          instagramAccount({
+            id: '00000000-0000-4000-8000-0000000000d4',
+            externalAccountId: '17841400000000002',
+            displayName: '@jane.gardens',
+            kind: 'PROFILE',
+            capabilities: instagramCapabilities(false),
+          }),
+        ],
+        '/media': [
+          image('00000000-0000-4000-8000-0000000000a3', 'image/jpeg', 1080, 1350),
+          image('00000000-0000-4000-8000-0000000000a4', 'image/png', 1080, 1080),
+        ],
+        '/calendar': [],
+      },
+    });
+    await gotoAuthenticated(page, '/calendar');
+
+    await page.getByLabel('Platform').selectOption('INSTAGRAM');
+    const targets = page.getByLabel('Publish to (optional)');
+    expect(await targets.locator('option').allTextContents()).toContain(
+      '@jane.gardens — cannot publish',
+    );
+    await targets.selectOption({ label: '@acmecoffee (professional)' });
+    await expect(page.getByText('Text — not supported by the platform')).toBeVisible();
+
+    const picker = page.getByLabel('Image (required)');
+    await expect(picker).toBeVisible();
+    const options = await picker.locator('option').allTextContents();
+    // Instagram takes JPEG only: the PNG is not offered.
+    expect(options.some((o) => o.startsWith('JPEG'))).toBe(true);
+    expect(options.some((o) => o.startsWith('PNG'))).toBe(false);
+    await expect(page.getByText(/One JPG per post, 4:5 to 1\.91:1/)).toBeVisible();
+
+    await page.getByLabel('Content item').selectOption({ label: 'Fresh roast' });
+    await page.getByLabel('When (local time)').fill('2026-09-20T10:00');
+    const submit = page.getByRole('button', { name: 'Schedule' });
+    await expect(submit).toBeDisabled();
+    await picker.selectOption({ index: 1 });
+    await expect(submit).toBeEnabled();
+
+    await targets.selectOption({ label: '@jane.gardens — cannot publish' });
+    await expect(page.getByText('Cannot publish here.')).toBeVisible();
+    await expect(page.getByText(/professional \(Business or Creator\)/)).toBeVisible();
+  });
+
+  test('shows the Meta setup guide next to the Facebook connect button', async ({ page }) => {
+    await stubApi(page, {
+      routes: { '/social/oauth/platforms': oauthPlatforms(), '/social/connections': [] },
+    });
+    await gotoAuthenticated(page, '/social-accounts');
+    await page.getByText('Meta setup (Facebook & Instagram)').click();
+    await expect(page.getByText('Advanced Access')).toBeVisible();
+    await expect(page.getByText(/must be professional \(Business or Creator\)/)).toBeVisible();
   });
 });
 

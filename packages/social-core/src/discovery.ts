@@ -43,6 +43,18 @@ export interface DiscoveredDestination {
   externalId: string;
   displayName: string;
   kind: 'PROFILE' | 'PAGE' | 'CHANNEL' | 'BUSINESS_ACCOUNT' | 'SITE';
+  /**
+   * The destination's platform when it differs from the connection's — an
+   * Instagram account found through a Facebook connection (ADR-0036).
+   */
+  platform?: SocialPlatform;
+  /**
+   * A token scoped to this destination (a Facebook Page access token). A
+   * secret: the caller seals it immediately and never logs or returns it.
+   * Null means "this destination has no token" (clear any stored one);
+   * absent means the platform has no per-destination tokens.
+   */
+  accessToken?: string | null;
   metadata?: DiscoveryMetadata;
   capabilities?: AccountCapabilitySnapshot;
 }

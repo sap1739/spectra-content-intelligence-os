@@ -1,0 +1,24 @@
+{
+  "name": "@spectra/social-meta",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Real Meta adapters over the official Graph API only: Facebook Page text and photo posts, and single-image posts to Instagram professional accounts linked to those Pages (Instagram API with Facebook Login).",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run src",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@spectra/contracts": "workspace:*",
+    "@spectra/social-core": "workspace:*",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.0"
+  }
+}

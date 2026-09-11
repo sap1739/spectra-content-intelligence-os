@@ -139,6 +139,17 @@ again. `content_schedule_entries` gained `mediaAssetId` (SET NULL on asset delet
 and `failureCode` (a `PublishFailureCode`). `AccountDiscoveryStatus` gained `PARTIAL` (the member
 was found, pages were not). `SocialMediaUpload` is in the tenant guard.
 
+**Meta publishing (Phase 6E, ADR-0036).** One column: `content_schedule_entries.externalContainerId`
+— the Instagram media container staged for that entry, found by the entry's idempotency key and
+checked before any retry, so a container Instagram reports `PUBLISHED` is never published again. No
+new table: a Facebook Page's access token is a per-destination credential, sealed into that
+account's `encryptedToken` with `credentialKeyId` (an Instagram account holds its linked Page's
+token); discovery nulls it when Meta stops issuing one, and retiring or disconnecting deletes it.
+Instagram accounts found through a Facebook connection have `platform = INSTAGRAM` and that
+connection's `connectionId`; `kind` is `BUSINESS_ACCOUNT` only for an eligible professional
+account. Snapshots may carry `NOT_SUPPORTED`, and `failureCode` may be `UNSUPPORTED_ACCOUNT` (a
+string column — no enum migration).
+
 `content_schedule_entries` double as the **publication record** (ADR-0020): an optional
 `socialAccountId` target, a unique `idempotencyKey`, and `attemptCount`/`lastAttemptAt`/
 `failureReason`/`externalPostId`/`externalUrl`/`publishedAt`. Status covers the dispatch

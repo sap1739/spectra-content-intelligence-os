@@ -1,10 +1,13 @@
 # Social Platform Capability Matrix
 
-**Status (Phase 6D):** WordPress (ADR-0022) and LinkedIn (ADR-0035) publish for real. LinkedIn
-publishes text and one image, as a member or as a page they administer. The other seven OAuth
-platforms can be **connected** — a real OAuth 2.0 flow stores a sealed authorization (ADR-0034) —
-but **cannot publish**: a post to any of them resolves to `UNSUPPORTED`. Email is neither
-connectable nor publishable.
+**Status (Phase 6E):** WordPress (ADR-0022), LinkedIn (ADR-0035), Facebook Pages and Instagram
+professional accounts (ADR-0036) publish for real. LinkedIn publishes text and one image, as a
+member or as a page they administer; Facebook publishes text and one photo to Pages; Instagram
+publishes one JPEG image to professional accounts linked to a Page, through a Meta (Facebook)
+connection. The other five OAuth platforms (Threads, YouTube, TikTok, X, Pinterest) — and a direct
+Instagram Login connection — can be **connected**, storing a sealed authorization (ADR-0034), but
+**cannot publish**: a post through them resolves to `UNSUPPORTED`. Email is neither connectable nor
+publishable.
 
 Capability records are _declared_ from official documentation, not fetched from a live API.
 Platform rules change frequently, so `null`/"verify" means unknown-until-verified and the code fails
@@ -53,22 +56,24 @@ analytics, comments, webhooks, stories, drafts — tri-state `true/false/null`),
 Declared in `@spectra/social-oauth` (recorded 2026-09-10), overridable per deployment. "Connect"
 means the OAuth flow works end to end when configured; it says nothing about publishing.
 
-| Platform       | Connect                    | Publish                   | PKCE      | Client auth         | Refresh                     | Standard revocation | Default scopes                                                |
-| -------------- | -------------------------- | ------------------------- | --------- | ------------------- | --------------------------- | ------------------- | ------------------------------------------------------------- |
-| LinkedIn       | if configured              | **live** (text + 1 image) | none      | body                | partners only               | no                  | `openid profile w_member_social`                              |
-| Facebook Pages | if configured              | **not wired**             | none      | body                | none (reconnect)            | no                  | `pages_show_list,pages_read_engagement,pages_manage_posts`    |
-| Instagram      | if configured              | **not wired**             | none      | body                | none (reconnect)            | no                  | `instagram_business_basic,instagram_business_content_publish` |
-| Threads        | if configured              | **not wired**             | none      | body                | none (reconnect)            | no                  | `threads_basic,threads_content_publish`                       |
-| YouTube        | if configured              | **not wired**             | supported | body                | standard (offline)          | yes                 | `youtube.upload youtube.readonly`                             |
-| TikTok         | if configured              | **not wired**             | none      | body (`client_key`) | standard                    | yes                 | `user.info.basic,video.upload,video.publish`                  |
-| X              | if configured              | **not wired**             | required  | HTTP Basic          | standard (`offline.access`) | yes                 | `tweet.read tweet.write users.read offline.access`            |
-| Pinterest      | if configured              | **not wired**             | none      | HTTP Basic          | standard                    | no                  | `user_accounts:read,boards:read,pins:read,pins:write`         |
-| WordPress      | n/a — application password | **live**                  | —         | —                   | —                           | —                   | —                                                             |
-| Email          | not connectable            | not wired                 | —         | —                   | —                           | —                   | —                                                             |
+| Platform        | Connect                    | Publish                                                           | PKCE      | Client auth               | Refresh                                        | Standard revocation | Default scopes                                                                                       |
+| --------------- | -------------------------- | ----------------------------------------------------------------- | --------- | ------------------------- | ---------------------------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------- |
+| LinkedIn        | if configured              | **live** (text + 1 image)                                         | none      | body                      | partners only                                  | no                  | `openid profile w_member_social`                                                                     |
+| Meta (Facebook) | if configured              | **live** — Pages: text + 1 photo; Instagram: 1 JPEG               | none      | body (GET, as documented) | long-lived exchange; Page tokens do not expire | no                  | `pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish` |
+| Instagram Login | if configured              | authorization only — publish through a Meta (Facebook) connection | none      | body                      | none (reconnect)                               | no                  | `instagram_business_basic,instagram_business_content_publish`                                        |
+| Threads         | if configured              | **not wired**                                                     | none      | body                      | none (reconnect)                               | no                  | `threads_basic,threads_content_publish`                                                              |
+| YouTube         | if configured              | **not wired**                                                     | supported | body                      | standard (offline)                             | yes                 | `youtube.upload youtube.readonly`                                                                    |
+| TikTok          | if configured              | **not wired**                                                     | none      | body (`client_key`)       | standard                                       | yes                 | `user.info.basic,video.upload,video.publish`                                                         |
+| X               | if configured              | **not wired**                                                     | required  | HTTP Basic                | standard (`offline.access`)                    | yes                 | `tweet.read tweet.write users.read offline.access`                                                   |
+| Pinterest       | if configured              | **not wired**                                                     | none      | HTTP Basic                | standard                                       | no                  | `user_accounts:read,boards:read,pins:read,pins:write`                                                |
+| WordPress       | n/a — application password | **live**                                                          | —         | —                         | —                                              | —                   | —                                                                                                    |
+| Email           | not connectable            | not wired                                                         | —         | —                         | —                                              | —                   | —                                                                                                    |
 
-"Refresh: none (reconnect)" means the platform has no standard `refresh_token` grant — Meta uses
-its own long-lived-token exchange, which arrives with each Meta adapter. Until then those
-connections say "reconnect before the token expires".
+"Refresh: none (reconnect)" means the platform has no standard `refresh_token` grant. The Meta
+(Facebook) connection uses Meta's own long-lived-token exchange instead (6E): the user token lasts
+about 60 days and the Page tokens obtained with it do not expire, so publishing continues after the
+user token lapses. Instagram Login and Threads connections still say "reconnect before the token
+expires".
 
 ### Platform approval gates
 
@@ -77,8 +82,9 @@ platform; in summary:
 
 - **LinkedIn** — member posting is self-serve; organization pages need Community Management API
   access; refresh tokens only for approved partners.
-- **Meta (Facebook, Instagram, Threads)** — App Review for every publishing permission; Business
-  Verification for advanced access; Instagram publishing needs a professional account.
+- **Meta (Facebook, Instagram, Threads)** — App Review (Advanced Access) for every publishing
+  permission; Business Verification for advanced access; Instagram publishing needs a professional
+  (Business or Creator) account linked to a Facebook Page.
 - **YouTube** — Google OAuth verification for sensitive scopes; uploads from an unaudited project
   are private until a YouTube API Services audit.
 - **TikTok** — the Content Posting API requires an app audit; until then posts are `SELF_ONLY`.
@@ -119,3 +125,36 @@ Pages become targets only for APPROVED roles that can post organically (`ADMINIS
 `CONTENT_ADMINISTRATOR`/`CONTENT_ADMIN`). `commentary` is LinkedIn "little" text: `#word` is kept
 as a hashtag and every other reserved character is escaped. Setup: `docs/LINKEDIN_SETUP.md`; the
 first real run: `docs/LINKEDIN_LIVE_VERIFICATION.md`.
+
+## 6. Meta adapters — Facebook Pages and Instagram (Phase 6E, ADR-0036)
+
+Official Graph API only, at `META_GRAPH_API_VERSION` (default `v26.0`), every call signed with
+`appsecret_proof`:
+
+| Step                     | Endpoint                                                                     | Permission                                     |
+| ------------------------ | ---------------------------------------------------------------------------- | ---------------------------------------------- |
+| Exchange the code        | `GET /oauth/access_token` (code, then `grant_type=fb_exchange_token`)        | —                                              |
+| What was granted         | `GET /me/permissions`                                                        | —                                              |
+| Who connected            | `GET /me?fields=id,name` — a personal profile, never publishable             | —                                              |
+| Pages, tokens, linked IG | `GET /me/accounts?fields=…,access_token,tasks,instagram_business_account{…}` | `pages_show_list` (+ `instagram_basic` for IG) |
+| Facebook text post       | `POST /{page-id}/feed` (`message`) with the Page token                       | `pages_manage_posts`                           |
+| Facebook photo post      | `POST /{page-id}/photos` multipart (`source`, `caption`)                     | `pages_manage_posts`                           |
+| Instagram allowance      | `GET /{ig-id}/content_publishing_limit`                                      | `instagram_content_publish`                    |
+| Instagram container      | `POST /{ig-id}/media` (`image_url` signed link, `caption`, `alt_text`)       | `instagram_content_publish`                    |
+| Container status         | `GET /{container-id}?fields=status_code`                                     | —                                              |
+| Instagram publish        | `POST /{ig-id}/media_publish` (`creation_id`)                                | `instagram_content_publish`                    |
+| Permalinks               | `GET /{post-id}?fields=permalink_url`, `GET /{media-id}?fields=permalink`    | —                                              |
+
+| Capability                                    | Facebook Page                         | Instagram professional account     | Personal profile / other Instagram |
+| --------------------------------------------- | ------------------------------------- | ---------------------------------- | ---------------------------------- |
+| Text                                          | live (≤ 63,206 characters)            | not supported by Instagram         | not supported by Meta              |
+| One image                                     | live — JPEG/PNG/GIF/BMP/TIFF, < 10 MB | live — JPEG, ≤ 8 MB, 4:5 to 1.91:1 | not supported by Meta              |
+| Video, Reels, stories, carousels, multi-photo | not implemented                       | not implemented                    | not supported by Meta              |
+| Edit / delete / insights / comments           | not implemented                       | not implemented                    | —                                  |
+
+A Page is writable only with a Page token, issued to a user whose role includes CREATE_CONTENT or
+MANAGE. An Instagram account is eligible only as the Page's `instagram_business_account`; one
+linked only through Page settings (`connected_instagram_account`) is recorded as `NOT_SUPPORTED`
+with the reason. Instagram captions allow 2,200 characters, 30 hashtags and 20 @ tags; the image is
+fetched by Instagram from a 15-minute signed link, so storage must be internet-reachable. Setup:
+`docs/META_SETUP.md`; the first real run: `docs/META_LIVE_VERIFICATION.md`.

@@ -1,4 +1,4 @@
-import type { PublishInput, PublishValidationIssue } from '@spectra/social-core';
+import { toPlainText, type PublishInput, type PublishValidationIssue } from '@spectra/social-core';
 
 import {
   LINKEDIN_IMAGE_MIME_TYPES,
@@ -33,6 +33,8 @@ const RESERVED = new Set([
 const HASHTAG = /^#[\p{L}\p{N}]+/u;
 const WORD_CHAR = /[\p{L}\p{N}]/u;
 
+export { toPlainText };
+
 export function toLittleText(text: string): string {
   const input = text.replace(/\r\n?/g, '\n');
   let out = '';
@@ -53,31 +55,6 @@ export function toLittleText(text: string): string {
     i += 1;
   }
   return out;
-}
-
-function decodeEntities(text: string): string {
-  return text
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, '&');
-}
-
-/** LinkedIn renders plain text only; HTML bodies (e.g. written for WordPress) are flattened. */
-export function toPlainText(body: string): string {
-  const normalized = body.replace(/\r\n?/g, '\n');
-  if (!/<\/?[a-z][^>]*>/i.test(normalized)) return normalized.trim();
-  return decodeEntities(
-    normalized
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<\/(p|div|h[1-6]|li|blockquote)>/gi, '\n')
-      .replace(/<li[^>]*>/gi, '• ')
-      .replace(/<[^>]+>/g, ''),
-  )
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
 }
 
 /** The text LinkedIn will receive: the body, or the title when there is no body. */

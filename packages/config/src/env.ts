@@ -373,6 +373,32 @@ function refineLinkedIn(
   }
 }
 
+/**
+ * Meta Graph API (Phase 6E, ADR-0036). Defaults target Meta itself; the base
+ * URL is overridable only so tests can point at a local mock (https in
+ * production). The version is the path segment every Graph call uses.
+ */
+export const metaEnvSchema = z.object({
+  META_GRAPH_API_BASE_URL: z.string().url().default('https://graph.facebook.com'),
+  META_GRAPH_API_VERSION: z
+    .string()
+    .regex(/^v\d{1,3}\.\d{1,2}$/, { message: 'must be a Graph API version such as v26.0' })
+    .default('v26.0'),
+});
+
+function refineMeta(
+  env: { NODE_ENV: z.infer<typeof nodeEnvSchema>; META_GRAPH_API_BASE_URL: string },
+  ctx: z.RefinementCtx,
+): void {
+  if (env.NODE_ENV === 'production' && !env.META_GRAPH_API_BASE_URL.startsWith('https://')) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['META_GRAPH_API_BASE_URL'],
+      message: 'must use https in production',
+    });
+  }
+}
+
 export const apiEnvSchema = z
   .object({
     NODE_ENV: nodeEnvSchema,
@@ -406,10 +432,13 @@ export const apiEnvSchema = z
   .merge(socialOAuthEnvSchema)
   // LinkedIn adapter (Phase 6D).
   .merge(linkedInEnvSchema)
+  // Meta adapters (Phase 6E).
+  .merge(metaEnvSchema)
   .superRefine((env, ctx) => {
     refineSocialKeyRing(env, ctx);
     refineSocialOAuth(env, ctx);
     refineLinkedIn(env, ctx);
+    refineMeta(env, ctx);
   });
 
 export const workerEnvSchema = z
@@ -436,10 +465,12 @@ export const workerEnvSchema = z
   // publishing when the platform issued a refresh token.
   .merge(socialOAuthEnvSchema)
   .merge(linkedInEnvSchema)
+  .merge(metaEnvSchema)
   .superRefine((env, ctx) => {
     refineSocialKeyRing(env, ctx);
     refineSocialOAuth(env, ctx);
     refineLinkedIn(env, ctx);
+    refineMeta(env, ctx);
   });
 
 export const webEnvSchema = z.object({

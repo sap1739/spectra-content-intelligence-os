@@ -61,6 +61,12 @@ export type LoadMedia = (
   tenant: { organizationId: string; workspaceId: string },
 ) => Promise<Buffer>;
 
+/** A short-lived link a platform can fetch an asset from, checked against the tenant. */
+export type MediaUrl = (
+  asset: { storageKey: string },
+  tenant: { organizationId: string; workspaceId: string },
+) => Promise<string>;
+
 export interface PublishDeps {
   prisma: SpectraPrismaClient;
   /**
@@ -70,6 +76,11 @@ export interface PublishDeps {
   resolvePublisher?: ResolvePublisher;
   /** Needed only for entries with an attached image. */
   loadMedia?: LoadMedia;
+  /**
+   * Needed only by platforms that fetch media themselves (Instagram). Omitted
+   * where storage is not reachable from the internet.
+   */
+  mediaUrl?: MediaUrl;
   logger?: Logger;
   /** Records the publish attempt so per-kind limits can count it. */
   usage?: UsageRecorder;
@@ -227,6 +238,7 @@ async function runPublication(
       );
     }
     const loadMedia = deps.loadMedia;
+    const mediaUrl = deps.mediaUrl;
     if (!loadMedia) {
       return settleWithoutSending(
         'UNSUPPORTED',
@@ -243,6 +255,7 @@ async function runPublication(
       heightPx: asset.heightPx,
       altText: entry.mediaAltText ?? null,
       load: () => loadMedia(asset, tenant),
+      ...(mediaUrl ? { url: () => mediaUrl(asset, tenant) } : {}),
     });
   }
 

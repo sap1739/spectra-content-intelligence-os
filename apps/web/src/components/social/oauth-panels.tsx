@@ -6,8 +6,13 @@ import * as React from 'react';
 
 import { describeExpiry, type OAuthResultMessage } from '@/lib/oauth-results';
 
-import { AccountCapabilityBadges, LinkedInSetupGuide } from './capabilities';
-import type { OAuthPlatformEntry, OAuthPlatformsResponse, SocialConnectionRow } from '@/lib/social';
+import { AccountCapabilityBadges, LinkedInSetupGuide, MetaSetupGuide } from './capabilities';
+import {
+  accountKindLabel,
+  type OAuthPlatformEntry,
+  type OAuthPlatformsResponse,
+  type SocialConnectionRow,
+} from '@/lib/social';
 
 /**
  * OAuth connection panels (Phase 6C, ADR-0034). Presentational: data in,
@@ -109,6 +114,9 @@ function PlatformCard({
       ) : null}
 
       <p className="text-xs text-muted-foreground">{entry.limitation}</p>
+      {entry.tokenNote ? (
+        <p className="text-[11px] text-muted-foreground">{entry.tokenNote}</p>
+      ) : null}
 
       {entry.approval.required ? (
         <details className="text-xs">
@@ -132,6 +140,7 @@ function PlatformCard({
       {entry.platform === 'LINKEDIN' ? (
         <LinkedInSetupGuide redirectUri={entry.redirectUri} />
       ) : null}
+      {entry.platform === 'FACEBOOK' ? <MetaSetupGuide redirectUri={entry.redirectUri} /> : null}
 
       {canManage ? (
         <Button
@@ -290,8 +299,7 @@ function ConnectionItem({
               <p>
                 {account.displayName}{' '}
                 <span className="text-muted-foreground">
-                  {account.kind === 'PAGE' ? 'page' : account.kind.toLowerCase()} ·{' '}
-                  {account.externalAccountId}
+                  {accountKindLabel(account.platform, account.kind)} · {account.externalAccountId}
                 </span>
               </p>
               <div className="mt-1">

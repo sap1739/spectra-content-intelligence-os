@@ -297,6 +297,19 @@ weakest link in the differentiator: research and evidence quality.
   everywhere they could be chosen. Tested end to end against a local stand-in that enforces
   LinkedIn's rules; **not yet run against LinkedIn itself** (ADR-0035,
   `docs/LINKEDIN_LIVE_VERIFICATION.md`).
-- Next: run the LinkedIn live-verification checklist against a real app; LinkedIn video via the
-  Videos API; the next OAuth publisher (X); a background refresh sweep ahead of token expiry; a
-  metrics endpoint on the worker; anchor-aware citation selection.
+- ✅ **Increment E — Meta: Facebook Pages and Instagram.** `@spectra/social-meta` publishes text
+  and single-photo posts to Facebook Pages and single-image posts to Instagram professional
+  accounts, through the Graph API only (versioned, `appsecret_proof` on every call). One Facebook
+  connection finds both: the one-hour token is exchanged for a long-lived one before anything is
+  stored (fail closed), the grant is read from `/me/permissions`, and each Page's own
+  never-expiring token is sealed on its account. An Instagram account is publishable only when
+  Facebook reports it as the Page's professional account; a personal profile and a settings-only
+  Instagram link are listed with the reason rather than hidden, under a new `NOT_SUPPORTED`
+  capability status and `UNSUPPORTED_ACCOUNT` failure code. Instagram fetches images from 15-minute
+  signed links, only where storage is public; the media container is recorded on the entry so a
+  retry never publishes twice, and the 24-hour allowance is read from Instagram before each post.
+  Tested end to end against a local Graph stand-in; **not yet run against Meta itself** (ADR-0036,
+  `docs/META_LIVE_VERIFICATION.md`).
+- Next: run the LinkedIn and Meta live-verification checklists against real apps; video (LinkedIn
+  Videos API, Facebook video, Instagram Reels); the next OAuth publisher (X); a background refresh
+  sweep ahead of token expiry; a metrics endpoint on the worker; anchor-aware citation selection.

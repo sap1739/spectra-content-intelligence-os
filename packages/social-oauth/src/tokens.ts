@@ -141,7 +141,7 @@ function clientAuthentication(config: ResolvedOAuthConfig): {
   };
 }
 
-async function postForm(
+async function tokenRequest(
   config: ResolvedOAuthConfig,
   url: string,
   form: Record<string, string>,
@@ -150,16 +150,26 @@ async function postForm(
   const fetchImpl = options.fetchImpl ?? fetch;
   const auth = clientAuthentication(config);
   const name = config.definition.displayName;
+  const params = new URLSearchParams({ ...form, ...auth.form });
+  // Meta documents its token endpoint as GET with query parameters; every
+  // other platform takes an RFC 6749 form POST. The URL is never logged.
+  const get = config.definition.tokenRequestMethod === 'GET';
+  let target = url;
+  if (get) {
+    const withQuery = new URL(url);
+    for (const [key, value] of params) withQuery.searchParams.set(key, value);
+    target = withQuery.toString();
+  }
   let response: Response;
   try {
-    response = await fetchImpl(url, {
-      method: 'POST',
+    response = await fetchImpl(target, {
+      method: get ? 'GET' : 'POST',
       headers: {
-        'content-type': 'application/x-www-form-urlencoded',
         accept: 'application/json',
+        ...(get ? {} : { 'content-type': 'application/x-www-form-urlencoded' }),
         ...auth.headers,
       },
-      body: new URLSearchParams({ ...form, ...auth.form }).toString(),
+      ...(get ? {} : { body: params.toString() }),
       redirect: 'error',
       signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS),
     });
@@ -232,7 +242,7 @@ export async function exchangeAuthorizationCode(
     redirect_uri: config.redirectUri,
   };
   if (input.codeVerifier) form['code_verifier'] = input.codeVerifier;
-  const { status, body } = await postForm(config, config.tokenUrl, form, options);
+  const { status, body } = await tokenRequest(config, config.tokenUrl, form, options);
   return tokenSetOrThrow(config, status, body, (options.now ?? (() => new Date()))());
 }
 
@@ -248,13 +258,41 @@ export async function refreshAccessToken(
   if (config.definition.refresh !== 'standard') {
     throw new Error(`${config.definition.displayName} has no standard refresh grant`);
   }
-  const { status, body } = await postForm(
+  const { status, body } = await tokenRequest(
     config,
     config.tokenUrl,
     { grant_type: 'refresh_token', refresh_token: refreshToken },
     options,
   );
   return tokenSetOrThrow(config, status, body, (options.now ?? (() => new Date()))());
+}
+
+/**
+ * Meta's short-lived user token lasts about an hour; its documented
+ * `fb_exchange_token` grant trades it for one lasting about 60 days (the Page
+ * tokens derived from that do not expire). Applied right after the code
+ * exchange; a no-op for every other platform.
+ */
+export async function upgradeToLongLivedToken(
+  config: ResolvedOAuthConfig,
+  tokens: TokenSet,
+  options: TokenRequestOptions = {},
+): Promise<TokenSet> {
+  if (config.definition.longLivedExchange !== 'fb_exchange_token') return tokens;
+  const { status, body } = await tokenRequest(
+    config,
+    config.tokenUrl,
+    { grant_type: 'fb_exchange_token', fb_exchange_token: tokens.accessToken },
+    options,
+  );
+  const upgraded = tokenSetOrThrow(config, status, body, (options.now ?? (() => new Date()))());
+  // The exchange reports no scopes: the grant itself is unchanged.
+  return {
+    ...upgraded,
+    grantedScopes: upgraded.grantedScopes ?? tokens.grantedScopes,
+    refreshToken: upgraded.refreshToken ?? tokens.refreshToken,
+    subjectId: upgraded.subjectId ?? tokens.subjectId,
+  };
 }
 
 export type RevocationOutcome = 'REVOKED' | 'NOT_SUPPORTED' | 'FAILED';
@@ -272,7 +310,7 @@ export async function revokeToken(
 ): Promise<RevocationOutcome> {
   if (!config.revocationUrl) return 'NOT_SUPPORTED';
   try {
-    const { status } = await postForm(
+    const { status } = await tokenRequest(
       config,
       config.revocationUrl,
       { token, token_type_hint: tokenTypeHint },

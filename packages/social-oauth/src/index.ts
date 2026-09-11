@@ -32,6 +32,7 @@ export {
   parseTokenResponse,
   refreshAccessToken,
   revokeToken,
+  upgradeToLongLivedToken,
 } from './tokens';
 export type {
   OAuthTokenErrorCode,

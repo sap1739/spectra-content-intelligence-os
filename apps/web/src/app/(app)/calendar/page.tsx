@@ -30,7 +30,7 @@ import {
 } from '@/lib/calendar';
 import { useContentItems } from '@/lib/content';
 import { useMediaAssets } from '@/lib/media';
-import { capabilitiesOf, useSocialAccounts } from '@/lib/social';
+import { cannotPublishReason, capabilitiesOf, useSocialAccounts } from '@/lib/social';
 
 const fieldClass = cn(
   'w-full rounded-md border border-input bg-background px-2.5 py-2 text-sm shadow-sm',
@@ -59,6 +59,21 @@ function groupByDay(entries: CalendarEntryRow[]): Array<[string, CalendarEntryRo
     (map.get(day) ?? map.set(day, []).get(day)!).push(e);
   }
   return [...map.entries()];
+}
+
+const FORMAT: Record<string, string> = {
+  'image/jpeg': 'JPG',
+  'image/png': 'PNG',
+  'image/gif': 'GIF',
+  'image/bmp': 'BMP',
+  'image/tiff': 'TIFF',
+};
+
+/** "JPG", "JPG, PNG or GIF" — from what the target actually accepts. */
+function formatList(mimeTypes: string[]): string {
+  const names = mimeTypes.map((m) => FORMAT[m] ?? m.replace('image/', '').toUpperCase());
+  if (names.length <= 1) return names[0] ?? 'image';
+  return `${names.slice(0, -1).join(', ')} or ${names.at(-1)}`;
 }
 
 export default function CalendarPage() {
@@ -90,6 +105,8 @@ export default function CalendarPage() {
   const caps = selected ? capabilitiesOf(selected.capabilities) : null;
   // An image is offered only where the target can genuinely publish one.
   const canAttachImage = caps?.postTypes.IMAGE.status === 'AVAILABLE';
+  // Instagram has no text-only posts: there, the image is the post.
+  const imageRequired = canAttachImage && caps?.postTypes.TEXT.status === 'NOT_SUPPORTED';
   const images = (media.data ?? []).filter(
     (m) => m.kind === 'IMAGE' && (caps?.limits.imageMimeTypes ?? []).includes(m.mimeType),
   );
@@ -117,7 +134,7 @@ export default function CalendarPage() {
     <>
       <PageHeader
         title="Calendar"
-        description="Schedule approved content across channels (UTC storage, local display). Attach a target account to publish; the dispatcher runs due entries. WordPress and connected LinkedIn accounts publish for real; every other platform resolves to an honest UNSUPPORTED — never a fake success."
+        description="Schedule approved content across channels (UTC storage, local display). Attach a target account to publish; the dispatcher runs due entries. WordPress, and LinkedIn, Facebook Page and Instagram professional accounts found through a connection, publish for real; every other platform resolves to an honest UNSUPPORTED — never a fake success."
       />
 
       <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
@@ -183,6 +200,8 @@ export default function CalendarPage() {
                       <option key={a.id} value={a.id}>
                         {a.displayName}
                         {a.kind === 'PAGE' ? ' (page)' : ''}
+                        {a.kind === 'BUSINESS_ACCOUNT' ? ' (professional)' : ''}
+                        {cannotPublishReason(a.capabilities) ? ' — cannot publish' : ''}
                       </option>
                     ))}
                   </select>
@@ -199,14 +218,18 @@ export default function CalendarPage() {
                 ) : null}
                 {canAttachImage ? (
                   <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="cal-image">Image (optional)</Label>
+                    <Label htmlFor="cal-image">
+                      Image {imageRequired ? '(required)' : '(optional)'}
+                    </Label>
                     <select
                       id="cal-image"
                       className={fieldClass}
                       value={mediaAssetId}
                       onChange={(e) => setMediaAssetId(e.target.value)}
                     >
-                      <option value="">No image — text only</option>
+                      <option value="">
+                        {imageRequired ? 'Select an image…' : 'No image — text only'}
+                      </option>
                       {images.map((m) => (
                         <option key={m.id} value={m.id}>
                           {m.mimeType.replace('image/', '').toUpperCase()} ·{' '}
@@ -216,7 +239,8 @@ export default function CalendarPage() {
                       ))}
                     </select>
                     <p className="text-[11px] text-muted-foreground">
-                      One JPG, PNG or GIF per post
+                      One {formatList(caps?.limits.imageMimeTypes ?? [])} per post
+                      {platform === 'INSTAGRAM' ? ', 4:5 to 1.91:1, up to 8 MB' : ''}
                       {images.length === 0 ? ' — none in Media yet' : ''}.
                     </p>
                   </div>
@@ -247,7 +271,15 @@ export default function CalendarPage() {
                     {schedule.error.message}
                   </p>
                 ) : null}
-                <Button type="submit" disabled={schedule.isPending || !contentItemId || !when}>
+                <Button
+                  type="submit"
+                  disabled={
+                    schedule.isPending ||
+                    !contentItemId ||
+                    !when ||
+                    (imageRequired && !mediaAssetId)
+                  }
+                >
                   {schedule.isPending ? 'Scheduling…' : 'Schedule'}
                 </Button>
               </form>

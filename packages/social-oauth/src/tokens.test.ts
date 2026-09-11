@@ -8,6 +8,7 @@ import {
   parseTokenResponse,
   refreshAccessToken,
   revokeToken,
+  upgradeToLongLivedToken,
 } from './tokens';
 
 const env = {
@@ -32,6 +33,7 @@ function configured(platform: OAuthPlatform): ResolvedOAuthConfig {
 
 interface Captured {
   url: string;
+  method: string;
   headers: Record<string, string>;
   form: URLSearchParams;
   redirect: string | undefined;
@@ -42,6 +44,7 @@ function fakeFetch(respond: () => Response) {
   const impl = (async (input: string | URL | Request, init?: RequestInit) => {
     calls.push({
       url: String(input),
+      method: init?.method ?? 'GET',
       headers: Object.fromEntries(new Headers(init?.headers).entries()),
       form: new URLSearchParams(String(init?.body ?? '')),
       redirect: init?.redirect,
@@ -310,5 +313,59 @@ describe('revocation', () => {
     expect(
       await revokeToken(configured('X'), 't', 'access_token', { fetchImpl: unreachable }),
     ).toBe('FAILED');
+  });
+});
+
+describe('Meta token handling (ADR-0036)', () => {
+  it('calls the token endpoint with GET and query parameters, as Meta documents', async () => {
+    const { impl, calls } = fakeFetch(() => json(200, { access_token: 'short', expires_in: 3600 }));
+    await exchangeAuthorizationCode(
+      configured('FACEBOOK'),
+      { code: 'fb-code', codeVerifier: null },
+      { fetchImpl: impl },
+    );
+    const call = first(calls);
+    expect(call.method).toBe('GET');
+    const url = new URL(call.url);
+    expect(url.pathname).toBe('/v26.0/oauth/access_token');
+    expect(url.searchParams.get('code')).toBe('fb-code');
+    expect(url.searchParams.get('client_id')).toBe('fb-client-id');
+    expect(url.searchParams.get('redirect_uri')).toBe(
+      'https://api.example.com/v1/social/oauth/facebook/callback',
+    );
+    expect(call.form.toString()).toBe('');
+  });
+
+  it('upgrades a short-lived Meta token to a long-lived one, keeping what the grant reported', async () => {
+    const { impl, calls } = fakeFetch(() =>
+      json(200, { access_token: 'long-lived', token_type: 'bearer', expires_in: 5_184_000 }),
+    );
+    const short = {
+      accessToken: 'short-lived',
+      refreshToken: null,
+      tokenType: 'bearer',
+      grantedScopes: null,
+      accessTokenExpiresAt: new Date(NOW.getTime() + 3_600_000),
+      refreshTokenExpiresAt: null,
+      subjectId: null,
+    };
+    const upgraded = await upgradeToLongLivedToken(configured('FACEBOOK'), short, {
+      fetchImpl: impl,
+      now: () => NOW,
+    });
+    expect(upgraded.accessToken).toBe('long-lived');
+    expect(upgraded.accessTokenExpiresAt).toEqual(new Date(NOW.getTime() + 5_184_000_000));
+    const url = new URL(first(calls).url);
+    expect(url.searchParams.get('grant_type')).toBe('fb_exchange_token');
+    expect(url.searchParams.get('fb_exchange_token')).toBe('short-lived');
+  });
+
+  it('leaves every other platform untouched', async () => {
+    const { impl, calls } = fakeFetch(() => json(200, {}));
+    const tokens = parseTokenResponse({ access_token: 'x' }, NOW);
+    expect(await upgradeToLongLivedToken(configured('X'), tokens, { fetchImpl: impl })).toBe(
+      tokens,
+    );
+    expect(calls).toHaveLength(0);
   });
 });

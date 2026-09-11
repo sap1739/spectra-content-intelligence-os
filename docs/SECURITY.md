@@ -316,3 +316,30 @@ A bulk re-seal job for long-idle rows is not built yet; today rotation advances 
   before they reach LinkedIn. A timeout after a post request was sent is `AMBIGUOUS` — the reason
   says the post may exist, so an operator checks before publishing again rather than creating a
   duplicate.
+
+## 16. Meta publishing **[P1]** (Phase 6E, ADR-0036)
+
+- **Official Graph API only**, every call signed with `appsecret_proof` (HMAC-SHA256 of the token,
+  keyed by the app secret). The token travels as the documented `access_token` parameter; request
+  URLs are never logged, redirects are refused, and failure reasons carry Meta's status, code,
+  subcode and a trimmed message with the token scrubbed out (regression-tested).
+- **Token requests follow Meta's documented GET.** The client secret is in the query string of the
+  token request only — sent straight to Meta over TLS and never logged. Everywhere else it stays
+  out of URLs.
+- **Page tokens never expire, so they are handled as the most sensitive credential here.** Each is
+  sealed into its account's `encryptedToken` (with `credentialKeyId`, so key rotation finds it) the
+  moment discovery returns it, is never selected into an API response, is cleared when Meta stops
+  issuing it (a lost role), and is deleted when the account is retired or the connection
+  disconnected.
+- **Short-lived grants are refused, not stored.** If the long-lived exchange fails, the callback
+  stores nothing.
+- **Signed media links are narrow.** Instagram requires a public image URL: Spectra issues a
+  15-minute presigned GET for one object whose key is checked against the entry's tenant, and only
+  when storage is reachable from the internet. The image is about to be published publicly.
+- **Discovery cannot plant accounts on other platforms.** A connection accepts destinations only on
+  platforms declared for it (`FACEBOOK → FACEBOOK, INSTAGRAM`).
+- **Data minimisation.** No email is requested. Discovery metadata is allow-listed primitives
+  (Page category, tasks, linked Page id, Instagram username) — never a token or a raw payload.
+- **Honest outcomes.** Error 190 marks the connection `REAUTH_REQUIRED` and later attempts stop
+  before reaching Meta. A Facebook post whose request went unanswered is `AMBIGUOUS`; an Instagram
+  container Meta reports `PUBLISHED` is never published again.

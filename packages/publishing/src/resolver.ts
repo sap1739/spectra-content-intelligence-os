@@ -7,6 +7,12 @@ import {
   type MediaUploadLedger,
 } from '@spectra/social-linkedin';
 import {
+  FacebookPagePublisher,
+  InstagramPublisher,
+  type ContainerLedger,
+  type MetaGraphOptions,
+} from '@spectra/social-meta';
+import {
   OAuthTokenError,
   openTokenBundle,
   refreshAccessToken,
@@ -17,7 +23,13 @@ import {
 import { WordPressPublisher, parseWordPressCredential } from '@spectra/social-wordpress';
 import { assertKeyWithinTenant, type ObjectStorageProvider } from '@spectra/storage';
 
-import type { LoadMedia, PublishAccount, PublisherUnavailable, ResolvePublisher } from './executor';
+import type {
+  LoadMedia,
+  MediaUrl,
+  PublishAccount,
+  PublisherUnavailable,
+  ResolvePublisher,
+} from './executor';
 
 /**
  * Live publisher resolution, shared by the worker and the integration tests
@@ -27,6 +39,8 @@ import type { LoadMedia, PublishAccount, PublisherUnavailable, ResolvePublisher 
  * LinkedIn (ADR-0035): an account discovered through an OAuth connection; the
  * token lives on the connection, is refreshed shortly before expiry when
  * LinkedIn issued a refresh token, and is opened in memory for one publish.
+ * Facebook Pages and Instagram (ADR-0036): accounts discovered through a Meta
+ * connection, each carrying its own sealed Page access token.
  *
  * Anything missing yields an honest UNSUPPORTED or FAILED with the reason —
  * never a publisher that pretends. Decrypted secrets never leave this module
@@ -53,6 +67,15 @@ export interface PublisherResolverDeps {
     imageStatusChecks?: number;
     sleep?: (ms: number) => Promise<void>;
   };
+  /** Meta (Facebook Pages, Instagram). Omitted: those targets resolve to UNSUPPORTED. */
+  meta?: {
+    api: MetaGraphOptions;
+    /** Why Instagram cannot fetch images from this deployment, or null (publicMediaLinkProblem). */
+    instagramMediaProblem?: string | null;
+    statusChecks?: number;
+    pollIntervalMs?: number;
+    sleep?: (ms: number) => Promise<void>;
+  };
   logger?: Logger;
   now?: () => Date;
 }
@@ -69,6 +92,9 @@ export function createPublisherResolver(deps: PublisherResolverDeps): ResolvePub
   return async (account) => {
     if (account.platform === 'WORDPRESS') return resolveWordPress(deps, account);
     if (account.platform === 'LINKEDIN') return resolveLinkedIn(deps, account);
+    if (account.platform === 'FACEBOOK' || account.platform === 'INSTAGRAM') {
+      return deps.meta ? resolveMeta(deps, deps.meta, account) : undefined;
+    }
     return undefined;
   };
 }
@@ -79,6 +105,58 @@ export function createMediaLoader(storage: Pick<ObjectStorageProvider, 'getObjec
     assertKeyWithinTenant(asset.storageKey, tenant);
     return storage.getObject(asset.storageKey);
   };
+}
+
+/** Signed links lasting long enough for the platform to fetch the file once. */
+const MEDIA_LINK_TTL_SECONDS = 15 * 60;
+
+/**
+ * Short-lived signed links for platforms that fetch media themselves
+ * (Instagram), refusing any key outside the entry's tenant.
+ */
+export function createMediaUrlSigner(
+  storage: Pick<ObjectStorageProvider, 'createSignedDownloadUrl'>,
+  expiresInSeconds = MEDIA_LINK_TTL_SECONDS,
+): MediaUrl {
+  return async (asset, tenant) => {
+    assertKeyWithinTenant(asset.storageKey, tenant);
+    return (await storage.createSignedDownloadUrl(asset.storageKey, expiresInSeconds)).url;
+  };
+}
+
+const PRIVATE_HOSTS = [
+  /^localhost$/i,
+  /\.(localhost|local|internal)$/i,
+  /^127\./,
+  /^10\./,
+  /^192\.168\./,
+  /^172\.(1[6-9]|2\d|3[01])\./,
+  /^169\.254\./,
+  /^0\./,
+  /^\[?::1\]?$/,
+  /^\[?f[cd][0-9a-f]{2}:/i,
+  /^\[?fe80:/i,
+];
+
+/**
+ * Whether a platform on the internet could fetch a signed link to this
+ * storage endpoint: null when it plausibly can, otherwise the reason. A
+ * loopback, private or link-local address, or a bare hostname (a
+ * docker-compose service), cannot be reached from outside. A public-looking
+ * name is not proof of reachability; the live checklist verifies it.
+ */
+export function publicMediaLinkProblem(storageEndpoint: string): string | null {
+  let host: string;
+  try {
+    host = new URL(storageEndpoint).hostname;
+  } catch {
+    return 'STORAGE_ENDPOINT is not a valid URL, so no link to the image can be made.';
+  }
+  const ip = /^[\d.]+$/.test(host) || host.includes(':');
+  if ((!ip && !host.includes('.')) || PRIVATE_HOSTS.some((pattern) => pattern.test(host))) {
+    return `Instagram fetches the image from a link to this deployment's object storage, and STORAGE_ENDPOINT (${host}) is a local or private address Instagram cannot reach. Serve storage from a public address to publish to Instagram.`;
+  }
+  return null;
 }
 
 function resolveWordPress(
@@ -321,6 +399,183 @@ async function refreshLinkedIn(
       'TRANSIENT',
     );
   }
+}
+
+const GRAPH_ID = /^\d{1,30}$/;
+const META_TARGET = {
+  FACEBOOK: {
+    name: 'Facebook',
+    kind: 'PAGE',
+    scopes: ['pages_manage_posts'],
+    wrongKind:
+      'Facebook does not allow apps to publish to personal profiles. Publish to a Page instead. Nothing was published.',
+  },
+  INSTAGRAM: {
+    name: 'Instagram',
+    kind: 'BUSINESS_ACCOUNT',
+    scopes: ['instagram_basic', 'instagram_content_publish'],
+    wrongKind:
+      'Instagram only allows API publishing to professional (Business or Creator) accounts linked to a Facebook Page, and Facebook does not report this account as one. Switch it to a professional account, link it to the Page, then reconnect Meta. Nothing was published.',
+  },
+} as const;
+
+/**
+ * Facebook Pages and Instagram (ADR-0036). Both publish with the Page access
+ * token sealed on the account at discovery; Instagram accounts are found
+ * through, and answer to, the Facebook connection.
+ *
+ * The connection's own user token may have lapsed without stopping anything:
+ * Page tokens obtained with a long-lived user token do not expire. A Page
+ * token Meta has invalidated comes back as code 190, which marks the
+ * connection for reconnect.
+ */
+async function resolveMeta(
+  deps: PublisherResolverDeps,
+  meta: NonNullable<PublisherResolverDeps['meta']>,
+  account: PublishAccount,
+): Promise<FacebookPagePublisher | InstagramPublisher | PublisherUnavailable> {
+  const platform = account.platform as 'FACEBOOK' | 'INSTAGRAM';
+  const target = META_TARGET[platform];
+  if (!account.connectionId || !GRAPH_ID.test(account.externalAccountId)) {
+    return unavailable(
+      'UNSUPPORTED',
+      `This ${target.name} target was registered by hand, not found through a Meta connection. Connect Meta (Facebook) on Social Accounts and publish to a discovered ${platform === 'FACEBOOK' ? 'Page' : 'account'}. Nothing was published.`,
+      'NOT_CONNECTED',
+    );
+  }
+  if (account.kind !== target.kind)
+    return unavailable('UNSUPPORTED', target.wrongKind, 'UNSUPPORTED_ACCOUNT');
+  if (platform === 'INSTAGRAM' && meta.instagramMediaProblem) {
+    return unavailable(
+      'UNSUPPORTED',
+      `${meta.instagramMediaProblem} Nothing was published.`,
+      'UNSUPPORTED_MEDIA',
+    );
+  }
+  const ring = deps.ring;
+  if (!ring) {
+    return unavailable(
+      'UNSUPPORTED',
+      `Credential storage is not configured on the worker (SOCIAL_TOKEN_ENCRYPTION_KEY), so the ${target.name} token cannot be read. Nothing was published.`,
+      'NOT_CONNECTED',
+    );
+  }
+
+  const connection = await deps.prisma.socialConnection.findFirst({
+    where: {
+      id: account.connectionId,
+      organizationId: account.organizationId,
+      workspaceId: account.workspaceId,
+      platform: 'FACEBOOK',
+    },
+    select: {
+      id: true,
+      status: true,
+      disconnectedAt: true,
+      grantedScopes: true,
+      grantedScopesReported: true,
+    },
+  });
+  if (!connection || connection.disconnectedAt) {
+    return unavailable(
+      'UNSUPPORTED',
+      'The Meta connection behind this target was disconnected. Reconnect Meta (Facebook) to publish. Nothing was published.',
+      'NOT_CONNECTED',
+    );
+  }
+  if (connection.status === 'REAUTH_REQUIRED' || connection.status === 'REVOKED') {
+    return unavailable(
+      'FAILED',
+      'Meta needs to be reconnected: it rejected this authorization. Nothing was published.',
+      'REAUTH_REQUIRED',
+    );
+  }
+  const granted = connection.grantedScopesReported ? connection.grantedScopes : null;
+  const missing = granted ? target.scopes.filter((scope) => !granted.includes(scope)) : [];
+  if (missing.length > 0) {
+    return unavailable(
+      'FAILED',
+      `Publishing to ${target.name} needs ${missing.join(', ')} (Meta App Review), which this connection was not granted. Nothing was published.`,
+      'PERMISSION',
+    );
+  }
+  if (!account.encryptedToken) {
+    return unavailable(
+      'FAILED',
+      `Facebook issued no Page access token for this ${platform === 'FACEBOOK' ? 'Page' : "account's linked Page"} — your role may not allow publishing. Ask for a role with "Create content", then reconnect Meta. Nothing was published.`,
+      'PERMISSION',
+    );
+  }
+  let pageToken: string;
+  try {
+    pageToken = decryptSecret(account.encryptedToken, ring);
+  } catch {
+    return unavailable(
+      'FAILED',
+      'The stored Page token could not be decrypted with the configured keys. Reconnect Meta. Nothing was published.',
+      'REAUTH_REQUIRED',
+    );
+  }
+
+  const common = {
+    ...meta.api,
+    accessToken: pageToken,
+    onAuthRejected: async () => {
+      await deps.prisma.socialConnection.updateMany({
+        where: { id: connection.id, organizationId: account.organizationId },
+        data: { status: 'REAUTH_REQUIRED', lastErrorCode: 'publish_unauthorized' },
+      });
+    },
+  };
+  if (platform === 'FACEBOOK') {
+    return new FacebookPagePublisher({ ...common, pageId: account.externalAccountId });
+  }
+  return new InstagramPublisher({
+    ...common,
+    instagramAccountId: account.externalAccountId,
+    ledger: prismaContainerLedger(deps.prisma, account),
+    ...(meta.statusChecks !== undefined ? { statusChecks: meta.statusChecks } : {}),
+    ...(meta.pollIntervalMs !== undefined ? { pollIntervalMs: meta.pollIntervalMs } : {}),
+    ...(meta.sleep ? { sleep: meta.sleep } : {}),
+  });
+}
+
+/**
+ * Instagram media containers by publish idempotency key, on the schedule entry
+ * itself — the guard that keeps a retry from publishing twice.
+ */
+function prismaContainerLedger(
+  prisma: SpectraPrismaClient,
+  account: PublishAccount,
+): ContainerLedger {
+  const where = (idempotencyKey: string) => ({
+    organizationId: account.organizationId,
+    workspaceId: account.workspaceId,
+    socialAccountId: account.id,
+    idempotencyKey,
+  });
+  return {
+    async find(key) {
+      const row = await prisma.contentScheduleEntry.findFirst({
+        where: where(key),
+        select: { externalContainerId: true },
+      });
+      return row?.externalContainerId ?? null;
+    },
+    async staged(key, containerId) {
+      const { count } = await prisma.contentScheduleEntry.updateMany({
+        where: where(key),
+        data: { externalContainerId: containerId },
+      });
+      return count === 1;
+    },
+    async cleared(key) {
+      await prisma.contentScheduleEntry.updateMany({
+        where: where(key),
+        data: { externalContainerId: null },
+      });
+    },
+  };
 }
 
 /** The SocialMediaUpload rows behind LinkedIn's retry-safe image reuse. */

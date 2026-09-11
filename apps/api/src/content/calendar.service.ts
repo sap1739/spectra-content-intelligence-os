@@ -9,6 +9,7 @@ import {
 } from '@spectra/contracts';
 import { TenantIsolationError } from '@spectra/security';
 import { validateLinkedInPost } from '@spectra/social-linkedin';
+import { validateFacebookPost, validateInstagramPost } from '@spectra/social-meta';
 import { JOB_NAMES } from '@spectra/workflow-core';
 
 import { AuditService } from '../infra/audit.service';
@@ -93,15 +94,27 @@ export class CalendarService {
         problems.push(
           `${account.platform} cannot publish ${asset?.kind.toLowerCase()} attachments.`,
         );
-      } else if (support.status === 'MISSING_PERMISSION' || support.status === 'NOT_IMPLEMENTED') {
+      } else if (
+        support.status === 'MISSING_PERMISSION' ||
+        support.status === 'NOT_IMPLEMENTED' ||
+        support.status === 'NOT_SUPPORTED'
+      ) {
         // UNKNOWN is let through: the platform did not say, so we do not guess.
         problems.push(support.reason);
       }
     } else if (asset && account.platform === 'WORDPRESS') {
       problems.push('WordPress publishing does not upload media; remove the image.');
     }
-    if (account.platform === 'LINKEDIN') {
-      const issues = validateLinkedInPost({
+    const validate =
+      account.platform === 'LINKEDIN'
+        ? validateLinkedInPost
+        : account.platform === 'FACEBOOK'
+          ? validateFacebookPost
+          : account.platform === 'INSTAGRAM'
+            ? validateInstagramPost
+            : null;
+    if (validate) {
+      const issues = validate({
         idempotencyKey: 'schedule-check',
         title: item.title,
         body: item.body ?? '',

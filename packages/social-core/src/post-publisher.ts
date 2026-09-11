@@ -19,6 +19,12 @@ export interface PublishMediaInput {
   altText: string | null;
   /** Reads the bytes from tenant-scoped storage. Called only when an upload is needed. */
   load(): Promise<Buffer>;
+  /**
+   * A short-lived link the platform can fetch the file from, for platforms
+   * that pull media rather than accept an upload (Instagram). Absent when this
+   * deployment cannot produce one.
+   */
+  url?(): Promise<string>;
 }
 
 export interface PublishInput {

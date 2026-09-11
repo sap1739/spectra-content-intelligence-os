@@ -332,9 +332,11 @@ describe('API integration: OAuth token brokering (ADR-0034)', () => {
       ]);
       expect(facebook?.approval.notes.length).toBeGreaterThan(0);
 
-      // LinkedIn is the one OAuth platform with a publishing adapter (6D).
+      // LinkedIn (6D), Facebook and Instagram (6E) have publishing adapters.
       expect(body.platforms.filter((p) => p.adapters.publishing).map((p) => p.platform)).toEqual([
         'LINKEDIN',
+        'FACEBOOK',
+        'INSTAGRAM',
       ]);
       for (const client of Object.values(CLIENTS)) expect(res.body).not.toContain(client.secret);
     });

@@ -106,14 +106,17 @@ export type PostType = z.infer<typeof postTypeSchema>;
 
 /**
  * Whether one account can publish one kind of post. NOT_IMPLEMENTED means the
- * platform supports it but Spectra's adapter does not; MISSING_PERMISSION means
- * the adapter does but this account's grant lacks a scope; UNKNOWN means the
- * platform did not report its granted scopes.
+ * platform supports it but Spectra's adapter does not; NOT_SUPPORTED means the
+ * platform itself does not allow it (an Instagram text-only post, a personal
+ * Facebook profile); MISSING_PERMISSION means the adapter does but this
+ * account's grant lacks a scope or role; UNKNOWN means the platform did not
+ * report its granted scopes.
  */
 export const postTypeSupportSchema = z.enum([
   'AVAILABLE',
   'MISSING_PERMISSION',
   'NOT_IMPLEMENTED',
+  'NOT_SUPPORTED',
   'UNKNOWN',
 ]);
 export type PostTypeSupport = z.infer<typeof postTypeSupportSchema>;
@@ -154,6 +157,8 @@ export const PUBLISH_FAILURE_CODES = [
   'PERMISSION',
   'VALIDATION',
   'UNSUPPORTED_MEDIA',
+  /** The platform does not allow publishing to this kind of account (a personal profile). */
+  'UNSUPPORTED_ACCOUNT',
   'RATE_LIMIT',
   'TRANSIENT',
   'AMBIGUOUS',

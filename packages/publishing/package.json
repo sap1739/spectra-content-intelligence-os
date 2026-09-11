@@ -19,6 +19,7 @@
     "@spectra/security": "workspace:*",
     "@spectra/social-core": "workspace:*",
     "@spectra/social-linkedin": "workspace:*",
+    "@spectra/social-meta": "workspace:*",
     "@spectra/social-oauth": "workspace:*",
     "@spectra/social-wordpress": "workspace:*",
     "@spectra/storage": "workspace:*",
