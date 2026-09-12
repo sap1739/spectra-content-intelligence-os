@@ -343,3 +343,26 @@ A bulk re-seal job for long-idle rows is not built yet; today rotation advances 
 - **Honest outcomes.** Error 190 marks the connection `REAUTH_REQUIRED` and later attempts stop
   before reaching Meta. A Facebook post whose request went unanswered is `AMBIGUOUS`; an Instagram
   container Meta reports `PUBLISHED` is never published again.
+
+## 17. YouTube publishing **[P1]** (Phase 6F, ADR-0037)
+
+- **Official Data API v3 only.** The access token travels in the Authorization header and never in
+  a URL; redirects are refused; every call times out; error messages carry Google's status and
+  `reason` with the token scrubbed out (regression-tested).
+- **The resumable session URI is a capability and is treated as one.** Whoever holds it can write
+  to that upload, so it is sealed with the social key ring (`encryptedUploadUrl` +
+  `credentialKeyId`), never logged, and deleted the moment the upload finishes or fails.
+- **Bytes and token go only where Google said.** The session URI returned in the `Location` header
+  is checked against the API origin (or `*.googleapis.com`) before anything is sent to it, and the
+  same check runs again on a stored session before a resume.
+- **Uploads stay inside the tenant.** The video and the thumbnail are read through
+  `assertKeyWithinTenant`, and an entry pointing at another tenant's account or asset publishes
+  nothing.
+- **Signed upload links are narrow.** A media-upload ticket signs ONE key derived from the ticket
+  id inside the caller's own tenant prefix, lasts 15 minutes, and registers an asset only after
+  storage confirms the object — with the size and content type storage reports, never the client's
+  claim.
+- **Honest outcomes.** A 401 marks the connection `REAUTH_REQUIRED` and later attempts stop before
+  reaching Google. A quota refusal is `QUOTA`, not a generic failure. A video YouTube forced
+  private is reported as published AND private, quoting Google's restriction — never as the public
+  post that was asked for.

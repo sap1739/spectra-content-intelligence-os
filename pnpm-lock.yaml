@@ -116,6 +116,9 @@ importers:
       '@spectra/social-wordpress':
         specifier: workspace:*
         version: link:../../packages/social-wordpress
+      '@spectra/social-youtube':
+        specifier: workspace:*
+        version: link:../../packages/social-youtube
       '@spectra/storage':
         specifier: workspace:*
         version: link:../../packages/storage
@@ -307,6 +310,9 @@ importers:
       '@spectra/social-wordpress':
         specifier: workspace:*
         version: link:../../packages/social-wordpress
+      '@spectra/social-youtube':
+        specifier: workspace:*
+        version: link:../../packages/social-youtube
       '@spectra/storage':
         specifier: workspace:*
         version: link:../../packages/storage
@@ -689,6 +695,9 @@ importers:
       '@spectra/social-wordpress':
         specifier: workspace:*
         version: link:../social-wordpress
+      '@spectra/social-youtube':
+        specifier: workspace:*
+        version: link:../social-youtube
       '@spectra/storage':
         specifier: workspace:*
         version: link:../storage
@@ -905,6 +914,28 @@ importers:
       '@spectra/social-core':
         specifier: workspace:*
         version: link:../social-core
+    devDependencies:
+      '@types/node':
+        specifier: ^22.15.0
+        version: 22.20.0
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(jsdom@25.0.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0)
+
+  packages/social-youtube:
+    dependencies:
+      '@spectra/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@spectra/social-core':
+        specifier: workspace:*
+        version: link:../social-core
+      zod:
+        specifier: ^3.25.0
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: ^22.15.0

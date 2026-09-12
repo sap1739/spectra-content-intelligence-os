@@ -62,6 +62,7 @@ packages/
   social-oauth/   Provider-neutral OAuth broker: state, PKCE, token exchange/refresh/revocation, sealed bundles (ADR-0034)
   social-linkedin/ Real LinkedIn adapter: discovery, Images API uploads, Posts API — text + one image (ADR-0035)
   social-meta/    Real Meta adapters over the Graph API: Facebook Page text/photo posts, Instagram single-image posts (ADR-0036)
+  social-youtube/ Real YouTube adapter: channel discovery + resumable video uploads with quota/audit honesty (ADR-0037)
   social-wordpress/ Real WordPress adapter: REST API + application-password Basic auth — the first live platform (ADR-0022)
   publishing/     Dispatch machinery: claims due entries, resolves a per-account publisher → real PUBLISHED/FAILED or honest UNSUPPORTED (ADR-0020, ADR-0022)
   workflow-core/  Queue-neutral job ports; BullMQ + in-memory adapters
@@ -72,7 +73,7 @@ infrastructure/
   docker/         PostgreSQL (pgvector), Redis, MinIO via Docker Compose
   scripts/        bootstrap.sh, verify.sh
 docs/             Product, architecture, security and strategy documentation
-docs/adr/         36 Architecture Decision Records
+docs/adr/         37 Architecture Decision Records
 ```
 
 ## Quick start

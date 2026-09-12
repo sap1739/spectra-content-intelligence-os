@@ -1,6 +1,6 @@
 import type { SpectraPrismaClient } from '@spectra/database';
 import type { Logger } from '@spectra/logging';
-import { decryptSecret, type KeyRing } from '@spectra/security';
+import { decryptSecret, encryptSecret, sealedKeyId, type KeyRing } from '@spectra/security';
 import {
   LinkedInPublisher,
   type LinkedInApiOptions,
@@ -21,6 +21,13 @@ import {
   type TokenBundle,
 } from '@spectra/social-oauth';
 import { WordPressPublisher, parseWordPressCredential } from '@spectra/social-wordpress';
+import {
+  CHANNEL_ID,
+  YOUTUBE_SCOPES,
+  YouTubeVideoPublisher,
+  type ResumableUploadLedger,
+  type YouTubeAdapterOptions,
+} from '@spectra/social-youtube';
 import { assertKeyWithinTenant, type ObjectStorageProvider } from '@spectra/storage';
 
 import type {
@@ -41,6 +48,9 @@ import type {
  * LinkedIn issued a refresh token, and is opened in memory for one publish.
  * Facebook Pages and Instagram (ADR-0036): accounts discovered through a Meta
  * connection, each carrying its own sealed Page access token.
+ * YouTube (ADR-0037): a channel discovered through a Google connection, whose
+ * token refreshes on the standard grant, with resumable uploads whose session
+ * URL is sealed so an interrupted upload can be resumed.
  *
  * Anything missing yields an honest UNSUPPORTED or FAILED with the reason —
  * never a publisher that pretends. Decrypted secrets never leave this module
@@ -66,6 +76,12 @@ export interface PublisherResolverDeps {
     oauth: ResolvedOAuthConfig | null;
     imageStatusChecks?: number;
     sleep?: (ms: number) => Promise<void>;
+  };
+  /** YouTube. Omitted: YouTube targets resolve to UNSUPPORTED. */
+  youtube?: {
+    api: YouTubeAdapterOptions;
+    /** YouTube OAuth client config, needed only to refresh a token. */
+    oauth: ResolvedOAuthConfig | null;
   };
   /** Meta (Facebook Pages, Instagram). Omitted: those targets resolve to UNSUPPORTED. */
   meta?: {
@@ -94,6 +110,9 @@ export function createPublisherResolver(deps: PublisherResolverDeps): ResolvePub
     if (account.platform === 'LINKEDIN') return resolveLinkedIn(deps, account);
     if (account.platform === 'FACEBOOK' || account.platform === 'INSTAGRAM') {
       return deps.meta ? resolveMeta(deps, deps.meta, account) : undefined;
+    }
+    if (account.platform === 'YOUTUBE') {
+      return deps.youtube ? resolveYouTube(deps, deps.youtube, account) : undefined;
     }
     return undefined;
   };
@@ -267,7 +286,20 @@ async function resolveLinkedIn(
   let accessToken = bundle.accessToken;
   const expiresAt = connection.accessTokenExpiresAt;
   if (expiresAt && expiresAt.getTime() - REFRESH_MARGIN_MS <= now.getTime()) {
-    const refreshed = await refreshLinkedIn(deps, ring, account, connection, bundle, now);
+    const refreshed = await refreshConnectionToken(
+      deps,
+      {
+        name: 'LinkedIn',
+        oauth: deps.linkedin.oauth,
+        noRefreshToken: 'LinkedIn issued no refresh token (it does so only for approved partners).',
+        missingOAuthEnv: 'SOCIAL_OAUTH_LINKEDIN_CLIENT_ID/SECRET',
+      },
+      ring,
+      account,
+      connection,
+      bundle,
+      now,
+    );
     if ('unavailable' in refreshed) return refreshed;
     accessToken = refreshed.accessToken;
   }
@@ -298,15 +330,27 @@ interface ConnectionForRefresh {
   lastRefreshedAt: Date | null;
 }
 
+/** What one platform's refresh story sounds like when it goes wrong. */
+interface RefreshCopy {
+  name: string;
+  oauth: ResolvedOAuthConfig | null;
+  /** Why this platform might have issued no refresh token at all. */
+  noRefreshToken: string;
+  /** Which client credentials the worker is missing. */
+  missingOAuthEnv: string;
+}
+
 /**
- * Renews the access token before publishing. LinkedIn issues refresh tokens
- * only to approved partners; without one, an expired token means reconnect.
- * If another publish refreshed concurrently and this attempt's refresh token
- * was already spent, the newer stored token is used instead of declaring the
- * connection dead.
+ * Renews the access token before publishing, re-sealing under the active key.
+ * LinkedIn issues refresh tokens only to approved partners; Google issues one
+ * when the flow asked for offline access. Without one, an expired token means
+ * reconnect. If another publish refreshed concurrently and this attempt's
+ * refresh token was already spent, the newer stored token is used instead of
+ * declaring the connection dead.
  */
-async function refreshLinkedIn(
+async function refreshConnectionToken(
   deps: PublisherResolverDeps,
+  copy: RefreshCopy,
   ring: KeyRing,
   account: PublishAccount,
   connection: ConnectionForRefresh,
@@ -326,21 +370,21 @@ async function refreshLinkedIn(
     });
     return unavailable(
       'FAILED',
-      `The LinkedIn authorization expired on ${expiredOn}, and LinkedIn issued no refresh token (it does so only for approved partners). Reconnect LinkedIn. Nothing was published.`,
+      `The ${copy.name} authorization expired on ${expiredOn}, and ${copy.noRefreshToken} Reconnect ${copy.name}. Nothing was published.`,
       'REAUTH_REQUIRED',
     );
   }
-  if (!deps.linkedin.oauth) {
+  if (!copy.oauth) {
     if (!expired) return { accessToken: bundle.accessToken };
     return unavailable(
       'FAILED',
-      'The LinkedIn authorization expired and LinkedIn OAuth is not configured on the worker (SOCIAL_OAUTH_LINKEDIN_CLIENT_ID/SECRET), so it cannot be refreshed. Nothing was published.',
+      `The ${copy.name} authorization expired and ${copy.name} OAuth is not configured on the worker (${copy.missingOAuthEnv}), so it cannot be refreshed. Nothing was published.`,
       'REAUTH_REQUIRED',
     );
   }
 
   try {
-    const tokens = await refreshAccessToken(deps.linkedin.oauth, bundle.refreshToken);
+    const tokens = await refreshAccessToken(copy.oauth, bundle.refreshToken);
     const sealed = sealTokenBundle(
       {
         accessToken: tokens.accessToken,
@@ -364,8 +408,8 @@ async function refreshLinkedIn(
       },
     });
     deps.logger?.info(
-      { connectionId: connection.id },
-      'Refreshed the LinkedIn token before publishing',
+      { connectionId: connection.id, platform: account.platform },
+      'Refreshed the connection token before publishing',
     );
     return { accessToken: tokens.accessToken };
   } catch (error) {
@@ -388,14 +432,14 @@ async function refreshLinkedIn(
       });
       return unavailable(
         'FAILED',
-        'LinkedIn rejected the refresh token (revoked or expired). Reconnect LinkedIn. Nothing was published.',
+        `${copy.name} rejected the refresh token (revoked or expired). Reconnect ${copy.name}. Nothing was published.`,
         'REAUTH_REQUIRED',
       );
     }
     if (!expired) return { accessToken: bundle.accessToken };
     return unavailable(
       'FAILED',
-      `LinkedIn could not be reached to refresh the authorization (${error.code}). Try again. Nothing was published.`,
+      `${copy.name} could not be reached to refresh the authorization (${error.code}). Try again. Nothing was published.`,
       'TRANSIENT',
     );
   }
@@ -640,6 +684,234 @@ function prismaUploadLedger(
       await prisma.socialMediaUpload.updateMany({
         where: row(assetId),
         data: { lastPostId: postUrn },
+      });
+    },
+  };
+}
+
+/**
+ * YouTube (ADR-0037). A channel discovered through a Google connection; the
+ * token lives on the connection and refreshes on the standard grant, so an
+ * expired access token is renewed rather than a reconnect demanded — unless
+ * Google issued no refresh token, or revoked it.
+ */
+async function resolveYouTube(
+  deps: PublisherResolverDeps,
+  youtube: NonNullable<PublisherResolverDeps['youtube']>,
+  account: PublishAccount,
+): Promise<YouTubeVideoPublisher | PublisherUnavailable> {
+  const now = (deps.now ?? (() => new Date()))();
+  if (
+    !account.connectionId ||
+    account.kind !== 'CHANNEL' ||
+    !CHANNEL_ID.test(account.externalAccountId)
+  ) {
+    return unavailable(
+      'UNSUPPORTED',
+      'This YouTube target was registered by hand, not connected through YouTube. Connect YouTube on Social Accounts and publish to a discovered channel. Nothing was published.',
+      'NOT_CONNECTED',
+    );
+  }
+  const ring = deps.ring;
+  if (!ring) {
+    return unavailable(
+      'UNSUPPORTED',
+      'Credential storage is not configured on the worker (SOCIAL_TOKEN_ENCRYPTION_KEY), so the YouTube token cannot be read. Nothing was published.',
+      'NOT_CONNECTED',
+    );
+  }
+
+  const connection = await deps.prisma.socialConnection.findFirst({
+    where: {
+      id: account.connectionId,
+      organizationId: account.organizationId,
+      workspaceId: account.workspaceId,
+      platform: 'YOUTUBE',
+    },
+    select: {
+      id: true,
+      status: true,
+      disconnectedAt: true,
+      encryptedCredential: true,
+      hasRefreshToken: true,
+      accessTokenExpiresAt: true,
+      lastRefreshedAt: true,
+      grantedScopes: true,
+      grantedScopesReported: true,
+    },
+  });
+  if (!connection || connection.disconnectedAt || !connection.encryptedCredential) {
+    return unavailable(
+      'UNSUPPORTED',
+      'The YouTube connection behind this channel was disconnected. Reconnect YouTube to publish. Nothing was published.',
+      'NOT_CONNECTED',
+    );
+  }
+  if (connection.status === 'REAUTH_REQUIRED' || connection.status === 'REVOKED') {
+    return unavailable(
+      'FAILED',
+      'YouTube needs to be reconnected: Google rejected this authorization. Nothing was published.',
+      'REAUTH_REQUIRED',
+    );
+  }
+
+  const grantedScopes = connection.grantedScopesReported ? connection.grantedScopes : null;
+  if (grantedScopes && !grantedScopes.includes(YOUTUBE_SCOPES.upload)) {
+    return unavailable(
+      'FAILED',
+      `Uploading to YouTube needs the ${YOUTUBE_SCOPES.upload} scope, which this connection was not granted. Reconnect YouTube and allow uploads. Nothing was published.`,
+      'PERMISSION',
+    );
+  }
+
+  let bundle: TokenBundle;
+  try {
+    bundle = openTokenBundle(connection.encryptedCredential, ring);
+  } catch {
+    return unavailable(
+      'FAILED',
+      'The stored YouTube credential could not be decrypted with the configured keys. Reconnect YouTube. Nothing was published.',
+      'REAUTH_REQUIRED',
+    );
+  }
+
+  let accessToken = bundle.accessToken;
+  const expiresAt = connection.accessTokenExpiresAt;
+  if (expiresAt && expiresAt.getTime() - REFRESH_MARGIN_MS <= now.getTime()) {
+    const refreshed = await refreshConnectionToken(
+      deps,
+      {
+        name: 'YouTube',
+        oauth: youtube.oauth,
+        noRefreshToken:
+          'Google issued no refresh token for it (an app in "Testing" also has refresh tokens expire after 7 days).',
+        missingOAuthEnv: 'SOCIAL_OAUTH_YOUTUBE_CLIENT_ID/SECRET',
+      },
+      ring,
+      account,
+      connection,
+      bundle,
+      now,
+    );
+    if ('unavailable' in refreshed) return refreshed;
+    accessToken = refreshed.accessToken;
+  }
+
+  return new YouTubeVideoPublisher({
+    ...youtube.api,
+    accessToken,
+    channelId: account.externalAccountId,
+    grantedScopes,
+    projectAudited: youtube.api.projectAudited,
+    chunkBytes: youtube.api.chunkBytes,
+    ledger: prismaResumableLedger(deps.prisma, account, ring),
+    onAuthRejected: async () => {
+      await deps.prisma.socialConnection.updateMany({
+        where: { id: connection.id, organizationId: account.organizationId },
+        data: { status: 'REAUTH_REQUIRED', lastErrorCode: 'publish_unauthorized' },
+      });
+    },
+  });
+}
+
+/**
+ * The SocialMediaUpload rows behind YouTube's resumable uploads. The session
+ * URL is a capability — anyone holding it can write to that upload — so it is
+ * sealed with the social key ring and dropped as soon as the upload finishes.
+ */
+function prismaResumableLedger(
+  prisma: SpectraPrismaClient,
+  account: PublishAccount,
+  ring: KeyRing,
+): ResumableUploadLedger {
+  const row = (assetId: string) => ({
+    organizationId: account.organizationId,
+    socialAccountId: account.id,
+    mediaAssetId: assetId,
+  });
+  return {
+    async find(assetId) {
+      const found = await prisma.socialMediaUpload.findFirst({
+        where: row(assetId),
+        select: {
+          encryptedUploadUrl: true,
+          uploadedBytes: true,
+          externalMediaId: true,
+          status: true,
+        },
+      });
+      if (!found) return null;
+      let sessionUrl: string | null = null;
+      if (found.encryptedUploadUrl) {
+        try {
+          sessionUrl = decryptSecret(found.encryptedUploadUrl, ring);
+        } catch {
+          // Sealed under a key this deployment no longer has: start fresh.
+          sessionUrl = null;
+        }
+      }
+      return {
+        sessionUrl,
+        uploadedBytes: found.uploadedBytes,
+        videoId: found.status === 'UPLOADED' ? found.externalMediaId : null,
+        status: found.status,
+      };
+    },
+    async started(assetId, sessionUrl) {
+      const sealed = encryptSecret(sessionUrl, ring);
+      await prisma.socialMediaUpload.upsert({
+        where: {
+          socialAccountId_mediaAssetId: { socialAccountId: account.id, mediaAssetId: assetId },
+        },
+        create: {
+          organizationId: account.organizationId,
+          workspaceId: account.workspaceId,
+          socialAccountId: account.id,
+          mediaAssetId: assetId,
+          platform: account.platform,
+          status: 'REGISTERED',
+          attempts: 1,
+          uploadedBytes: 0,
+          encryptedUploadUrl: sealed,
+          credentialKeyId: sealedKeyId(sealed),
+        },
+        update: {
+          status: 'REGISTERED',
+          verified: false,
+          attempts: { increment: 1 },
+          uploadedBytes: 0,
+          encryptedUploadUrl: sealed,
+          credentialKeyId: sealedKeyId(sealed),
+          lastError: null,
+        },
+      });
+    },
+    async progressed(assetId, uploadedBytes) {
+      await prisma.socialMediaUpload.updateMany({ where: row(assetId), data: { uploadedBytes } });
+    },
+    async finished(assetId, videoId) {
+      await prisma.socialMediaUpload.updateMany({
+        where: row(assetId),
+        data: {
+          status: 'UPLOADED',
+          externalMediaId: videoId,
+          lastPostId: videoId,
+          uploadedAt: new Date(),
+          // The upload is done with; the session URL is a secret with no further use.
+          encryptedUploadUrl: null,
+          credentialKeyId: null,
+        },
+      });
+    },
+    async failed(assetId, reason) {
+      await prisma.socialMediaUpload.updateMany({
+        where: row(assetId),
+        data: {
+          status: 'FAILED',
+          lastError: reason.slice(0, 500),
+          encryptedUploadUrl: null,
+          credentialKeyId: null,
+        },
       });
     },
   };

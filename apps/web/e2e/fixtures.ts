@@ -315,6 +315,62 @@ export function instagramAccount(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** A YouTube channel capability snapshot, as discovery stores it. */
+export function youtubeCapabilities(canUpload = true): Record<string, unknown> {
+  const notSupported = (reason: string) => ({
+    status: 'NOT_SUPPORTED',
+    reason,
+    requiredScopes: [],
+  });
+  return {
+    adapterVersion: 'youtube-data-v3-1.0.0',
+    checkedAt: '2026-09-12T10:00:00.000Z',
+    postTypes: {
+      TEXT: notSupported('YouTube publishes videos; text-only community posts have no public API.'),
+      IMAGE: notSupported(
+        'YouTube has no public API for image posts. An image can only be a custom thumbnail on a video.',
+      ),
+      VIDEO: canUpload
+        ? {
+            status: 'AVAILABLE',
+            reason: 'Videos are uploaded through the YouTube Data API with a resumable upload.',
+            requiredScopes: ['https://www.googleapis.com/auth/youtube.upload'],
+          }
+        : {
+            status: 'MISSING_PERMISSION',
+            reason:
+              'Uploading needs the https://www.googleapis.com/auth/youtube.upload scope, which this connection was not granted.',
+            requiredScopes: ['https://www.googleapis.com/auth/youtube.upload'],
+          },
+      DOCUMENT: notSupported('YouTube has no document posts.'),
+    },
+    limits: { maxCharacters: 5000, maxImages: 1, imageMimeTypes: ['image/jpeg', 'image/png'] },
+    notes: [
+      'Google restricts videos uploaded through the API by unverified projects: "All videos uploaded via the videos.insert endpoint from unverified API projects created after 28 July 2020 will be restricted to private viewing mode."',
+      'The YouTube Data API has a daily quota, and uploads are limited per project and per channel; a refusal is reported with what YouTube said.',
+    ],
+  };
+}
+
+/** A YouTube channel found through a connection. */
+export function youtubeAccount(overrides: Record<string, unknown> = {}) {
+  return {
+    id: '00000000-0000-4000-8000-0000000000e1',
+    platform: 'YOUTUBE',
+    externalAccountId: 'UC_x5XG1OV2P6uZZ5FSM9Ttw',
+    displayName: 'Acme Coffee',
+    kind: 'CHANNEL',
+    status: 'CONNECTED',
+    scopes: ['https://www.googleapis.com/auth/youtube.upload'],
+    tokenRef: null,
+    connectionId: '00000000-0000-4000-8000-0000000000c4',
+    capabilities: youtubeCapabilities(),
+    connectedAt: '2026-09-12T09:00:00.000Z',
+    createdAt: '2026-09-12T09:00:00.000Z',
+    ...overrides,
+  };
+}
+
 export function meResponse(permissions: readonly string[] = ALL_PERMISSIONS) {
   return {
     user: {

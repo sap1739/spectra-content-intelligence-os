@@ -1,10 +1,14 @@
 import { randomUUID } from 'node:crypto';
 
 import { Injectable, PayloadTooLargeException, UnprocessableEntityException } from '@nestjs/common';
-import type { ProcessImageInput } from '@spectra/contracts';
+import type {
+  MediaUploadCompleteInput,
+  MediaUploadTicketInput,
+  ProcessImageInput,
+} from '@spectra/contracts';
 import { SharpImageRenderer } from '@spectra/media-sharp';
 import { TenantIsolationError } from '@spectra/security';
-import { S3ObjectStorageProvider, buildObjectKey } from '@spectra/storage';
+import { S3ObjectStorageProvider, buildObjectKey, validateUpload } from '@spectra/storage';
 
 import { getApiEnv } from '../config/env';
 import { AuditService } from '../infra/audit.service';
@@ -12,12 +16,28 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { Principal, TenantContext } from '../auth/types';
 
 const MAX_SOURCE_BYTES = 10 * 1024 * 1024; // 10 MB decoded
+/**
+ * Every upload lands on one key derived from its ticket id, so completing an
+ * upload never takes a caller-supplied path — only the ticket it was issued.
+ */
+const UPLOAD_FILENAME = 'upload.bin';
+/** Long enough to send a large file, short enough that a leaked link is stale. */
+const UPLOAD_URL_TTL_SECONDS = 15 * 60;
 
 /**
  * Media rendering. Image processing is REAL (sharp); video, audio and
  * HTML-to-image renderers are honestly reported as unavailable until their
  * engines (ffmpeg, headless chromium) are wired — the UI never implies they work.
  */
+/** The asset kind a stored file is, from what storage says it is. */
+function mediaKindFor(mimeType: string): 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' | 'OTHER' {
+  if (mimeType.startsWith('image/')) return 'IMAGE';
+  if (mimeType.startsWith('video/')) return 'VIDEO';
+  if (mimeType.startsWith('audio/')) return 'AUDIO';
+  if (mimeType === 'application/pdf' || mimeType.startsWith('text/')) return 'DOCUMENT';
+  return 'OTHER';
+}
+
 @Injectable()
 export class MediaService {
   private readonly storage: S3ObjectStorageProvider;
@@ -40,7 +60,110 @@ export class MediaService {
       audio: false,
       htmlToImage: false,
       engine: this.renderer.id,
+      // Spectra renders no video, but a video made elsewhere can be uploaded
+      // and published (Phase 6F).
+      upload: true,
     };
+  }
+
+  /**
+   * Issues a short-lived signed URL the client PUTs the file straight to
+   * object storage with (Phase 6F). Nothing is recorded yet: the asset row is
+   * created only once storage confirms the object exists, so a ticket nobody
+   * used leaves no trace of a file that is not there.
+   */
+  async createUploadTicket(tenant: TenantContext, input: MediaUploadTicketInput) {
+    const mimeType = input.mimeType.toLowerCase().split(';')[0]?.trim() ?? '';
+    const check = validateUpload({ domain: 'media', mimeType, sizeBytes: input.sizeBytes });
+    if (!check.ok) {
+      if (check.reason === 'TOO_LARGE') throw new PayloadTooLargeException(check.message);
+      throw new UnprocessableEntityException(check.message);
+    }
+    await this.ensureBucket();
+    const uploadId = randomUUID();
+    const key = buildObjectKey({
+      ...this.scope(tenant),
+      domain: 'media',
+      resourceId: uploadId,
+      filename: UPLOAD_FILENAME,
+    });
+    const signed = await this.storage.createSignedUploadUrl({
+      key,
+      contentType: mimeType,
+      maxSizeBytes: input.sizeBytes,
+      expiresInSeconds: UPLOAD_URL_TTL_SECONDS,
+    });
+    return {
+      uploadId,
+      uploadUrl: signed.url,
+      method: 'PUT' as const,
+      // The signature covers this header: the file must be sent with it.
+      headers: { 'content-type': mimeType },
+      expiresAt: signed.expiresAt.toISOString(),
+    };
+  }
+
+  /**
+   * Registers the uploaded object as a media asset. The size and type recorded
+   * are the ones OBJECT STORAGE reports, never what the client claimed, and an
+   * object that is not there is an honest 422 rather than an asset row
+   * pointing at nothing. Completing twice returns the same asset.
+   */
+  async completeUpload(
+    tenant: TenantContext,
+    principal: Principal,
+    input: MediaUploadCompleteInput,
+  ) {
+    const key = buildObjectKey({
+      ...this.scope(tenant),
+      domain: 'media',
+      resourceId: input.uploadId,
+      filename: UPLOAD_FILENAME,
+    });
+    const existing = await this.prisma.client.mediaAsset.findFirst({
+      where: { ...this.scope(tenant), storageKey: key },
+    });
+    if (existing) return existing;
+
+    const info = await this.storage.headObject(key);
+    if (!info) {
+      throw new UnprocessableEntityException(
+        'No file was uploaded for this ticket. Upload the file to the signed URL first, then complete it.',
+      );
+    }
+    const mimeType = info.contentType?.toLowerCase().split(';')[0]?.trim() ?? '';
+    const check = validateUpload({ domain: 'media', mimeType, sizeBytes: info.sizeBytes });
+    if (!check.ok) {
+      // The stored object is not something this workspace may keep.
+      await this.storage.deleteObject(key).catch(() => undefined);
+      if (check.reason === 'TOO_LARGE') throw new PayloadTooLargeException(check.message);
+      throw new UnprocessableEntityException(
+        mimeType
+          ? check.message
+          : 'Object storage recorded no content type for the upload; send the file with the content-type header the ticket gave you.',
+      );
+    }
+
+    const asset = await this.prisma.client.mediaAsset.create({
+      data: {
+        ...this.scope(tenant),
+        kind: mediaKindFor(mimeType),
+        storageKey: key,
+        mimeType,
+        sizeBytes: info.sizeBytes,
+        createdById: principal.userId,
+      },
+    });
+    await this.audit.record({
+      organizationId: tenant.organizationId,
+      workspaceId: tenant.workspaceId,
+      actorUserId: principal.userId,
+      action: 'media_asset.uploaded',
+      resourceType: 'MediaAsset',
+      resourceId: asset.id,
+      changes: { kind: asset.kind, mimeType, sizeBytes: asset.sizeBytes },
+    });
+    return asset;
   }
 
   private scope(tenant: TenantContext) {

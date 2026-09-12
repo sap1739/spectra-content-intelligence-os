@@ -10,6 +10,7 @@ import {
 import { TenantIsolationError } from '@spectra/security';
 import { validateLinkedInPost } from '@spectra/social-linkedin';
 import { validateFacebookPost, validateInstagramPost } from '@spectra/social-meta';
+import { validateYouTubeVideo } from '@spectra/social-youtube';
 import { JOB_NAMES } from '@spectra/workflow-core';
 
 import { AuditService } from '../infra/audit.service';
@@ -33,6 +34,29 @@ interface AttachedAsset {
   heightPx: number | null;
 }
 
+const ASSET_SELECT = {
+  id: true,
+  kind: true,
+  mimeType: true,
+  sizeBytes: true,
+  widthPx: true,
+  heightPx: true,
+} as const;
+
+/** One attached file as a publisher sees it (nothing is read here). */
+function asPublishMedia(asset: AttachedAsset, altText: string | null) {
+  return {
+    assetId: asset.id,
+    kind: asset.kind as 'IMAGE' | 'VIDEO',
+    mimeType: asset.mimeType,
+    sizeBytes: asset.sizeBytes,
+    widthPx: asset.widthPx,
+    heightPx: asset.heightPx,
+    altText,
+    load: async () => Buffer.alloc(0),
+  };
+}
+
 @Injectable()
 export class CalendarService {
   constructor(
@@ -49,7 +73,7 @@ export class CalendarService {
   }
 
   /** Calendar entries in an optional [from, to] window, with the item title. */
-  list(tenant: TenantContext, from?: string, to?: string) {
+  async list(tenant: TenantContext, from?: string, to?: string) {
     const where: Record<string, unknown> = { ...this.scope(tenant) };
     if (from || to) {
       where.scheduledAt = {
@@ -57,14 +81,49 @@ export class CalendarService {
         ...(to ? { lte: new Date(to) } : {}),
       };
     }
-    return this.prisma.client.contentScheduleEntry.findMany({
+    const entries = await this.prisma.client.contentScheduleEntry.findMany({
       where,
       orderBy: { scheduledAt: 'asc' },
       take: 500,
       include: {
         contentItem: { select: { title: true, contentType: true, lifecycleState: true } },
-        mediaAsset: { select: { id: true, kind: true, mimeType: true } },
+        mediaAsset: { select: { id: true, kind: true, mimeType: true, sizeBytes: true } },
+        thumbnailAsset: { select: { id: true, mimeType: true } },
       },
+    });
+
+    // How far a resumable upload got, for entries that upload a file to the
+    // platform (YouTube). Reported as the platform confirmed it, not guessed.
+    const uploadable = entries.filter((entry) => entry.socialAccountId && entry.mediaAssetId);
+    if (uploadable.length === 0) return entries.map((entry) => ({ ...entry, upload: null }));
+    const uploads = await this.prisma.client.socialMediaUpload.findMany({
+      where: {
+        organizationId: tenant.organizationId,
+        socialAccountId: { in: [...new Set(uploadable.map((e) => e.socialAccountId as string))] },
+        mediaAssetId: { in: [...new Set(uploadable.map((e) => e.mediaAssetId as string))] },
+      },
+      select: {
+        socialAccountId: true,
+        mediaAssetId: true,
+        status: true,
+        uploadedBytes: true,
+      },
+    });
+    const byPair = new Map(
+      uploads.map((upload) => [`${upload.socialAccountId}:${upload.mediaAssetId}`, upload]),
+    );
+    return entries.map((entry) => {
+      const upload = byPair.get(`${entry.socialAccountId}:${entry.mediaAssetId}`);
+      return {
+        ...entry,
+        upload: upload
+          ? {
+              status: upload.status,
+              uploadedBytes: upload.uploadedBytes,
+              totalBytes: entry.mediaAsset?.sizeBytes ?? null,
+            }
+          : null,
+      };
     });
   }
 
@@ -78,6 +137,7 @@ export class CalendarService {
     item: { title: string; body: string | null },
     asset: AttachedAsset | null,
     altText: string | undefined,
+    extras: { thumbnail?: AttachedAsset | null; metadata?: unknown } = {},
   ): string[] {
     const problems: string[] = [];
     // Accounts found through discovery carry what they can publish; a manual
@@ -112,30 +172,22 @@ export class CalendarService {
           ? validateFacebookPost
           : account.platform === 'INSTAGRAM'
             ? validateInstagramPost
-            : null;
+            : account.platform === 'YOUTUBE'
+              ? validateYouTubeVideo
+              : null;
     if (validate) {
       const issues = validate({
         idempotencyKey: 'schedule-check',
         title: item.title,
         body: item.body ?? '',
-        ...(asset
-          ? {
-              media: [
-                {
-                  assetId: asset.id,
-                  kind: asset.kind as 'IMAGE',
-                  mimeType: asset.mimeType,
-                  sizeBytes: asset.sizeBytes,
-                  widthPx: asset.widthPx,
-                  heightPx: asset.heightPx,
-                  altText: altText ?? null,
-                  load: async () => Buffer.alloc(0),
-                },
-              ],
-            }
-          : {}),
+        ...(asset ? { media: [asPublishMedia(asset, altText ?? null)] } : {}),
+        ...(extras.thumbnail ? { thumbnail: asPublishMedia(extras.thumbnail, null) } : {}),
+        ...(extras.metadata ? { metadata: extras.metadata as Record<string, unknown> } : {}),
       });
       problems.push(...issues.map((issue) => issue.message));
+    }
+    if (extras.thumbnail && extras.thumbnail.kind !== 'IMAGE') {
+      problems.push('A thumbnail must be an image.');
     }
     return [...new Set(problems)];
   }
@@ -168,25 +220,29 @@ export class CalendarService {
       }
     }
 
-    // An attached image must belong to the tenant.
+    // An attached file, and any thumbnail, must belong to the tenant.
     let asset: AttachedAsset | null = null;
     if (input.mediaAssetId) {
       asset = await this.prisma.client.mediaAsset.findFirst({
         where: { id: input.mediaAssetId, ...this.scope(tenant) },
-        select: {
-          id: true,
-          kind: true,
-          mimeType: true,
-          sizeBytes: true,
-          widthPx: true,
-          heightPx: true,
-        },
+        select: ASSET_SELECT,
       });
       if (!asset) throw new TenantIsolationError();
     }
+    let thumbnail: AttachedAsset | null = null;
+    if (input.thumbnailAssetId) {
+      thumbnail = await this.prisma.client.mediaAsset.findFirst({
+        where: { id: input.thumbnailAssetId, ...this.scope(tenant) },
+        select: ASSET_SELECT,
+      });
+      if (!thumbnail) throw new TenantIsolationError();
+    }
 
     if (account) {
-      const problems = this.targetProblems(account, item, asset, input.mediaAltText);
+      const problems = this.targetProblems(account, item, asset, input.mediaAltText, {
+        thumbnail,
+        metadata: input.publishMetadata,
+      });
       if (problems.length > 0) throw new UnprocessableEntityException(problems.join(' '));
     }
 
@@ -200,6 +256,8 @@ export class CalendarService {
         socialAccountId: input.socialAccountId ?? null,
         mediaAssetId: asset?.id ?? null,
         mediaAltText: asset ? (input.mediaAltText ?? null) : null,
+        thumbnailAssetId: thumbnail?.id ?? null,
+        publishMetadata: input.publishMetadata ?? undefined,
         idempotencyKey: randomUUID(),
         createdById: principal.userId,
       },
@@ -224,6 +282,7 @@ export class CalendarService {
         platform: input.platform,
         scheduledAt: input.scheduledAt,
         hasMedia: asset !== null,
+        hasThumbnail: thumbnail !== null,
       },
     });
     return entry;

@@ -310,6 +310,20 @@ weakest link in the differentiator: research and evidence quality.
   retry never publishes twice, and the 24-hour allowance is read from Instagram before each post.
   Tested end to end against a local Graph stand-in; **not yet run against Meta itself** (ADR-0036,
   `docs/META_LIVE_VERIFICATION.md`).
-- Next: run the LinkedIn and Meta live-verification checklists against real apps; video (LinkedIn
-  Videos API, Facebook video, Instagram Reels); the next OAuth publisher (X); a background refresh
-  sweep ahead of token expiry; a metrics endpoint on the worker; anchor-aware citation selection.
+- ✅ **Increment F — YouTube video publishing.** `@spectra/social-youtube` uploads a video to a
+  channel through the Data API v3 with Google's resumable protocol: chunked, recorded, and resumed
+  from the byte YouTube confirms rather than restarted. It needed the missing half of the pipeline
+  too — Spectra renders images but not video, so a presigned upload path now registers a file made
+  elsewhere as a media asset, with the size and type object storage reports. A video carries its
+  own details (title, description, tags, category, privacy, made-for-kids, notify subscribers) on
+  the entry, plus an optional custom thumbnail whose refusal never fails the video. The two limits
+  that decide what an upload really does are reported, never assumed: an unaudited API project has
+  its uploads restricted to private viewing (quoted from Google, and compared against the privacy
+  YouTube actually applied), and a used-up allowance is a new `QUOTA` failure code carrying
+  Google's own reason. Tested end to end against a local stand-in that enforces the resumable
+  protocol; **not yet run against YouTube itself** (ADR-0037,
+  `docs/YOUTUBE_LIVE_VERIFICATION.md`).
+- Next: run the LinkedIn, Meta and YouTube live-verification checklists against real apps; video
+  for the other platforms (LinkedIn Videos API, Facebook video, Instagram Reels); the next OAuth
+  publisher (X); a background refresh sweep ahead of token expiry; a metrics endpoint on the
+  worker; anchor-aware citation selection.

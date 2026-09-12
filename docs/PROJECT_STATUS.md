@@ -1,7 +1,7 @@
 # SpectraContent Intelligence OS — Project Status
 
 **Snapshot date:** 2026-09-11 · **Branch:** `main`
-**Status:** Phases 1–5 complete · Phase 6 in progress (6A–6E shipped)
+**Status:** Phases 1–5 complete · Phase 6 in progress (6A–6F shipped)
 
 > This document is a factual, audited snapshot intended as context for planning further work.
 > Every number below was measured from the repository, not estimated.
@@ -89,14 +89,14 @@ gives real end-to-end coverage of worker logic without running a worker.
 
 | Metric               | Value                                                            |
 | -------------------- | ---------------------------------------------------------------- |
-| Commits              | 33                                                               |
-| Packages             | 32                                                               |
+| Commits              | 34                                                               |
+| Packages             | 33                                                               |
 | Apps                 | 3 (`api`, `web`, `worker`)                                       |
-| TypeScript/TSX lines | ~59,000 (api 15,293 · web 11,939 · worker 545 · packages 31,327) |
+| TypeScript/TSX lines | ~63,000 (api 16,321 · web 12,235 · worker 553 · packages 33,954) |
 | API routes           | 118 across 29 controller files                                   |
 | Prisma models        | 43                                                               |
-| Migrations           | 27                                                               |
-| ADRs                 | 36                                                               |
+| Migrations           | 28                                                               |
+| ADRs                 | 37                                                               |
 | Permissions          | 35 (permission-oriented authz; never role-name branching)        |
 | Web pages            | 21 (all real — placeholders removed in 6A)                       |
 
@@ -129,8 +129,9 @@ social-core/      SocialPublisher + PostPublisher + account-discovery ports, cap
 social-oauth/     Provider-neutral OAuth broker: state, PKCE, tokens, sealed bundles [Phase 6C]
 social-linkedin/  Real LinkedIn adapter: discovery, Images API, Posts API (text + 1 image) [Phase 6D]
 social-meta/      Real Meta adapters: Facebook Pages (text + photo), Instagram (1 JPEG) [Phase 6E]
+social-youtube/   Real YouTube adapter: channels + resumable video uploads       [Phase 6F]
 social-wordpress/ Real WordPress adapter (REST + application password)   [Phase 4D]
-publishing/       Dispatch + shared publisher resolver (WordPress, LinkedIn, Meta) + media loader/links
+publishing/       Dispatch + resolver (WordPress, LinkedIn, Meta, YouTube) + media loader/links
 workflow-core/    Queue-neutral job ports; BullMQ + in-memory adapters; queue inspector
 storage/          Object storage port + S3/MinIO, tenant-scoped keys
 testing/          Deterministic, schema-validated factories
@@ -303,28 +304,44 @@ standards, health/readiness endpoints, OpenAPI at `/docs`.
   from Instagram before each post. The user token lapsing does not stop publishing; a Page token
   Meta invalidates marks the connection for reconnect, and Reconnect re-seals fresh tokens in place
   (ADR-0036).
+- **6F:** **YouTube — resumable video publishing.** `@spectra/social-youtube` uploads a video to a
+  channel through the Data API v3 using Google's resumable protocol: a session URI, 256 KiB chunks
+  with `Content-Range`, and a resume from the byte YouTube confirms rather than a restart. This
+  needed the pipeline's missing half: Spectra renders images but not video, and nothing could
+  create a `VIDEO` asset, so a presigned upload path (`POST …/media/uploads` → PUT straight to
+  storage → `…/uploads/complete`) now registers a file made elsewhere, recording the size and type
+  **object storage** reports rather than the client's claim. Video details (title, description,
+  tags, category, privacy, made-for-kids, notify subscribers) live on the entry as
+  `publishMetadata`, with an optional custom thumbnail whose refusal is reported without failing
+  the video. The resumable session URI is a capability, so it is sealed with the key ring and
+  dropped the moment the upload ends; `uploadedBytes` drives both the resume and the progress the
+  calendar shows. The two limits that decide what an upload really does are never assumed: an
+  unaudited API project has its uploads restricted to private viewing (quoted from Google, and
+  compared against the privacy YouTube actually applied, reported in a new `publishNote`), and an
+  exhausted allowance is a new `QUOTA` failure code carrying Google's own reason (ADR-0037).
 
 ---
 
 ## 6. Integration status (what is actually live)
 
-| Integration                                                                                  | Status                                                                    | Gate                                                                                                                                      |
-| -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Anthropic (text generation)                                                                  | **Real, working**                                                         | `ANTHROPIC_API_KEY`                                                                                                                       |
-| Voyage (embeddings)                                                                          | **Real, working**                                                         | `VOYAGE_API_KEY`                                                                                                                          |
-| Brave (web + news search)                                                                    | **Real, working**                                                         | `BRAVE_SEARCH_API_KEY`                                                                                                                    |
-| WordPress (publishing)                                                                       | **Real, working**                                                         | Per-account credential + `SOCIAL_TOKEN_ENCRYPTION_KEY`                                                                                    |
-| sharp (image rendering)                                                                      | **Real, working**                                                         | none (local)                                                                                                                              |
-| PostgreSQL / Redis / MinIO                                                                   | **Real, working**                                                         | docker-compose                                                                                                                            |
-| RSS/Atom ingestion                                                                           | **Real, working** (first-party parser)                                    | none                                                                                                                                      |
-| OAuth connect: LinkedIn, Facebook Pages, Instagram, Threads, YouTube, TikTok, X, Pinterest   | **Real flow, when configured** (6C) — not yet run against a live platform | `SOCIAL_OAUTH_<PLATFORM>_CLIENT_ID/SECRET` + redirect base + `SOCIAL_TOKEN_ENCRYPTION_KEY`                                                |
-| LinkedIn (publishing: text + one image, member or page)                                      | **Real — tested against a LinkedIn stand-in, not yet LinkedIn itself**    | LinkedIn connection with `w_member_social` / `w_organization_social` + `SOCIAL_TOKEN_ENCRYPTION_KEY`                                      |
-| Facebook Pages (text + one photo) and Instagram professional accounts (one JPEG)             | **Real — tested against a Graph API stand-in, not yet Meta itself**       | Meta (Facebook) connection with App-Reviewed permissions + `SOCIAL_TOKEN_ENCRYPTION_KEY`; Instagram also needs internet-reachable storage |
-| Publishing to Threads, YouTube, TikTok, X, Pinterest, Instagram Login connections, and Email | **NOT wired**                                                             | resolves `UNSUPPORTED`                                                                                                                    |
-| External engagement analytics                                                                | **Not built**                                                             | reports `externalAvailable: false`                                                                                                        |
-| Payments / billing / plans                                                                   | **Not built**                                                             | usage page states nothing is charged                                                                                                      |
-| OpenTelemetry tracing                                                                        | **Real, optional**                                                        | `OTEL_EXPORTER_OTLP_ENDPOINT` (unset => SDK not loaded)                                                                                   |
-| Prometheus metrics                                                                           | **Real, working**                                                         | `GET /v1/meta/metrics` (API series only — see below)                                                                                      |
+| Integration                                                                                | Status                                                                    | Gate                                                                                                                                      |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Anthropic (text generation)                                                                | **Real, working**                                                         | `ANTHROPIC_API_KEY`                                                                                                                       |
+| Voyage (embeddings)                                                                        | **Real, working**                                                         | `VOYAGE_API_KEY`                                                                                                                          |
+| Brave (web + news search)                                                                  | **Real, working**                                                         | `BRAVE_SEARCH_API_KEY`                                                                                                                    |
+| WordPress (publishing)                                                                     | **Real, working**                                                         | Per-account credential + `SOCIAL_TOKEN_ENCRYPTION_KEY`                                                                                    |
+| sharp (image rendering)                                                                    | **Real, working**                                                         | none (local)                                                                                                                              |
+| PostgreSQL / Redis / MinIO                                                                 | **Real, working**                                                         | docker-compose                                                                                                                            |
+| RSS/Atom ingestion                                                                         | **Real, working** (first-party parser)                                    | none                                                                                                                                      |
+| OAuth connect: LinkedIn, Facebook Pages, Instagram, Threads, YouTube, TikTok, X, Pinterest | **Real flow, when configured** (6C) — not yet run against a live platform | `SOCIAL_OAUTH_<PLATFORM>_CLIENT_ID/SECRET` + redirect base + `SOCIAL_TOKEN_ENCRYPTION_KEY`                                                |
+| LinkedIn (publishing: text + one image, member or page)                                    | **Real — tested against a LinkedIn stand-in, not yet LinkedIn itself**    | LinkedIn connection with `w_member_social` / `w_organization_social` + `SOCIAL_TOKEN_ENCRYPTION_KEY`                                      |
+| Facebook Pages (text + one photo) and Instagram professional accounts (one JPEG)           | **Real — tested against a Graph API stand-in, not yet Meta itself**       | Meta (Facebook) connection with App-Reviewed permissions + `SOCIAL_TOKEN_ENCRYPTION_KEY`; Instagram also needs internet-reachable storage |
+| YouTube (video upload to a channel, resumable)                                             | **Real — tested against a Data API stand-in, not yet YouTube itself**     | YouTube connection with `youtube.upload` + `SOCIAL_TOKEN_ENCRYPTION_KEY`; a Google project audit decides whether uploads can be public    |
+| Publishing to Threads, TikTok, X, Pinterest, Instagram Login connections, and Email        | **NOT wired**                                                             | resolves `UNSUPPORTED`                                                                                                                    |
+| External engagement analytics                                                              | **Not built**                                                             | reports `externalAvailable: false`                                                                                                        |
+| Payments / billing / plans                                                                 | **Not built**                                                             | usage page states nothing is charged                                                                                                      |
+| OpenTelemetry tracing                                                                      | **Real, optional**                                                        | `OTEL_EXPORTER_OTLP_ENDPOINT` (unset => SDK not loaded)                                                                                   |
+| Prometheus metrics                                                                         | **Real, working**                                                         | `GET /v1/meta/metrics` (API series only — see below)                                                                                      |
 
 **Note on metrics:** provider-latency, research-run and publish-attempt series are emitted from
 the pipeline packages, which run on the **worker** — and the worker does not expose a scrape
@@ -354,6 +371,15 @@ Meta itself. `docs/META_LIVE_VERIFICATION.md` lists the open questions: whether 
 exchange accepts the standard `grant_type` parameter Spectra sends, whether
 `content_publishing_limit` answers a Page token, and Business-portfolio permission needs.
 
+**Note on YouTube (6F):** the adapter is exercised end to end against a local server that enforces
+Google's documented resumable protocol (a session URI, `Content-Range` chunking, 308 with a
+`Range`, 201 with the video), scope checks and quota refusals. It has **not** been run against
+YouTube itself. `docs/YOUTUBE_LIVE_VERIFICATION.md` is the checklist; its open questions are
+whether a channel must be verified to set a custom thumbnail (thumbnails.set does not say so) and
+the exact quota cost of an upload, which Google now expresses as a separate uploads bucket. Spectra
+caps a media object at 500 MB and holds an upload in memory while sending it, far below YouTube's
+256 GB.
+
 **Note on WordPress:** the adapter targets **self-hosted WordPress** (WordPress.org software with
 application passwords, WP 5.6+). WordPress.com (the hosted service) is _not_ supported — it
 requires OAuth; the OAuth broker exists since 6C, but WordPress.com is not one of its declared
@@ -365,20 +391,20 @@ platforms.
 
 | Check                | Result                                                 |
 | -------------------- | ------------------------------------------------------ |
-| `pnpm build`         | 35/35 tasks pass                                       |
-| `pnpm typecheck`     | 65/65 tasks pass                                       |
+| `pnpm build`         | 36/36 tasks pass                                       |
+| `pnpm typecheck`     | 57/57 tasks pass                                       |
 | `pnpm lint`          | pass                                                   |
 | `pnpm format`        | clean                                                  |
-| Unit tests           | **712 passing** across 30 packages/apps (incl. web 43) |
-| API integration      | **164 passing** (19 files)                             |
+| Unit tests           | **774 passing** across 31 packages/apps (incl. web 43) |
+| API integration      | **175 passing** (20 files)                             |
 | Pipeline integration | **95 passing** (11 files, `research-pipeline`)         |
 | Metering integration | **74 passing** (7 files)                               |
-| E2E (Playwright)     | **32 tests** (stubbed-API UI journeys)                 |
-| Prisma               | schema valid · 27 migrations · database up to date     |
+| E2E (Playwright)     | **34 tests** (stubbed-API UI journeys)                 |
+| Prisma               | schema valid · 28 migrations · database up to date     |
 
-Known flake (pre-existing, not introduced by 6B–6E): `budget-hardening.spec.ts` "concurrent
+Known flake (pre-existing, not introduced by 6B–6F): `budget-hardening.spec.ts` "concurrent
 research-run starts cannot all pass the last allowance" intermittently admits more than one run. It
-failed once in the full 6E gate run and passed when that file was re-run; the investigation is
+failed once in the full 6F gate run and passed on both re-runs of that file; the investigation is
 tracked separately.
 
 ---
@@ -387,8 +413,9 @@ tracked separately.
 
 ### 8.1 Immediate next candidates (highest value)
 
-1. **Run the LinkedIn and Meta live-verification checklists** (`docs/LINKEDIN_LIVE_VERIFICATION.md`,
-   `docs/META_LIVE_VERIFICATION.md`) against real apps — both are built and tested against
+1. **Run the LinkedIn, Meta and YouTube live-verification checklists**
+   (`docs/LINKEDIN_LIVE_VERIFICATION.md`, `docs/META_LIVE_VERIFICATION.md`,
+   `docs/YOUTUBE_LIVE_VERIFICATION.md`) against real apps — all three are built and tested against
    stand-ins only. Then the next OAuth publisher (X): discovery ports + a `PostPublisher`, registered; the broker, sealed
    storage, refresh and the shared resolver are in place.
 2. **Live `AnalyticsProvider` adapters** feeding real engagement metrics, which would also
@@ -429,12 +456,16 @@ tracked separately.
 - Meta follow-ups (6E): Facebook video and multi-photo posts; Instagram Reels, stories, carousels
   and video; Facebook photo alt text; the Instagram Login publishing path; Threads; insights; a
   public media proxy for deployments whose object storage is private.
+- YouTube follow-ups (6F): streaming the upload instead of holding the file in memory (a media
+  object is capped at 500 MB today); captions, playlists, livestreams and community posts; editing
+  or deleting a published video; a category picker fed by `videoCategories.list`; polling
+  `processingDetails` until YouTube finishes processing.
 
 ### 8.4 Engineering debt
 
-- ~~E2E coverage is very thin~~ — 32 Playwright journeys now (6A–6E); still one spec file, against a
+- ~~E2E coverage is very thin~~ — 34 Playwright journeys now (6A–6F); still one spec file, against a
   stubbed API.
-- ~~Zero web unit tests~~ — 43 now (6A–6E); coverage is concentrated on a few pages.
+- ~~Zero web unit tests~~ — 43 now (6A–6F); coverage is concentrated on a few pages.
 - Rate table in `@spectra/metering` is hand-maintained list pricing; will drift from vendor
   pricing. `RATE_VERSION` makes drift visible but does not fix it.
 - Usage ledger writes are best-effort (failures swallowed so metering never breaks metered work),

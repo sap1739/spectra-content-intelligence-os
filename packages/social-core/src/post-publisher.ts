@@ -34,6 +34,17 @@ export interface PublishInput {
   body: string;
   /** Attached media. Absent or empty means a text-only post. */
   media?: PublishMediaInput[];
+  /**
+   * A cover image for platforms that take one separately from the media
+   * itself (a YouTube custom thumbnail).
+   */
+  thumbnail?: PublishMediaInput;
+  /**
+   * Platform-specific publishing fields the generic pipeline knows nothing
+   * about (YouTube's title, description, tags, category and privacy). The
+   * adapter validates its own shape; anything else is ignored.
+   */
+  metadata?: Record<string, unknown>;
 }
 
 export interface PublishOutcome {
@@ -45,6 +56,13 @@ export interface PublishOutcome {
   failureReason?: string;
   /** What kind of failure, so the UI can offer the right next step. */
   failureCode?: PublishFailureCode;
+  /**
+   * Something true about a SUCCESSFUL publish the operator should know — the
+   * platform did not do quite what was asked (YouTube forcing a video private
+   * because the API project is unaudited), or it is not finished yet
+   * (still processing). Never used to soften a failure.
+   */
+  note?: string;
 }
 
 export interface PublishValidationIssue {

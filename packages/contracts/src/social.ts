@@ -160,6 +160,9 @@ export const PUBLISH_FAILURE_CODES = [
   /** The platform does not allow publishing to this kind of account (a personal profile). */
   'UNSUPPORTED_ACCOUNT',
   'RATE_LIMIT',
+  // The platform's allowance for the period is used up (a YouTube daily quota),
+  // as distinct from RATE_LIMIT (too fast, try shortly).
+  'QUOTA',
   'TRANSIENT',
   'AMBIGUOUS',
   'NOT_CONNECTED',

@@ -399,6 +399,45 @@ function refineMeta(
   }
 }
 
+/**
+ * YouTube Data API (Phase 6F, ADR-0037). The base URL is overridable only so
+ * tests can point at a local mock (https in production).
+ *
+ * `YOUTUBE_API_PROJECT_AUDITED` is the operator's declaration that this
+ * deployment's Google Cloud project passed the YouTube API Services compliance
+ * audit. Google restricts videos uploaded by unaudited projects to private
+ * viewing, so while this is false the UI warns that a public upload may come
+ * back private — and the adapter reports the privacy YouTube actually applied.
+ */
+export const youtubeEnvSchema = z.object({
+  YOUTUBE_API_BASE_URL: z.string().url().default('https://www.googleapis.com'),
+  YOUTUBE_API_PROJECT_AUDITED: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true'),
+  /** Resumable upload chunk size; Google requires a multiple of 256 KiB. */
+  YOUTUBE_UPLOAD_CHUNK_BYTES: z.coerce
+    .number()
+    .int()
+    .min(262_144)
+    .max(64 * 1024 * 1024)
+    .refine((value) => value % 262_144 === 0, { message: 'must be a multiple of 262144 (256 KiB)' })
+    .default(8 * 1024 * 1024),
+});
+
+function refineYouTube(
+  env: { NODE_ENV: z.infer<typeof nodeEnvSchema>; YOUTUBE_API_BASE_URL: string },
+  ctx: z.RefinementCtx,
+): void {
+  if (env.NODE_ENV === 'production' && !env.YOUTUBE_API_BASE_URL.startsWith('https://')) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['YOUTUBE_API_BASE_URL'],
+      message: 'must use https in production',
+    });
+  }
+}
+
 export const apiEnvSchema = z
   .object({
     NODE_ENV: nodeEnvSchema,
@@ -434,11 +473,14 @@ export const apiEnvSchema = z
   .merge(linkedInEnvSchema)
   // Meta adapters (Phase 6E).
   .merge(metaEnvSchema)
+  // YouTube adapter (Phase 6F).
+  .merge(youtubeEnvSchema)
   .superRefine((env, ctx) => {
     refineSocialKeyRing(env, ctx);
     refineSocialOAuth(env, ctx);
     refineLinkedIn(env, ctx);
     refineMeta(env, ctx);
+    refineYouTube(env, ctx);
   });
 
 export const workerEnvSchema = z
@@ -466,11 +508,13 @@ export const workerEnvSchema = z
   .merge(socialOAuthEnvSchema)
   .merge(linkedInEnvSchema)
   .merge(metaEnvSchema)
+  .merge(youtubeEnvSchema)
   .superRefine((env, ctx) => {
     refineSocialKeyRing(env, ctx);
     refineSocialOAuth(env, ctx);
     refineLinkedIn(env, ctx);
     refineMeta(env, ctx);
+    refineYouTube(env, ctx);
   });
 
 export const webEnvSchema = z.object({

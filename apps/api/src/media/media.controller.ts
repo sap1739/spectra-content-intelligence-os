@@ -1,6 +1,13 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Res } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { processImageInputSchema, type ProcessImageInput } from '@spectra/contracts';
+import {
+  mediaUploadCompleteInputSchema,
+  mediaUploadTicketInputSchema,
+  processImageInputSchema,
+  type MediaUploadCompleteInput,
+  type MediaUploadTicketInput,
+  type ProcessImageInput,
+} from '@spectra/contracts';
 import type { FastifyReply } from 'fastify';
 
 import { CurrentPrincipal, CurrentTenant, RequirePermissions } from '../auth/decorators';
@@ -38,6 +45,31 @@ export class MediaController {
     @CurrentPrincipal() principal: Principal,
   ) {
     return this.media.processImage(tenant, principal, body);
+  }
+
+  @Post('uploads')
+  @RequirePermissions('media:write')
+  @ApiOperation({
+    summary: 'Get a short-lived signed URL to upload a file (video, image) to object storage',
+  })
+  uploadTicket(
+    @Body(new ZodValidationPipe(mediaUploadTicketInputSchema)) body: MediaUploadTicketInput,
+    @CurrentTenant() tenant: TenantContext,
+  ) {
+    return this.media.createUploadTicket(tenant, body);
+  }
+
+  @Post('uploads/complete')
+  @RequirePermissions('media:write')
+  @ApiOperation({
+    summary: 'Register an uploaded file as a media asset, with the size storage reports',
+  })
+  completeUpload(
+    @Body(new ZodValidationPipe(mediaUploadCompleteInputSchema)) body: MediaUploadCompleteInput,
+    @CurrentTenant() tenant: TenantContext,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    return this.media.completeUpload(tenant, principal, body);
   }
 
   @Get(':assetId/content')

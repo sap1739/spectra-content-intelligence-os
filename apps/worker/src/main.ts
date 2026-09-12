@@ -25,6 +25,7 @@ import { executeReembed, executeResearchRun } from '@spectra/research-pipeline';
 import type { KeyRing } from '@spectra/security';
 import { linkedInApiOptionsFromEnv } from '@spectra/social-linkedin';
 import { metaGraphOptionsFromEnv } from '@spectra/social-meta';
+import { youTubeApiOptionsFromEnv } from '@spectra/social-youtube';
 import { resolveOAuthPlatform } from '@spectra/social-oauth';
 import { S3ObjectStorageProvider } from '@spectra/storage';
 import {
@@ -330,7 +331,9 @@ async function main(): Promise<void> {
   // accounts carry a sealed application password; LinkedIn accounts discovered
   // over OAuth use their connection's token, refreshed before expiry where
   // LinkedIn issued a refresh token (ADR-0035). Facebook Pages and Instagram
-  // accounts carry their own sealed Page token (ADR-0036). Any missing piece records an
+  // accounts carry their own sealed Page token (ADR-0036); YouTube channels use
+  // their connection's token and resume interrupted uploads (ADR-0037). Any
+  // missing piece records an
   // honest UNSUPPORTED or FAILED with the reason. Decrypted secrets never leave
   // the resolver and are never logged. The ring includes retired keys, so
   // credentials sealed before a rotation stay publishable (ADR-0034).
@@ -342,6 +345,7 @@ async function main(): Promise<void> {
   }
   const linkedinOAuth = resolveOAuthPlatform(env, 'LINKEDIN');
   const facebookOAuth = resolveOAuthPlatform(env, 'FACEBOOK');
+  const youtubeOAuth = resolveOAuthPlatform(env, 'YOUTUBE');
   // Instagram fetches images itself, from a short-lived signed link to
   // storage — possible only when storage is reachable from the internet.
   const instagramMediaProblem = publicMediaLinkProblem(storageEnv.STORAGE_ENDPOINT);
@@ -364,6 +368,10 @@ async function main(): Promise<void> {
       ),
       instagramMediaProblem,
     },
+    youtube: {
+      api: youTubeApiOptionsFromEnv(env),
+      oauth: youtubeOAuth.configured ? youtubeOAuth.config : null,
+    },
     logger,
   });
   // Attached images are read from tenant-rooted storage, key-checked per entry.
@@ -371,8 +379,8 @@ async function main(): Promise<void> {
   const mediaUrl = instagramMediaProblem ? undefined : createMediaUrlSigner(storage);
 
   // Publish one entry. With no live publisher resolvable it records an honest
-  // UNSUPPORTED; WordPress and connected LinkedIn accounts produce a real
-  // PUBLISHED/FAILED from the platform's own response.
+  // UNSUPPORTED; WordPress and connected LinkedIn, Meta and YouTube accounts
+  // produce a real PUBLISHED/FAILED from the platform's own response.
   runtime.register<{ entryId: string }, unknown>(
     JOB_NAMES.publicationPublish,
     instrument('publication.publish', async (envelope, context) => {

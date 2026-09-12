@@ -3,11 +3,13 @@ import { accountDiscoveryRegistry, socialPublisherRegistry } from '@spectra/soci
 import { linkedInApiOptionsFromEnv, registerLinkedInAdapter } from '@spectra/social-linkedin';
 import { metaGraphOptionsFromEnv, registerMetaAdapters } from '@spectra/social-meta';
 import { resolveOAuthPlatform } from '@spectra/social-oauth';
+import { registerYouTubeAdapter, youTubeApiOptionsFromEnv } from '@spectra/social-youtube';
 
 import { getApiEnv } from '../config/env';
 
 /**
- * Registers the platform adapters this deployment runs (ADR-0035, ADR-0036).
+ * Registers the platform adapters this deployment runs (ADR-0035, ADR-0036,
+ * ADR-0037).
  * Done at module init rather than import time, so the adapters see the
  * validated environment the app was created with.
  */
@@ -22,5 +24,6 @@ export class SocialAdaptersService implements OnModuleInit {
       registries,
       metaGraphOptionsFromEnv(env, facebook.configured ? facebook.config.clientSecret : null),
     );
+    registerYouTubeAdapter(registries, youTubeApiOptionsFromEnv(env));
   }
 }

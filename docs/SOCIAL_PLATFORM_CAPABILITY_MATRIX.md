@@ -1,10 +1,11 @@
 # Social Platform Capability Matrix
 
-**Status (Phase 6E):** WordPress (ADR-0022), LinkedIn (ADR-0035), Facebook Pages and Instagram
-professional accounts (ADR-0036) publish for real. LinkedIn publishes text and one image, as a
+**Status (Phase 6F):** WordPress (ADR-0022), LinkedIn (ADR-0035), Facebook Pages and Instagram
+professional accounts (ADR-0036) and YouTube channels (ADR-0037, video uploads) publish for real. LinkedIn publishes text and one image, as a
 member or as a page they administer; Facebook publishes text and one photo to Pages; Instagram
 publishes one JPEG image to professional accounts linked to a Page, through a Meta (Facebook)
-connection. The other five OAuth platforms (Threads, YouTube, TikTok, X, Pinterest) — and a direct
+connection; YouTube uploads a video to a channel. The other four OAuth platforms (Threads,
+TikTok, X, Pinterest) — and a direct
 Instagram Login connection — can be **connected**, storing a sealed authorization (ADR-0034), but
 **cannot publish**: a post through them resolves to `UNSUPPORTED`. Email is neither connectable nor
 publishable.
@@ -62,7 +63,7 @@ means the OAuth flow works end to end when configured; it says nothing about pub
 | Meta (Facebook) | if configured              | **live** — Pages: text + 1 photo; Instagram: 1 JPEG               | none      | body (GET, as documented) | long-lived exchange; Page tokens do not expire | no                  | `pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish` |
 | Instagram Login | if configured              | authorization only — publish through a Meta (Facebook) connection | none      | body                      | none (reconnect)                               | no                  | `instagram_business_basic,instagram_business_content_publish`                                        |
 | Threads         | if configured              | **not wired**                                                     | none      | body                      | none (reconnect)                               | no                  | `threads_basic,threads_content_publish`                                                              |
-| YouTube         | if configured              | **not wired**                                                     | supported | body                      | standard (offline)                             | yes                 | `youtube.upload youtube.readonly`                                                                    |
+| YouTube         | if configured              | **live** (video upload)                                           | supported | body                      | standard (offline)                             | yes                 | `youtube.upload youtube.readonly`                                                                    |
 | TikTok          | if configured              | **not wired**                                                     | none      | body (`client_key`)       | standard                                       | yes                 | `user.info.basic,video.upload,video.publish`                                                         |
 | X               | if configured              | **not wired**                                                     | required  | HTTP Basic                | standard (`offline.access`)                    | yes                 | `tweet.read tweet.write users.read offline.access`                                                   |
 | Pinterest       | if configured              | **not wired**                                                     | none      | HTTP Basic                | standard                                       | no                  | `user_accounts:read,boards:read,pins:read,pins:write`                                                |
@@ -85,8 +86,10 @@ platform; in summary:
 - **Meta (Facebook, Instagram, Threads)** — App Review (Advanced Access) for every publishing
   permission; Business Verification for advanced access; Instagram publishing needs a professional
   (Business or Creator) account linked to a Facebook Page.
-- **YouTube** — Google OAuth verification for sensitive scopes; uploads from an unaudited project
-  are private until a YouTube API Services audit.
+- **YouTube** — Google OAuth verification for sensitive scopes; while the consent screen is in
+  "Testing" only listed test users can connect and refresh tokens expire after 7 days. Videos
+  uploaded by an unaudited API project are restricted to private viewing until a YouTube API
+  Services audit, and the daily quota includes only 100 uploads.
 - **TikTok** — the Content Posting API requires an app audit; until then posts are `SELF_ONLY`.
 - **X** — a developer account; write volume depends on the paid API tier.
 - **Pinterest** — Trial access by default; Standard access needs app review.
@@ -158,3 +161,29 @@ linked only through Page settings (`connected_instagram_account`) is recorded as
 with the reason. Instagram captions allow 2,200 characters, 30 hashtags and 20 @ tags; the image is
 fetched by Instagram from a 15-minute signed link, so storage must be internet-reachable. Setup:
 `docs/META_SETUP.md`; the first real run: `docs/META_LIVE_VERIFICATION.md`.
+
+## 7. YouTube adapter (Phase 6F, ADR-0037)
+
+The official YouTube Data API v3 only, with Google's documented resumable upload:
+
+| Step                 | Endpoint                                                                   | Scope              |
+| -------------------- | -------------------------------------------------------------------------- | ------------------ |
+| Find channels        | `GET /youtube/v3/channels?part=snippet,status&mine=true` (quota 1)         | `youtube.readonly` |
+| Start the upload     | `POST /upload/youtube/v3/videos?uploadType=resumable&part=snippet,status`  | `youtube.upload`   |
+| Send the bytes       | `PUT <session URI>` in 256 KiB multiples, `Content-Range` per chunk        | `youtube.upload`   |
+| Resume after a stall | `PUT <session URI>` with `Content-Range: bytes */TOTAL`, then from `Range` | `youtube.upload`   |
+| Custom thumbnail     | `POST /upload/youtube/v3/thumbnails/set?videoId=…` (JPEG/PNG, 2 MB)        | `youtube.upload`   |
+
+| Capability                                                       | Channel                                            |
+| ---------------------------------------------------------------- | -------------------------------------------------- |
+| Video upload (title, description, tags, category, privacy, kids) | live                                               |
+| Custom thumbnail                                                 | live — a refused thumbnail does not fail the video |
+| Text or image posts                                              | not supported (community posts have no public API) |
+| Livestreams, playlists, captions, edit/delete, analytics         | not implemented                                    |
+
+Limits enforced before an upload starts: title 100 characters, description 5,000 **bytes**, tags
+500 characters combined, no `<` or `>`; Spectra caps the file at 500 MB (its storage policy —
+YouTube itself accepts 256 GB). Two facts are always reported rather than assumed: an unaudited API
+project has its uploads "restricted to private viewing mode", and quota refusals come back as
+`QUOTA` with Google's own reason. Setup: `docs/YOUTUBE_SETUP.md`; the first real run:
+`docs/YOUTUBE_LIVE_VERIFICATION.md`.

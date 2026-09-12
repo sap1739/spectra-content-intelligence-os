@@ -150,6 +150,16 @@ connection's `connectionId`; `kind` is `BUSINESS_ACCOUNT` only for an eligible p
 account. Snapshots may carry `NOT_SUPPORTED`, and `failureCode` may be `UNSUPPORTED_ACCOUNT` (a
 string column — no enum migration).
 
+**YouTube publishing (Phase 6F, ADR-0037).** `content_schedule_entries` gained `publishMetadata`
+(platform-specific publish fields — YouTube's title, description, tags, category, privacy and
+made-for-kids declaration, validated by contracts), `thumbnailAssetId` (SET NULL on asset delete, a
+second relation to `media_assets` beside `mediaAssetId`) and `publishNote` — what a SUCCESSFUL
+publish did differently, never used to soften a failure. `social_media_uploads` gained
+`encryptedUploadUrl` + `credentialKeyId` (the sealed resumable session URI, dropped as soon as the
+upload ends) and `uploadedBytes`, which is what lets an interrupted upload resume instead of
+restarting, and what the calendar reports as progress. Video assets are ordinary `media_assets`
+rows with `kind = VIDEO`, created by the presigned upload flow from what object storage reports.
+
 `content_schedule_entries` double as the **publication record** (ADR-0020): an optional
 `socialAccountId` target, a unique `idempotencyKey`, and `attemptCount`/`lastAttemptAt`/
 `failureReason`/`externalPostId`/`externalUrl`/`publishedAt`. Status covers the dispatch

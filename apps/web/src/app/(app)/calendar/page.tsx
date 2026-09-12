@@ -98,6 +98,15 @@ export default function CalendarPage() {
   const [mediaAssetId, setMediaAssetId] = React.useState('');
   const [altText, setAltText] = React.useState('');
   const [when, setWhen] = React.useState('');
+  // YouTube publishes a video with its own details (Phase 6F).
+  const [thumbnailAssetId, setThumbnailAssetId] = React.useState('');
+  const [ytTitle, setYtTitle] = React.useState('');
+  const [ytDescription, setYtDescription] = React.useState('');
+  const [ytTags, setYtTags] = React.useState('');
+  const [ytCategory, setYtCategory] = React.useState('');
+  const [ytPrivacy, setYtPrivacy] = React.useState('private');
+  const [ytMadeForKids, setYtMadeForKids] = React.useState(false);
+  const [ytNotify, setYtNotify] = React.useState(true);
 
   // Only accounts on the chosen platform can be targets.
   const targets = (accounts.data ?? []).filter((a) => a.platform === platform);
@@ -110,6 +119,21 @@ export default function CalendarPage() {
   const images = (media.data ?? []).filter(
     (m) => m.kind === 'IMAGE' && (caps?.limits.imageMimeTypes ?? []).includes(m.mimeType),
   );
+  // YouTube: the post IS a video, with details and an optional thumbnail.
+  const isYouTube = platform === 'YOUTUBE';
+  const canPublishVideo = caps?.postTypes.VIDEO.status === 'AVAILABLE';
+  const videos = (media.data ?? []).filter((m) => m.kind === 'VIDEO');
+  const thumbnails = (media.data ?? []).filter(
+    (m) => m.kind === 'IMAGE' && ['image/jpeg', 'image/png'].includes(m.mimeType),
+  );
+  // What the platform itself warned about this account (audit status, quota).
+  const accountNotes = ((selected?.capabilities as { notes?: unknown } | null)?.notes ??
+    []) as string[];
+  const selectedItemTitle = approved.find((i) => i.id === contentItemId)?.title ?? '';
+  // A video needs a title of its own; the content item's is the obvious start.
+  React.useEffect(() => {
+    if (selectedItemTitle) setYtTitle((current) => current || selectedItemTitle.slice(0, 100));
+  }, [selectedItemTitle]);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -122,10 +146,31 @@ export default function CalendarPage() {
       ...(canAttachImage && mediaAssetId
         ? { mediaAssetId, ...(altText.trim() ? { mediaAltText: altText.trim() } : {}) }
         : {}),
+      ...(isYouTube && canPublishVideo && mediaAssetId
+        ? {
+            mediaAssetId,
+            ...(thumbnailAssetId ? { thumbnailAssetId } : {}),
+            publishMetadata: {
+              youtube: {
+                title: ytTitle.trim(),
+                ...(ytDescription.trim() ? { description: ytDescription } : {}),
+                tags: ytTags
+                  .split(',')
+                  .map((tag) => tag.trim())
+                  .filter(Boolean),
+                ...(ytCategory.trim() ? { categoryId: ytCategory.trim() } : {}),
+                privacyStatus: ytPrivacy as 'private' | 'unlisted' | 'public',
+                madeForKids: ytMadeForKids,
+                notifySubscribers: ytNotify,
+              },
+            },
+          }
+        : {}),
     });
     setWhen('');
     setMediaAssetId('');
     setAltText('');
+    setThumbnailAssetId('');
   };
 
   const days = groupByDay(calendar.data ?? []);
@@ -134,7 +179,7 @@ export default function CalendarPage() {
     <>
       <PageHeader
         title="Calendar"
-        description="Schedule approved content across channels (UTC storage, local display). Attach a target account to publish; the dispatcher runs due entries. WordPress, and LinkedIn, Facebook Page and Instagram professional accounts found through a connection, publish for real; every other platform resolves to an honest UNSUPPORTED — never a fake success."
+        description="Schedule approved content across channels (UTC storage, local display). Attach a target account to publish; the dispatcher runs due entries. WordPress, and LinkedIn, Facebook Page, Instagram professional and YouTube channel accounts found through a connection, publish for real; every other platform resolves to an honest UNSUPPORTED — never a fake success."
       />
 
       <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
@@ -175,6 +220,7 @@ export default function CalendarPage() {
                       setPlatform(e.target.value);
                       setAccountId('');
                       setMediaAssetId('');
+                      setThumbnailAssetId('');
                     }}
                   >
                     {SOCIAL_PLATFORMS.map((p) => (
@@ -215,6 +261,133 @@ export default function CalendarPage() {
                   <p className="text-xs text-muted-foreground">
                     Registered by hand — what it can publish is checked when the entry runs.
                   </p>
+                ) : null}
+                {accountNotes.length > 0 ? (
+                  <ul className="flex flex-col gap-1 rounded-md bg-muted/60 p-2" role="note">
+                    {accountNotes.map((note) => (
+                      <li key={note} className="text-[11px] text-muted-foreground">
+                        {note}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {isYouTube && selected && canPublishVideo ? (
+                  <>
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="cal-video">Video (required)</Label>
+                      <select
+                        id="cal-video"
+                        className={fieldClass}
+                        value={mediaAssetId}
+                        onChange={(e) => setMediaAssetId(e.target.value)}
+                      >
+                        <option value="">Select a video…</option>
+                        {videos.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.mimeType.replace('video/', '').toUpperCase()} ·{' '}
+                            {(m.sizeBytes / (1024 * 1024)).toFixed(1)} MB ·{' '}
+                            {new Date(m.createdAt).toLocaleDateString()}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-[11px] text-muted-foreground">
+                        {videos.length === 0
+                          ? 'No videos yet — upload one on the Media page.'
+                          : 'Uploaded resumably; an interrupted upload continues where it stopped.'}
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="cal-yt-title">Video title</Label>
+                      <Input
+                        id="cal-yt-title"
+                        value={ytTitle}
+                        maxLength={100}
+                        onChange={(e) => setYtTitle(e.target.value)}
+                        placeholder="What viewers see on YouTube"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="cal-yt-description">Description</Label>
+                      <textarea
+                        id="cal-yt-description"
+                        className={cn(fieldClass, 'min-h-20')}
+                        value={ytDescription}
+                        onChange={(e) => setYtDescription(e.target.value)}
+                        placeholder="Leave blank to use the content item body"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex flex-col gap-1.5">
+                        <Label htmlFor="cal-yt-tags">Tags</Label>
+                        <Input
+                          id="cal-yt-tags"
+                          value={ytTags}
+                          onChange={(e) => setYtTags(e.target.value)}
+                          placeholder="coffee, roasting"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <Label htmlFor="cal-yt-category">Category id</Label>
+                        <Input
+                          id="cal-yt-category"
+                          value={ytCategory}
+                          inputMode="numeric"
+                          onChange={(e) => setYtCategory(e.target.value)}
+                          placeholder="e.g. 22"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="cal-yt-privacy">Privacy</Label>
+                      <select
+                        id="cal-yt-privacy"
+                        className={fieldClass}
+                        value={ytPrivacy}
+                        onChange={(e) => setYtPrivacy(e.target.value)}
+                      >
+                        <option value="private">Private</option>
+                        <option value="unlisted">Unlisted</option>
+                        <option value="public">Public</option>
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="cal-yt-thumb">Thumbnail (optional)</Label>
+                      <select
+                        id="cal-yt-thumb"
+                        className={fieldClass}
+                        value={thumbnailAssetId}
+                        onChange={(e) => setThumbnailAssetId(e.target.value)}
+                      >
+                        <option value="">No custom thumbnail</option>
+                        {thumbnails.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.mimeType.replace('image/', '').toUpperCase()} ·{' '}
+                            {(m.sizeBytes / 1024).toFixed(0)} KB
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-[11px] text-muted-foreground">
+                        JPEG or PNG, up to 2 MB. YouTube may refuse it on an unverified channel; the
+                        video still publishes.
+                      </p>
+                    </div>
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={ytMadeForKids}
+                        onChange={(e) => setYtMadeForKids(e.target.checked)}
+                      />
+                      Made for kids
+                    </label>
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={ytNotify}
+                        onChange={(e) => setYtNotify(e.target.checked)}
+                      />
+                      Notify subscribers
+                    </label>
+                  </>
                 ) : null}
                 {canAttachImage ? (
                   <div className="flex flex-col gap-1.5">
@@ -277,7 +450,8 @@ export default function CalendarPage() {
                     schedule.isPending ||
                     !contentItemId ||
                     !when ||
-                    (imageRequired && !mediaAssetId)
+                    (imageRequired && !mediaAssetId) ||
+                    (isYouTube && canPublishVideo && (!mediaAssetId || !ytTitle.trim()))
                   }
                 >
                   {schedule.isPending ? 'Scheduling…' : 'Schedule'}
@@ -322,8 +496,27 @@ export default function CalendarPage() {
                             })}{' '}
                             · {e.platform}
                             {e.socialAccountId ? ' · targeted' : ''}
-                            {e.mediaAssetId ? ' · image' : ''}
+                            {e.mediaAsset
+                              ? e.mediaAsset.kind === 'VIDEO'
+                                ? ' · video'
+                                : ' · image'
+                              : ''}
                           </p>
+                          {e.upload && e.upload.totalBytes && e.upload.status !== 'UPLOADED' ? (
+                            <p className="mt-0.5 text-[11px] text-muted-foreground">
+                              Upload{' '}
+                              {Math.min(
+                                100,
+                                Math.round((e.upload.uploadedBytes / e.upload.totalBytes) * 100),
+                              )}
+                              % sent — an interrupted upload resumes from here.
+                            </p>
+                          ) : null}
+                          {e.publishNote ? (
+                            <p className="mt-0.5 text-[11px] text-muted-foreground">
+                              {e.publishNote}
+                            </p>
+                          ) : null}
                           {e.failureReason ? (
                             <p className="mt-0.5 text-[11px] text-muted-foreground">
                               {e.failureReason}

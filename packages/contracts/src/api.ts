@@ -310,6 +310,86 @@ export const reviewNoteInputSchema = z.object({
 export type ReviewNoteInput = z.infer<typeof reviewNoteInputSchema>;
 
 /** Schedule a content item onto the calendar for a platform at a UTC instant. */
+/**
+ * YouTube's own limits on a video resource, enforced here so an upload is
+ * refused before the bytes are sent rather than after: a title of at most 100
+ * characters, a description of at most 5,000 BYTES, and a combined tags value
+ * of at most 500 characters. Titles and descriptions may contain any valid
+ * UTF-8 except `<` and `>`. Thumbnails are capped at 2 MB by thumbnails.set.
+ */
+export const YOUTUBE_LIMITS = {
+  titleChars: 100,
+  descriptionBytes: 5000,
+  tagsChars: 500,
+  thumbnailBytes: 2 * 1024 * 1024,
+} as const;
+
+/** YouTube rejects these characters in a title or description. */
+export const YOUTUBE_FORBIDDEN_TEXT = /[<>]/;
+
+/** UTF-8 byte length, which is how YouTube measures a description. */
+export function utf8ByteLength(value: string): number {
+  let bytes = 0;
+  for (const char of value) {
+    const code = char.codePointAt(0) ?? 0;
+    bytes += code <= 0x7f ? 1 : code <= 0x7ff ? 2 : code <= 0xffff ? 3 : 4;
+  }
+  return bytes;
+}
+
+export const YOUTUBE_PRIVACY_STATUSES = ['private', 'unlisted', 'public'] as const;
+export const youtubePrivacyStatusSchema = z.enum(YOUTUBE_PRIVACY_STATUSES);
+export type YouTubePrivacyStatus = z.infer<typeof youtubePrivacyStatusSchema>;
+
+/** What a YouTube upload needs beyond the content item itself (Phase 6F). */
+export const youtubeVideoMetadataSchema = z
+  .object({
+    title: z
+      .string()
+      .trim()
+      .min(1)
+      .max(YOUTUBE_LIMITS.titleChars)
+      .refine((value) => !YOUTUBE_FORBIDDEN_TEXT.test(value), {
+        message: 'YouTube does not allow < or > in a title',
+      }),
+    description: z
+      .string()
+      .optional()
+      .refine((value) => value === undefined || !YOUTUBE_FORBIDDEN_TEXT.test(value), {
+        message: 'YouTube does not allow < or > in a description',
+      })
+      .refine(
+        (value) => value === undefined || utf8ByteLength(value) <= YOUTUBE_LIMITS.descriptionBytes,
+        { message: `YouTube allows ${YOUTUBE_LIMITS.descriptionBytes} bytes of description` },
+      ),
+    tags: z.array(z.string().trim().min(1).max(100)).max(100).default([]),
+    /** A YouTube category id for the channel's region (videoCategories.list). */
+    categoryId: z
+      .string()
+      .regex(/^\d{1,3}$/, { message: 'must be a YouTube category id, such as 22' })
+      .optional(),
+    /** Defaults to private: never publish more widely than asked. */
+    privacyStatus: youtubePrivacyStatusSchema.default('private'),
+    /** Declared by the uploader; YouTube requires an answer. */
+    madeForKids: z.boolean().default(false),
+    notifySubscribers: z.boolean().default(true),
+  })
+  .superRefine((value, ctx) => {
+    const total = value.tags.join('').length;
+    if (total > YOUTUBE_LIMITS.tagsChars) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['tags'],
+        message: `YouTube allows ${YOUTUBE_LIMITS.tagsChars} characters of tags in total; these use ${total}.`,
+      });
+    }
+  });
+export type YouTubeVideoMetadata = z.infer<typeof youtubeVideoMetadataSchema>;
+
+/** Platform-specific publishing fields, keyed by platform. */
+export const publishMetadataSchema = z.object({ youtube: youtubeVideoMetadataSchema.optional() });
+export type PublishMetadata = z.infer<typeof publishMetadataSchema>;
+
 export const scheduleEntryInputSchema = z.object({
   contentItemId: uuidSchema,
   platform: socialPlatformSchema,
@@ -321,12 +401,33 @@ export const scheduleEntryInputSchema = z.object({
   mediaAssetId: uuidSchema.optional(),
   /** Alternative text for that image — read by screen readers on the platform. */
   mediaAltText: z.string().trim().min(1).max(1000).optional(),
+  /** A cover image for platforms that take one separately (YouTube; Phase 6F). */
+  thumbnailAssetId: uuidSchema.optional(),
+  /** Platform-specific publishing fields, by platform (Phase 6F). */
+  publishMetadata: publishMetadataSchema.optional(),
 });
 export type ScheduleEntryInput = z.infer<typeof scheduleEntryInputSchema>;
 
 // ---------------------------------------------------------------------------
 // Media rendering (Phase 3F)
 // ---------------------------------------------------------------------------
+
+/**
+ * Registering a file Spectra did not render — a video to publish to YouTube,
+ * or a photo for a social post (Phase 6F). The API issues a short-lived signed
+ * URL, the client PUTs the bytes straight to object storage, and the asset row
+ * is created only once storage confirms the object, with the size storage
+ * reports rather than the size the client claimed.
+ */
+export const mediaUploadTicketInputSchema = z.object({
+  filename: z.string().trim().min(1).max(200).optional(),
+  mimeType: z.string().trim().min(3).max(120),
+  sizeBytes: z.number().int().positive(),
+});
+export type MediaUploadTicketInput = z.infer<typeof mediaUploadTicketInputSchema>;
+
+export const mediaUploadCompleteInputSchema = z.object({ uploadId: uuidSchema });
+export type MediaUploadCompleteInput = z.infer<typeof mediaUploadCompleteInputSchema>;
 
 /** Process an uploaded image through a sharp operation pipeline. */
 export const processImageInputSchema = z.object({

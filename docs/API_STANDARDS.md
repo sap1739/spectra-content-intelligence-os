@@ -165,3 +165,20 @@ Where these depart from the rest of the API, and why:
   with the reason, before anything is queued.
 - The OAuth callback's `token_exchange_failed` also covers a refused long-lived exchange (audited
   as `long_lived_<code>`).
+
+## 15. Video upload and YouTube (Phase 6F, ADR-0037)
+
+- `POST …/media/uploads` returns `{uploadId, uploadUrl, method, headers, expiresAt}` — a 15-minute
+  signed URL to PUT one file to object storage. `POST …/media/uploads/complete` takes `{uploadId}`
+  and returns the created `MediaAsset`, or `422` when no object was uploaded. Completing the same
+  ticket twice returns the same asset. Size and MIME come from storage, so a recorded asset can
+  never overstate what is there.
+- `POST …/calendar` accepts `thumbnailAssetId` and `publishMetadata` (`{youtube: {title,
+description, tags, categoryId, privacyStatus, madeForKids, notifySubscribers}}`), both checked
+  against the target's capabilities before anything is queued; bad video details are `422` naming
+  the field.
+- Calendar rows add `publishNote` (true of a SUCCESSFUL publish — what the platform did
+  differently), `thumbnailAsset`, and `upload` (`{status, uploadedBytes, totalBytes}`) so a client
+  can show real upload progress. `failureCode` gained `QUOTA`.
+- `GET …/media/status` adds `upload: true`: files can be uploaded even where Spectra renders
+  nothing of that kind.

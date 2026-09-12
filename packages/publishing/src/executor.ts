@@ -233,7 +233,7 @@ async function runPublication(
     if (!asset) {
       return settleWithoutSending(
         'FAILED',
-        'The attached image no longer exists. Attach another or remove it. Nothing was published.',
+        'The attached file no longer exists. Attach another or remove it. Nothing was published.',
         'VALIDATION',
       );
     }
@@ -242,7 +242,7 @@ async function runPublication(
     if (!loadMedia) {
       return settleWithoutSending(
         'UNSUPPORTED',
-        'Media storage is not available to the publisher, so the attached image cannot be uploaded. Nothing was published.',
+        'Media storage is not available to the publisher, so the attached file cannot be uploaded. Nothing was published.',
         'UNSUPPORTED_MEDIA',
       );
     }
@@ -259,11 +259,69 @@ async function runPublication(
     });
   }
 
+  // A cover image some platforms take separately from the media itself
+  // (a YouTube custom thumbnail), loaded from the same tenant-checked storage.
+  let thumbnail: PublishMediaInput | undefined;
+  if (entry.thumbnailAssetId) {
+    const asset = await prisma.mediaAsset.findFirst({
+      where: {
+        id: entry.thumbnailAssetId,
+        organizationId: entry.organizationId,
+        workspaceId: entry.workspaceId,
+      },
+      select: {
+        id: true,
+        kind: true,
+        storageKey: true,
+        mimeType: true,
+        sizeBytes: true,
+        widthPx: true,
+        heightPx: true,
+      },
+    });
+    const loadMedia = deps.loadMedia;
+    if (!asset) {
+      return settleWithoutSending(
+        'FAILED',
+        'The thumbnail image no longer exists. Attach another or remove it. Nothing was published.',
+        'VALIDATION',
+      );
+    }
+    if (!loadMedia) {
+      return settleWithoutSending(
+        'UNSUPPORTED',
+        'Media storage is not available to the publisher, so the thumbnail cannot be uploaded. Nothing was published.',
+        'UNSUPPORTED_MEDIA',
+      );
+    }
+    thumbnail = {
+      assetId: asset.id,
+      kind: asset.kind,
+      mimeType: asset.mimeType,
+      sizeBytes: asset.sizeBytes,
+      widthPx: asset.widthPx,
+      heightPx: asset.heightPx,
+      altText: null,
+      load: () => loadMedia(asset, tenant),
+    };
+  }
+
+  // Platform-specific fields the pipeline itself knows nothing about; the
+  // adapter validates its own slice and ignores the rest.
+  const metadata =
+    entry.publishMetadata &&
+    typeof entry.publishMetadata === 'object' &&
+    !Array.isArray(entry.publishMetadata)
+      ? (entry.publishMetadata as Record<string, unknown>)
+      : undefined;
+
   const publishInput: PublishInput = {
     idempotencyKey: entry.idempotencyKey ?? entry.id,
     title: item?.title ?? 'Untitled',
     body: item?.body ?? entry.note ?? '',
     ...(media.length > 0 ? { media } : {}),
+    ...(thumbnail ? { thumbnail } : {}),
+    ...(metadata ? { metadata } : {}),
   };
 
   // Media the adapter cannot upload at all is UNSUPPORTED — a capability gap,
@@ -306,6 +364,9 @@ async function runPublication(
           : null,
         failureReason: published ? null : (outcome.failureReason ?? 'Publish failed'),
         failureCode: published ? null : (outcome.failureCode ?? 'UNKNOWN'),
+        // True of a success: what the platform did differently, or that it is
+        // still processing. Never used to soften a failure.
+        publishNote: published ? (outcome.note ?? null) : null,
       },
     });
     if (published) {

@@ -22,6 +22,7 @@ import {
   useMediaAssets,
   useMediaStatus,
   useProcessImage,
+  useUploadMedia,
   type MediaAssetRow,
 } from '@/lib/media';
 
@@ -51,6 +52,13 @@ function MediaThumb({ workspaceId, asset }: { workspaceId: string; asset: MediaA
     };
   }, [workspaceId, asset.id]);
 
+  if (asset.kind === 'VIDEO') {
+    return (
+      <div className="grid h-24 w-24 place-items-center rounded-md bg-muted text-[10px] text-muted-foreground">
+        video
+      </div>
+    );
+  }
   if (asset.mimeType === 'application/octet-stream') {
     return (
       <div className="grid h-24 w-24 place-items-center rounded-md bg-muted text-[10px] text-muted-foreground">
@@ -72,11 +80,25 @@ export default function MediaPage() {
   const status = useMediaStatus(workspaceId);
   const assets = useMediaAssets(workspaceId);
   const process = useProcessImage(workspaceId);
+  const upload = useUploadMedia(workspaceId);
 
   const [width, setWidth] = React.useState('1080');
   const [height, setHeight] = React.useState('1080');
   const [format, setFormat] = React.useState('webp');
   const [error, setError] = React.useState<string | null>(null);
+
+  const onUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    setError(null);
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      await upload.mutateAsync(file);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Upload failed');
+    } finally {
+      event.target.value = '';
+    }
+  };
 
   const onFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
     setError(null);
@@ -103,7 +125,7 @@ export default function MediaPage() {
     <>
       <PageHeader
         title="Media"
-        description="Process images into platform-ready sizes and formats. Rendering runs on sharp; video and audio pipelines are honestly disabled until their engines are wired."
+        description="Process images into platform-ready sizes and formats, or upload a file made elsewhere — including the video you publish to YouTube. Rendering runs on sharp; video and audio RENDERING are honestly disabled until their engines are wired."
       />
 
       {status.data ? (
@@ -111,8 +133,9 @@ export default function MediaPage() {
           <Badge variant={status.data.image ? 'success' : 'muted'}>
             Image {status.data.image ? 'ready' : 'off'}
           </Badge>
-          <Badge variant="muted">Video not available yet</Badge>
-          <Badge variant="muted">Audio not available yet</Badge>
+          <Badge variant="muted">Video rendering not available yet</Badge>
+          <Badge variant="muted">Audio rendering not available yet</Badge>
+          {status.data.upload ? <Badge variant="success">File upload ready</Badge> : null}
         </div>
       ) : null}
 
@@ -179,7 +202,34 @@ export default function MediaPage() {
           </CardContent>
         </Card>
 
-        <div>
+        <div className="flex flex-col gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Upload a file</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2">
+              <Label htmlFor="m-upload">Video or image (up to 500 MB)</Label>
+              <input
+                id="m-upload"
+                type="file"
+                accept="video/*,image/*"
+                onChange={onUpload}
+                disabled={upload.isPending}
+                className="text-sm file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-primary-foreground"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                The file goes straight to object storage through a signed link that lasts 15
+                minutes; the asset is recorded with the size storage reports. Videos are stored as
+                uploaded — Spectra does not transcode them.
+              </p>
+              {upload.isPending ? (
+                <p className="text-xs text-muted-foreground" role="status">
+                  Uploading…
+                </p>
+              ) : null}
+            </CardContent>
+          </Card>
+
           {assets.isPending ? (
             <Skeleton className="h-48 w-full" />
           ) : assets.isError ? (

@@ -33,7 +33,8 @@ export interface DiscoveredIdentity {
   /** The platform's own id for the authorizing profile. */
   externalId: string;
   displayName: string;
-  kind: 'PROFILE' | 'BUSINESS_ACCOUNT';
+  /** CHANNEL where the authorizing identity IS the publishable place (YouTube). */
+  kind: 'PROFILE' | 'BUSINESS_ACCOUNT' | 'CHANNEL';
   metadata?: DiscoveryMetadata;
   /** What this account can publish through the adapter, given the grant. */
   capabilities?: AccountCapabilitySnapshot;

@@ -23,7 +23,15 @@ export interface CalendarEntryRow {
   externalUrl: string | null;
   mediaAssetId?: string | null;
   mediaAltText?: string | null;
-  mediaAsset?: { id: string; kind: string; mimeType: string } | null;
+  mediaAsset?: { id: string; kind: string; mimeType: string; sizeBytes?: number } | null;
+  thumbnailAssetId?: string | null;
+  thumbnailAsset?: { id: string; mimeType: string } | null;
+  /** Platform-specific publish fields (YouTube video details). */
+  publishMetadata?: { youtube?: { title?: string; privacyStatus?: string } } | null;
+  /** True of a SUCCESSFUL publish: what the platform did differently. */
+  publishNote?: string | null;
+  /** How far a resumable upload got, for entries that upload a file. */
+  upload?: { status: string; uploadedBytes: number; totalBytes: number | null } | null;
   publishedAt: string | null;
   attemptCount: number;
   contentItem: { title: string; contentType: string; lifecycleState: string };

@@ -8,6 +8,7 @@ export {
   loadEnv,
   linkedInEnvSchema,
   metaEnvSchema,
+  youtubeEnvSchema,
   logLevelSchema,
   nodeEnvSchema,
   redisEnvSchema,

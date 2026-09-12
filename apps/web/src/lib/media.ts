@@ -11,6 +11,17 @@ export interface MediaStatus {
   audio: boolean;
   htmlToImage: boolean;
   engine: string;
+  /** Files made elsewhere can be uploaded and published, even where nothing renders them. */
+  upload?: boolean;
+}
+
+/** A short-lived signed URL to PUT one file straight to object storage. */
+export interface UploadTicket {
+  uploadId: string;
+  uploadUrl: string;
+  method: 'PUT';
+  headers: Record<string, string>;
+  expiresAt: string;
 }
 
 export interface MediaAssetRow {
@@ -48,6 +59,39 @@ export function useProcessImage(workspaceId: string) {
   return useMutation<MediaAssetRow, ApiError, ProcessImageInput>({
     mutationFn: (input) =>
       api.post<MediaAssetRow>(`/v1/workspaces/${workspaceId}/media/images`, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: mediaKey(workspaceId) }),
+  });
+}
+
+/**
+ * Uploads a file the browser holds: ask for a ticket, PUT the bytes to object
+ * storage, then register the asset. The API records the size and type STORAGE
+ * reports, so a failed PUT never leaves an asset pointing at nothing.
+ */
+export function useUploadMedia(workspaceId: string) {
+  const qc = useQueryClient();
+  return useMutation<MediaAssetRow, Error, File>({
+    mutationFn: async (file) => {
+      const ticket = await api.post<UploadTicket>(`/v1/workspaces/${workspaceId}/media/uploads`, {
+        filename: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        sizeBytes: file.size,
+      });
+      // Straight to storage, with no session cookie attached.
+      const response = await fetch(ticket.uploadUrl, {
+        method: ticket.method,
+        headers: ticket.headers,
+        body: file,
+      }).catch(() => null);
+      if (!response || !response.ok) {
+        throw new Error(
+          `Object storage refused the upload${response ? ` (${response.status})` : ''}. It must allow browser uploads from this origin.`,
+        );
+      }
+      return api.post<MediaAssetRow>(`/v1/workspaces/${workspaceId}/media/uploads/complete`, {
+        uploadId: ticket.uploadId,
+      });
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: mediaKey(workspaceId) }),
   });
 }

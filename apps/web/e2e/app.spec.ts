@@ -14,6 +14,7 @@ import {
   instagramCapabilities,
   linkedInAccount,
   linkedInConnectionRow,
+  youtubeAccount,
 } from './fixtures';
 
 /**
@@ -680,6 +681,104 @@ test.describe('Meta publishing', () => {
     await page.getByText('Meta setup (Facebook & Instagram)').click();
     await expect(page.getByText('Advanced Access')).toBeVisible();
     await expect(page.getByText(/must be professional \(Business or Creator\)/)).toBeVisible();
+  });
+});
+
+test.describe('YouTube publishing', () => {
+  const videoAsset = {
+    id: '00000000-0000-4000-8000-0000000000b1',
+    kind: 'VIDEO',
+    storageKey: 'org/x/ws/y/media/b1/upload.bin',
+    mimeType: 'video/mp4',
+    sizeBytes: 12 * 1024 * 1024,
+    widthPx: null,
+    heightPx: null,
+    engine: null,
+    sourceAssetId: null,
+    createdAt: '2026-09-12T09:00:00.000Z',
+  };
+  const thumbAsset = {
+    ...videoAsset,
+    id: '00000000-0000-4000-8000-0000000000b2',
+    kind: 'IMAGE',
+    mimeType: 'image/jpeg',
+    sizeBytes: 90_000,
+  };
+
+  test('asks for a video and its details, and warns about the audit restriction', async ({
+    page,
+  }) => {
+    await stubApi(page, {
+      routes: {
+        '/content-items': [
+          {
+            id: '00000000-0000-4000-8000-00000000000f',
+            title: 'Quarterly roast report',
+            contentType: 'POST',
+            lifecycleState: 'APPROVED',
+            funnelStage: null,
+            objective: null,
+            body: 'What changed this quarter.',
+            evidencePackId: null,
+            topicKey: null,
+            findingIds: [],
+            citationIds: [],
+            approvals: [],
+            moderation: null,
+            createdAt: '2026-09-12T09:00:00.000Z',
+          },
+        ],
+        '/social-accounts': [youtubeAccount()],
+        '/media': [videoAsset, thumbAsset],
+        '/calendar': [],
+      },
+    });
+    await gotoAuthenticated(page, '/calendar');
+
+    await page.getByLabel('Platform').selectOption('YOUTUBE');
+    await page.getByLabel('Publish to (optional)').selectOption({ label: 'Acme Coffee' });
+
+    // What YouTube itself does not offer is labelled as such, not as "not built".
+    await expect(page.getByText('Text — not supported by the platform')).toBeVisible();
+    // The audit restriction is shown before anything is uploaded.
+    await expect(page.getByText(/restricted to private viewing mode/)).toBeVisible();
+
+    const video = page.getByLabel('Video (required)');
+    await expect(video).toBeVisible();
+    const options = await video.locator('option').allTextContents();
+    expect(options.some((o) => o.startsWith('MP4'))).toBe(true);
+
+    // The video's own title starts from the content item.
+    await page.getByLabel('Content item').selectOption({ label: 'Quarterly roast report' });
+    await expect(page.getByLabel('Video title')).toHaveValue('Quarterly roast report');
+    await expect(page.getByLabel('Privacy')).toHaveValue('private');
+
+    await page.getByLabel('When (local time)').fill('2026-09-20T10:00');
+    const submit = page.getByRole('button', { name: 'Schedule' });
+    await expect(submit).toBeDisabled();
+    await video.selectOption({ index: 1 });
+    await expect(submit).toBeEnabled();
+  });
+
+  test('offers a direct upload for files Spectra cannot render', async ({ page }) => {
+    await stubApi(page, {
+      routes: {
+        '/media/status': {
+          image: true,
+          video: false,
+          audio: false,
+          htmlToImage: false,
+          engine: 'sharp',
+          upload: true,
+        },
+        '/media': [videoAsset],
+      },
+    });
+    await gotoAuthenticated(page, '/media');
+    await expect(page.getByText('File upload ready')).toBeVisible();
+    await expect(page.getByText('Video rendering not available yet')).toBeVisible();
+    await expect(page.getByLabel('Video or image (up to 500 MB)')).toBeVisible();
+    await expect(page.getByText(/straight to object storage/)).toBeVisible();
   });
 });
 

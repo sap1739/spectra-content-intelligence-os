@@ -138,3 +138,11 @@ enablement, CDN strategy for media delivery.
   address; with a local or private `STORAGE_ENDPOINT` the worker logs that Instagram is unavailable
   and those posts resolve `UNSUPPORTED`. Pin `META_GRAPH_API_VERSION`, complete Meta App Review
   before customers connect, and run `docs/META_LIVE_VERIFICATION.md` before announcing it.
+
+- **YouTube (Phase 6F):** the worker performs the upload, so it needs `SOCIAL_TOKEN_ENCRYPTION_KEY`
+  and the same `SOCIAL_OAUTH_YOUTUBE_CLIENT_ID/SECRET` as the API (it refreshes tokens on the
+  standard grant). Set `YOUTUBE_API_PROJECT_AUDITED=true` only once Google has audited the project;
+  until then uploads come back private and the UI says why. An upload is held in memory while it is
+  sent, so size the worker for the file (Spectra caps a media object at 500 MB). Browser uploads
+  need CORS on the bucket for `PUT` from the web origin. Run
+  `docs/YOUTUBE_LIVE_VERIFICATION.md` before announcing it.

@@ -1388,6 +1388,13 @@ model ContentScheduleEntry {
   /// A platform staging object made for this entry (an Instagram media
   /// container), reused on retry so a publish is never staged twice.
   externalContainerId String?
+  /// Platform-specific publish fields (YouTube title/description/privacy…).
+  publishMetadata     Json?
+  /// A custom cover image for platforms that take one (YouTube thumbnails).
+  thumbnailAssetId    String?             @db.Uuid
+  /// True of a SUCCESSFUL publish: what the platform did differently, or that
+  /// it has not finished processing. Never used to soften a failure.
+  publishNote         String?
   externalPostId      String?
   externalUrl         String?
   publishedAt         DateTime?           @db.Timestamptz(6)
@@ -1396,10 +1403,11 @@ model ContentScheduleEntry {
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  contentItem  ContentItem  @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
-  mediaAsset   MediaAsset?  @relation(fields: [mediaAssetId], references: [id], onDelete: SetNull)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace      Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contentItem    ContentItem  @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+  mediaAsset     MediaAsset?  @relation("ScheduleEntryMedia", fields: [mediaAssetId], references: [id], onDelete: SetNull)
+  thumbnailAsset MediaAsset?  @relation("ScheduleEntryThumbnail", fields: [thumbnailAssetId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId, scheduledAt])
   @@index([contentItemId])
@@ -1442,10 +1450,11 @@ model MediaAsset {
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
 
-  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  workspace       Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  scheduleEntries ContentScheduleEntry[]
-  socialUploads   SocialMediaUpload[]
+  organization        Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace           Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  scheduleEntries     ContentScheduleEntry[] @relation("ScheduleEntryMedia")
+  thumbnailForEntries ContentScheduleEntry[] @relation("ScheduleEntryThumbnail")
+  socialUploads       SocialMediaUpload[]
 
   @@index([workspaceId, createdAt])
   @@map("media_assets")
@@ -1675,6 +1684,13 @@ model SocialMediaUpload {
   verified           Boolean                 @default(false)
   attempts           Int                     @default(0)
   uploadUrlExpiresAt DateTime?               @db.Timestamptz(6)
+  /// AES-256-GCM sealed resumable upload session URL (YouTube): whoever holds
+  /// it can write to that upload, so it is never stored or logged in the clear.
+  encryptedUploadUrl String?
+  /// Key id that sealed `encryptedUploadUrl` — rotation bookkeeping, not a secret.
+  credentialKeyId    String?
+  /// Bytes the platform has confirmed receiving, so a retry resumes.
+  uploadedBytes      Int                     @default(0)
   lastError          String?
   uploadedAt         DateTime?               @db.Timestamptz(6)
   /// The last post this media was attached to.
