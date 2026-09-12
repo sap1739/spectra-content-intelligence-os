@@ -386,8 +386,50 @@ export const youtubeVideoMetadataSchema = z
   });
 export type YouTubeVideoMetadata = z.infer<typeof youtubeVideoMetadataSchema>;
 
+/** TikTok's documented privacy levels; which are allowed comes from the creator. */
+export const TIKTOK_PRIVACY_LEVELS = [
+  'PUBLIC_TO_EVERYONE',
+  'MUTUAL_FOLLOW_FRIENDS',
+  'FOLLOWER_OF_CREATOR',
+  'SELF_ONLY',
+] as const;
+export const tiktokPrivacyLevelSchema = z.enum(TIKTOK_PRIVACY_LEVELS);
+
+/**
+ * What a TikTok Direct Post needs beyond the video (Phase 6G). The caption is
+ * capped at 2,200 UTF-16 runes, which is what `String#length` counts.
+ */
+export const tiktokVideoMetadataSchema = z.object({
+  title: z.string().trim().max(2200),
+  /** Defaults to private: never post more widely than asked, and an unaudited client may not. */
+  privacyLevel: tiktokPrivacyLevelSchema.default('SELF_ONLY'),
+  disableComment: z.boolean().default(false),
+  disableDuet: z.boolean().default(false),
+  disableStitch: z.boolean().default(false),
+  coverTimestampMs: z.number().int().nonnegative().max(600_000).optional(),
+  /** TikTok's branded-content disclosures, which the creator is responsible for. */
+  brandContentToggle: z.boolean().default(false),
+  brandOrganicToggle: z.boolean().default(false),
+  isAigc: z.boolean().default(false),
+});
+export type TikTokVideoMetadata = z.infer<typeof tiktokVideoMetadataSchema>;
+
+/**
+ * What a Pinterest pin needs beyond the image (Phase 6G): the page the pin
+ * should send people to. Pinterest documents no text limits for a pin, so none
+ * are imposed here.
+ */
+export const pinterestPinMetadataSchema = z.object({
+  link: z.string().url().max(2000).optional(),
+});
+export type PinterestPinMetadata = z.infer<typeof pinterestPinMetadataSchema>;
+
 /** Platform-specific publishing fields, keyed by platform. */
-export const publishMetadataSchema = z.object({ youtube: youtubeVideoMetadataSchema.optional() });
+export const publishMetadataSchema = z.object({
+  youtube: youtubeVideoMetadataSchema.optional(),
+  tiktok: tiktokVideoMetadataSchema.optional(),
+  pinterest: pinterestPinMetadataSchema.optional(),
+});
 export type PublishMetadata = z.infer<typeof publishMetadataSchema>;
 
 export const scheduleEntryInputSchema = z.object({

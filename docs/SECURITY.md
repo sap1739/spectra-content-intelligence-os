@@ -366,3 +366,24 @@ A bulk re-seal job for long-idle rows is not built yet; today rotation advances 
   reaching Google. A quota refusal is `QUOTA`, not a generic failure. A video YouTube forced
   private is reported as published AND private, quoting Google's restriction — never as the public
   post that was asked for.
+
+## 18. TikTok, X, Threads and Pinterest **[P1]** (Phase 6G, ADR-0038)
+
+- **Official APIs only**, each over TLS with the token in an Authorization header (TikTok, X,
+  Pinterest) or the documented `access_token` parameter (Threads). Request URLs are never logged,
+  redirects are refused, every call times out, and each error message carries the platform's own
+  code with the token scrubbed out (regression-tested per adapter).
+- **TikTok's signed upload URL is a capability**, so it is sealed with the social key ring, dropped
+  when the publish ends, and checked against a TikTok host before any bytes go to it. The access
+  token is deliberately NOT sent with the upload: the URL is the authorization.
+- **One publish, once.** TikTok's `publish_id`, Threads' container id and X's media id are recorded
+  before the irreversible step, so a retry asks the platform what happened rather than sending
+  again.
+- **Signed media links stay narrow.** Threads and Pinterest fetch images from a 15-minute presigned
+  GET for one tenant-checked key, offered only when storage is internet-reachable.
+- **Scope and audit gates are enforced before a request**, not after a refusal: a TikTok grant
+  without `video.publish`, an X grant without `media.write` for an image, a Threads grant without
+  `threads_content_publish`, a Pinterest grant without `pins:write`.
+- **Email sends nothing.** Rather than ship an ESP adapter without consent records, unsubscribe
+  handling, suppression lists and domain authentication, EMAIL stays unwired and says so — a
+  capability that could send mail an operator is not allowed to send is worse than none.

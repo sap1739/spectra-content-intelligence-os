@@ -39,6 +39,7 @@
 | [0035](0035-linkedin-live-adapter.md)                           | LinkedIn: first live OAuth publisher, official APIs only (text + one image)                    | Accepted             |
 | [0036](0036-meta-facebook-instagram-adapters.md)                | Meta: Facebook Pages and Instagram professional accounts over the Graph API                    | Accepted             |
 | [0037](0037-youtube-resumable-video-publishing.md)              | YouTube: resumable video publishing, with video upload into the pipeline                       | Accepted             |
+| [0038](0038-remaining-platform-adapters.md)                     | TikTok, X, Threads, Pinterest: adapters where the APIs allow; email a placeholder              | Accepted             |
 
 New significant decisions require a new ADR (`NNNN-kebab-title.md`) using the
 Context / Decision / Rationale / Consequences structure.

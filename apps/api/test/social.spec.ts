@@ -76,7 +76,7 @@ describe('API integration: social accounts, capabilities, honest publishing foun
     await app.close();
   });
 
-  it('reports declared capabilities: WordPress, LinkedIn, Meta and YouTube are wired, no credential storage', async () => {
+  it('reports declared capabilities: every platform but email is wired, no credential storage', async () => {
     const res = await inject().inject({
       method: 'GET',
       url: `/v1/workspaces/${workspaceId}/social/platforms`,
@@ -89,14 +89,18 @@ describe('API integration: social accounts, capabilities, honest publishing foun
     };
     expect(body.credentialStorageConfigured).toBe(false);
     expect(body.platforms.length).toBe(10);
-    // WordPress (4D), LinkedIn (6D), Instagram and Facebook (6E) and YouTube (6F) have live
-    // adapters; every other platform is honestly unwired.
+    // Every platform but email has a live adapter after 6G, and email is a
+    // deliberate placeholder rather than work-in-progress (ADR-0038).
     const wired = body.platforms.filter((p) => p.publisherWired).map((p) => p.capability.platform);
     expect([...wired].sort()).toEqual([
       'FACEBOOK',
       'INSTAGRAM',
       'LINKEDIN',
+      'PINTEREST',
+      'THREADS',
+      'TIKTOK',
       'WORDPRESS',
+      'X',
       'YOUTUBE',
     ]);
   });

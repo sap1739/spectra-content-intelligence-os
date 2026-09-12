@@ -38,7 +38,9 @@ describe('buildAuthorizationUrl', () => {
     expect(url.searchParams.get('redirect_uri')).toBe(
       'https://api.example.com/v1/social/oauth/x/callback',
     );
-    expect(url.searchParams.get('scope')).toBe('tweet.read tweet.write users.read offline.access');
+    expect(url.searchParams.get('scope')).toBe(
+      'tweet.read tweet.write users.read media.write offline.access',
+    );
     expect(url.searchParams.get('state')).toBe(state);
     expect(url.searchParams.get('code_challenge')).toBe(codeChallenge);
     expect(url.searchParams.get('code_challenge_method')).toBe('S256');
@@ -49,7 +51,9 @@ describe('buildAuthorizationUrl', () => {
       state: generateState(),
       codeChallenge: challenge(),
     });
-    expect(raw).toContain('scope=tweet.read%20tweet.write%20users.read%20offline.access');
+    expect(raw).toContain(
+      'scope=tweet.read%20tweet.write%20users.read%20media.write%20offline.access',
+    );
     expect(raw).not.toContain('+');
   });
 
@@ -96,7 +100,7 @@ describe('buildAuthorizationUrl', () => {
     );
     expect(url.searchParams.get('client_key')).toBe('tt-client-key');
     expect(url.searchParams.has('client_id')).toBe(false);
-    expect(url.searchParams.get('scope')).toBe('user.info.basic,video.upload,video.publish');
+    expect(url.searchParams.get('scope')).toBe('user.info.basic,video.publish');
   });
 
   it('asks Google for offline access so a refresh token is issued', () => {

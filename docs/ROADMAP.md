@@ -323,7 +323,22 @@ weakest link in the differentiator: research and evidence quality.
   Google's own reason. Tested end to end against a local stand-in that enforces the resumable
   protocol; **not yet run against YouTube itself** (ADR-0037,
   `docs/YOUTUBE_LIVE_VERIFICATION.md`).
-- Next: run the LinkedIn, Meta and YouTube live-verification checklists against real apps; video
-  for the other platforms (LinkedIn Videos API, Facebook video, Instagram Reels); the next OAuth
-  publisher (X); a background refresh sweep ahead of token expiry; a metrics endpoint on the
-  worker; anchor-aware citation selection.
+- ✅ **Increment G — TikTok, X, Threads, Pinterest, and a decision about email.** Four more
+  adapters, each publishing only what its official API allows: TikTok Direct Post (one video,
+  chunked upload, the creator's own privacy options honoured, and TikTok's "unaudited clients post
+  privately only" quoted wherever it matters), X (text and up to four images through the v2 chunked
+  media upload, with its pay-per-usage cost and access refusals reported as exactly that), Threads
+  (text or one image through a media container, with Meta's tester-accounts-only limit stated
+  up front) and Pinterest (one image pin on a board, with Pinterest's own refusals passed through
+  because it documents no formats, sizes or text limits). Email was deliberately NOT integrated:
+  consent records, unsubscribe handling, suppression and domain authentication come first, so
+  EMAIL stays unwired and the docs say why. Two extensions made the four fit the existing pipeline:
+  a shared `openConnection` in the resolver (connection, kind, scopes, refresh) and `subjectId` in
+  discovery, since TikTok names a creator only in its token response. Tested against local
+  stand-ins that enforce each documented rule; **none has been run against the real platform**
+  (ADR-0038, `docs/REMAINING_PLATFORMS_LIVE_VERIFICATION.md`).
+- Next: run the four live-verification checklists against real apps (LinkedIn, Meta, YouTube and
+  the 6G four); video for the platforms that support it but are not implemented (LinkedIn Videos
+  API, Facebook video, Instagram Reels, X and Threads video, TikTok photo posts); a background
+  refresh sweep ahead of token expiry; a metrics endpoint on the worker; anchor-aware citation
+  selection.

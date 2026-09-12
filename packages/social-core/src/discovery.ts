@@ -23,6 +23,11 @@ export interface DiscoveryContext {
   accessToken: string;
   /** Scopes the token endpoint reported, or null when it reported none. */
   grantedScopes: readonly string[] | null;
+  /**
+   * The account id the token endpoint reported (TikTok's `open_id`), where the
+   * platform identifies the account there rather than through a lookup.
+   */
+  subjectId?: string | null;
   signal?: AbortSignal;
 }
 

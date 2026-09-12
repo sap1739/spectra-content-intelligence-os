@@ -25,6 +25,10 @@ import { executeReembed, executeResearchRun } from '@spectra/research-pipeline';
 import type { KeyRing } from '@spectra/security';
 import { linkedInApiOptionsFromEnv } from '@spectra/social-linkedin';
 import { metaGraphOptionsFromEnv } from '@spectra/social-meta';
+import { pinterestApiOptionsFromEnv } from '@spectra/social-pinterest';
+import { threadsApiOptionsFromEnv } from '@spectra/social-threads';
+import { tikTokApiOptionsFromEnv } from '@spectra/social-tiktok';
+import { xApiOptionsFromEnv } from '@spectra/social-x';
 import { youTubeApiOptionsFromEnv } from '@spectra/social-youtube';
 import { resolveOAuthPlatform } from '@spectra/social-oauth';
 import { S3ObjectStorageProvider } from '@spectra/storage';
@@ -346,6 +350,10 @@ async function main(): Promise<void> {
   const linkedinOAuth = resolveOAuthPlatform(env, 'LINKEDIN');
   const facebookOAuth = resolveOAuthPlatform(env, 'FACEBOOK');
   const youtubeOAuth = resolveOAuthPlatform(env, 'YOUTUBE');
+  const tiktokOAuth = resolveOAuthPlatform(env, 'TIKTOK');
+  const threadsOAuth = resolveOAuthPlatform(env, 'THREADS');
+  const xOAuth = resolveOAuthPlatform(env, 'X');
+  const pinterestOAuth = resolveOAuthPlatform(env, 'PINTEREST');
   // Instagram fetches images itself, from a short-lived signed link to
   // storage — possible only when storage is reachable from the internet.
   const instagramMediaProblem = publicMediaLinkProblem(storageEnv.STORAGE_ENDPOINT);
@@ -371,6 +379,27 @@ async function main(): Promise<void> {
     youtube: {
       api: youTubeApiOptionsFromEnv(env),
       oauth: youtubeOAuth.configured ? youtubeOAuth.config : null,
+    },
+    tiktok: {
+      api: tikTokApiOptionsFromEnv(env),
+      oauth: tiktokOAuth.configured ? tiktokOAuth.config : null,
+    },
+    // Threads and Pinterest fetch the image themselves, from the same kind of
+    // short-lived signed link Instagram uses.
+    threads: {
+      api: threadsApiOptionsFromEnv(
+        env,
+        publicMediaLinkProblem(storageEnv.STORAGE_ENDPOINT, 'Threads'),
+      ),
+      oauth: threadsOAuth.configured ? threadsOAuth.config : null,
+    },
+    x: { api: xApiOptionsFromEnv(env), oauth: xOAuth.configured ? xOAuth.config : null },
+    pinterest: {
+      api: pinterestApiOptionsFromEnv(
+        env,
+        publicMediaLinkProblem(storageEnv.STORAGE_ENDPOINT, 'Pinterest'),
+      ),
+      oauth: pinterestOAuth.configured ? pinterestOAuth.config : null,
     },
     logger,
   });

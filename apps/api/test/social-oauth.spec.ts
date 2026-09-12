@@ -332,13 +332,22 @@ describe('API integration: OAuth token brokering (ADR-0034)', () => {
       ]);
       expect(facebook?.approval.notes.length).toBeGreaterThan(0);
 
-      // LinkedIn (6D), Meta (6E) and YouTube (6F) have publishing adapters.
+      // Every OAuth platform has a publishing adapter after 6G (ADR-0038).
       expect(
         body.platforms
           .filter((p) => p.adapters.publishing)
           .map((p) => p.platform)
           .sort(),
-      ).toEqual(['FACEBOOK', 'INSTAGRAM', 'LINKEDIN', 'YOUTUBE']);
+      ).toEqual([
+        'FACEBOOK',
+        'INSTAGRAM',
+        'LINKEDIN',
+        'PINTEREST',
+        'THREADS',
+        'TIKTOK',
+        'X',
+        'YOUTUBE',
+      ]);
       for (const client of Object.values(CLIENTS)) expect(res.body).not.toContain(client.secret);
     });
 
@@ -410,7 +419,10 @@ describe('API integration: OAuth token brokering (ADR-0034)', () => {
       expect(row?.hasRefreshToken).toBe(true);
       expect(row?.grantedScopesReported).toBe(true);
       expect(row?.grantedScopes).toContain('tweet.write');
-      expect(row?.discoveryStatus).toBe('NOT_AVAILABLE');
+      // X gained a discovery adapter in 6G: discovery runs, and against this
+      // OAuth stand-in (which serves no X user endpoint) it records the failure
+      // rather than inventing an account.
+      expect(row?.discoveryStatus).toBe('FAILED');
       expect(row?.accessTokenExpiresAt?.getTime()).toBeGreaterThan(Date.now() + 7_000_000);
 
       const list = await inject().inject({
@@ -427,8 +439,8 @@ describe('API integration: OAuth token brokering (ADR-0034)', () => {
         publishing: { wired: boolean };
       }>;
       const listed = rows.find((r) => r.id === xConnectionId);
-      expect(listed?.discovery.status).toBe('NOT_AVAILABLE');
-      expect(listed?.publishing.wired).toBe(false);
+      expect(listed?.discovery.status).toBe('FAILED');
+      expect(listed?.publishing.wired).toBe(true);
 
       const audit = await prisma.client.auditLog.findMany({
         where: { organizationId: owner.orgId, action: { startsWith: 'social.' } },
@@ -741,7 +753,8 @@ describe('API integration: OAuth token brokering (ADR-0034)', () => {
         }>;
       };
       const publish = body.capabilities.find((c) => c.capability === 'publish');
-      expect(publish).toMatchObject({ scopesGranted: true, adapterWired: false, available: false });
+      // Scopes granted AND an adapter wired is what makes a capability available.
+      expect(publish).toMatchObject({ scopesGranted: true, adapterWired: true, available: true });
 
       const linkedIn = await inject().inject({
         method: 'GET',

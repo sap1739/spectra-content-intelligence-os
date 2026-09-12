@@ -1,3 +1,4 @@
+import type { SocialPlatform } from '@spectra/contracts';
 import type { SpectraPrismaClient } from '@spectra/database';
 import type { Logger } from '@spectra/logging';
 import { decryptSecret, encryptSecret, sealedKeyId, type KeyRing } from '@spectra/security';
@@ -20,7 +21,19 @@ import {
   type ResolvedOAuthConfig,
   type TokenBundle,
 } from '@spectra/social-oauth';
+import { PinterestPublisher, type PinterestAdapterOptions } from '@spectra/social-pinterest';
+import {
+  ThreadsPublisher,
+  type ThreadsAdapterOptions,
+  type ThreadsContainerLedger,
+} from '@spectra/social-threads';
+import {
+  TikTokVideoPublisher,
+  type TikTokAdapterOptions,
+  type TikTokPublishLedger,
+} from '@spectra/social-tiktok';
 import { WordPressPublisher, parseWordPressCredential } from '@spectra/social-wordpress';
+import { XPublisher, type XApiOptions, type XMediaLedger } from '@spectra/social-x';
 import {
   CHANNEL_ID,
   YOUTUBE_SCOPES,
@@ -77,6 +90,20 @@ export interface PublisherResolverDeps {
     imageStatusChecks?: number;
     sleep?: (ms: number) => Promise<void>;
   };
+  /** TikTok. Omitted: TikTok targets resolve to UNSUPPORTED. */
+  tiktok?: { api: TikTokAdapterOptions; oauth: ResolvedOAuthConfig | null };
+  /** Threads. Omitted: Threads targets resolve to UNSUPPORTED. */
+  threads?: {
+    api: ThreadsAdapterOptions;
+    oauth: ResolvedOAuthConfig | null;
+    /** Wait between creating a container and publishing it (default: Meta's ~30s). */
+    publishDelayMs?: number;
+    sleep?: (ms: number) => Promise<void>;
+  };
+  /** X. Omitted: X targets resolve to UNSUPPORTED. */
+  x?: { api: XApiOptions; oauth: ResolvedOAuthConfig | null };
+  /** Pinterest. Omitted: Pinterest targets resolve to UNSUPPORTED. */
+  pinterest?: { api: PinterestAdapterOptions; oauth: ResolvedOAuthConfig | null };
   /** YouTube. Omitted: YouTube targets resolve to UNSUPPORTED. */
   youtube?: {
     api: YouTubeAdapterOptions;
@@ -113,6 +140,18 @@ export function createPublisherResolver(deps: PublisherResolverDeps): ResolvePub
     }
     if (account.platform === 'YOUTUBE') {
       return deps.youtube ? resolveYouTube(deps, deps.youtube, account) : undefined;
+    }
+    if (account.platform === 'TIKTOK') {
+      return deps.tiktok ? resolveTikTok(deps, deps.tiktok, account) : undefined;
+    }
+    if (account.platform === 'THREADS') {
+      return deps.threads ? resolveThreads(deps, deps.threads, account) : undefined;
+    }
+    if (account.platform === 'X') {
+      return deps.x ? resolveX(deps, deps.x, account) : undefined;
+    }
+    if (account.platform === 'PINTEREST') {
+      return deps.pinterest ? resolvePinterest(deps, deps.pinterest, account) : undefined;
     }
     return undefined;
   };
@@ -164,7 +203,10 @@ const PRIVATE_HOSTS = [
  * docker-compose service), cannot be reached from outside. A public-looking
  * name is not proof of reachability; the live checklist verifies it.
  */
-export function publicMediaLinkProblem(storageEndpoint: string): string | null {
+export function publicMediaLinkProblem(
+  storageEndpoint: string,
+  platform = 'Instagram',
+): string | null {
   let host: string;
   try {
     host = new URL(storageEndpoint).hostname;
@@ -173,7 +215,7 @@ export function publicMediaLinkProblem(storageEndpoint: string): string | null {
   }
   const ip = /^[\d.]+$/.test(host) || host.includes(':');
   if ((!ip && !host.includes('.')) || PRIVATE_HOSTS.some((pattern) => pattern.test(host))) {
-    return `Instagram fetches the image from a link to this deployment's object storage, and STORAGE_ENDPOINT (${host}) is a local or private address Instagram cannot reach. Serve storage from a public address to publish to Instagram.`;
+    return `${platform} fetches the image from a link to this deployment's object storage, and STORAGE_ENDPOINT (${host}) is a local or private address ${platform} cannot reach. Serve storage from a public address to publish to ${platform}.`;
   }
   return null;
 }
@@ -912,6 +954,433 @@ function prismaResumableLedger(
           encryptedUploadUrl: null,
           credentialKeyId: null,
         },
+      });
+    },
+  };
+}
+
+/** The handle discovery recorded, for a post's link. Never a credential. */
+function handleOf(account: PublishAccount): string | null {
+  const username = account.discoveryMetadata?.username;
+  return typeof username === 'string' && username ? username : null;
+}
+
+/**
+ * The pieces every OAuth-discovered account needs before it can publish: a
+ * live connection on the right platform, the scopes the platform requires, and
+ * a token opened for this one publish (refreshed first where the platform
+ * issues refresh tokens).
+ */
+async function openConnection(
+  deps: PublisherResolverDeps,
+  account: PublishAccount,
+  spec: {
+    platform: SocialPlatform;
+    name: string;
+    kind: string;
+    scopes: readonly string[];
+    oauth: ResolvedOAuthConfig | null;
+    noRefreshToken: string;
+    missingOAuthEnv: string;
+    wrongKind: string;
+    idPattern: RegExp;
+  },
+): Promise<
+  | { accessToken: string; grantedScopes: string[] | null; connectionId: string }
+  | PublisherUnavailable
+> {
+  const now = (deps.now ?? (() => new Date()))();
+  if (!account.connectionId || !spec.idPattern.test(account.externalAccountId)) {
+    return unavailable(
+      'UNSUPPORTED',
+      `This ${spec.name} target was registered by hand, not connected through ${spec.name}. Connect ${spec.name} on Social Accounts and publish to a discovered account. Nothing was published.`,
+      'NOT_CONNECTED',
+    );
+  }
+  if (account.kind !== spec.kind) {
+    return unavailable('UNSUPPORTED', spec.wrongKind, 'UNSUPPORTED_ACCOUNT');
+  }
+  const ring = deps.ring;
+  if (!ring) {
+    return unavailable(
+      'UNSUPPORTED',
+      `Credential storage is not configured on the worker (SOCIAL_TOKEN_ENCRYPTION_KEY), so the ${spec.name} token cannot be read. Nothing was published.`,
+      'NOT_CONNECTED',
+    );
+  }
+
+  const connection = await deps.prisma.socialConnection.findFirst({
+    where: {
+      id: account.connectionId,
+      organizationId: account.organizationId,
+      workspaceId: account.workspaceId,
+      platform: spec.platform,
+    },
+    select: {
+      id: true,
+      status: true,
+      disconnectedAt: true,
+      encryptedCredential: true,
+      hasRefreshToken: true,
+      accessTokenExpiresAt: true,
+      lastRefreshedAt: true,
+      grantedScopes: true,
+      grantedScopesReported: true,
+    },
+  });
+  if (!connection || connection.disconnectedAt || !connection.encryptedCredential) {
+    return unavailable(
+      'UNSUPPORTED',
+      `The ${spec.name} connection behind this target was disconnected. Reconnect ${spec.name} to publish. Nothing was published.`,
+      'NOT_CONNECTED',
+    );
+  }
+  if (connection.status === 'REAUTH_REQUIRED' || connection.status === 'REVOKED') {
+    return unavailable(
+      'FAILED',
+      `${spec.name} needs to be reconnected: it rejected this authorization. Nothing was published.`,
+      'REAUTH_REQUIRED',
+    );
+  }
+
+  const grantedScopes = connection.grantedScopesReported ? connection.grantedScopes : null;
+  const missing = grantedScopes
+    ? spec.scopes.filter((scope) => !grantedScopes.includes(scope))
+    : [];
+  if (missing.length > 0) {
+    return unavailable(
+      'FAILED',
+      `Publishing to ${spec.name} needs ${missing.join(', ')}, which this connection was not granted. Reconnect ${spec.name} and allow it. Nothing was published.`,
+      'PERMISSION',
+    );
+  }
+
+  let bundle: TokenBundle;
+  try {
+    bundle = openTokenBundle(connection.encryptedCredential, ring);
+  } catch {
+    return unavailable(
+      'FAILED',
+      `The stored ${spec.name} credential could not be decrypted with the configured keys. Reconnect ${spec.name}. Nothing was published.`,
+      'REAUTH_REQUIRED',
+    );
+  }
+
+  let accessToken = bundle.accessToken;
+  const expiresAt = connection.accessTokenExpiresAt;
+  if (expiresAt && expiresAt.getTime() - REFRESH_MARGIN_MS <= now.getTime()) {
+    const refreshed = await refreshConnectionToken(
+      deps,
+      {
+        name: spec.name,
+        oauth: spec.oauth,
+        noRefreshToken: spec.noRefreshToken,
+        missingOAuthEnv: spec.missingOAuthEnv,
+      },
+      ring,
+      account,
+      connection,
+      bundle,
+      now,
+    );
+    if ('unavailable' in refreshed) return refreshed;
+    accessToken = refreshed.accessToken;
+  }
+  return { accessToken, grantedScopes, connectionId: connection.id };
+}
+
+/** Marks the connection for reconnect when a platform rejects its token. */
+function reconnectOn(
+  deps: PublisherResolverDeps,
+  account: PublishAccount,
+  connectionId: string,
+): () => Promise<void> {
+  return async () => {
+    await deps.prisma.socialConnection.updateMany({
+      where: { id: connectionId, organizationId: account.organizationId },
+      data: { status: 'REAUTH_REQUIRED', lastErrorCode: 'publish_unauthorized' },
+    });
+  };
+}
+
+/** TikTok (ADR-0038): Direct Post to the creator that authorized. */
+async function resolveTikTok(
+  deps: PublisherResolverDeps,
+  tiktok: NonNullable<PublisherResolverDeps['tiktok']>,
+  account: PublishAccount,
+): Promise<TikTokVideoPublisher | PublisherUnavailable> {
+  const opened = await openConnection(deps, account, {
+    platform: 'TIKTOK',
+    name: 'TikTok',
+    kind: 'PROFILE',
+    scopes: ['video.publish'],
+    oauth: tiktok.oauth,
+    noRefreshToken: 'TikTok issued no refresh token for it.',
+    missingOAuthEnv: 'SOCIAL_OAUTH_TIKTOK_CLIENT_ID/SECRET',
+    wrongKind:
+      'A TikTok post goes to the creator account that authorized Spectra. Nothing was published.',
+    idPattern: /^[A-Za-z0-9_.-]{1,120}$/,
+  });
+  if ('unavailable' in opened) return opened;
+  const ring = deps.ring as KeyRing;
+  return new TikTokVideoPublisher({
+    ...tiktok.api,
+    accessToken: opened.accessToken,
+    openId: account.externalAccountId,
+    grantedScopes: opened.grantedScopes,
+    clientAudited: tiktok.api.clientAudited,
+    chunkBytes: tiktok.api.chunkBytes,
+    ledger: prismaTikTokLedger(deps.prisma, account, ring),
+    onAuthRejected: reconnectOn(deps, account, opened.connectionId),
+  });
+}
+
+/** Threads (ADR-0038): a container, then a publish, on the connected profile. */
+async function resolveThreads(
+  deps: PublisherResolverDeps,
+  threads: NonNullable<PublisherResolverDeps['threads']>,
+  account: PublishAccount,
+): Promise<ThreadsPublisher | PublisherUnavailable> {
+  const opened = await openConnection(deps, account, {
+    platform: 'THREADS',
+    name: 'Threads',
+    kind: 'PROFILE',
+    scopes: ['threads_basic', 'threads_content_publish'],
+    oauth: threads.oauth,
+    noRefreshToken: 'Threads has no standard refresh grant here.',
+    missingOAuthEnv: 'SOCIAL_OAUTH_THREADS_CLIENT_ID/SECRET',
+    wrongKind: 'A Threads post goes to the profile that authorized Spectra. Nothing was published.',
+    idPattern: /^\d{1,30}$/,
+  });
+  if ('unavailable' in opened) return opened;
+  return new ThreadsPublisher({
+    ...threads.api,
+    accessToken: opened.accessToken,
+    threadsUserId: account.externalAccountId,
+    grantedScopes: opened.grantedScopes,
+    username: handleOf(account),
+    ledger: prismaContainerLedger(deps.prisma, account) as ThreadsContainerLedger,
+    onAuthRejected: reconnectOn(deps, account, opened.connectionId),
+    ...(threads.publishDelayMs !== undefined ? { publishDelayMs: threads.publishDelayMs } : {}),
+    ...(threads.sleep ? { sleep: threads.sleep } : {}),
+  });
+}
+
+/** X (ADR-0038): a post, with images sent through the chunked upload first. */
+async function resolveX(
+  deps: PublisherResolverDeps,
+  x: NonNullable<PublisherResolverDeps['x']>,
+  account: PublishAccount,
+): Promise<XPublisher | PublisherUnavailable> {
+  const opened = await openConnection(deps, account, {
+    platform: 'X',
+    name: 'X',
+    kind: 'PROFILE',
+    scopes: ['tweet.write'],
+    oauth: x.oauth,
+    noRefreshToken: 'X issued no refresh token for it (offline.access was not granted).',
+    missingOAuthEnv: 'SOCIAL_OAUTH_X_CLIENT_ID/SECRET',
+    wrongKind: 'An X post goes to the account that authorized Spectra. Nothing was published.',
+    idPattern: /^\d{1,25}$/,
+  });
+  if ('unavailable' in opened) return opened;
+  return new XPublisher({
+    ...x.api,
+    accessToken: opened.accessToken,
+    grantedScopes: opened.grantedScopes,
+    username: handleOf(account),
+    ledger: prismaXMediaLedger(deps.prisma, account),
+    onAuthRejected: reconnectOn(deps, account, opened.connectionId),
+  });
+}
+
+/** Pinterest (ADR-0038): one image pin on the board that was chosen. */
+async function resolvePinterest(
+  deps: PublisherResolverDeps,
+  pinterest: NonNullable<PublisherResolverDeps['pinterest']>,
+  account: PublishAccount,
+): Promise<PinterestPublisher | PublisherUnavailable> {
+  const opened = await openConnection(deps, account, {
+    platform: 'PINTEREST',
+    name: 'Pinterest',
+    kind: 'CHANNEL',
+    scopes: ['pins:write'],
+    oauth: pinterest.oauth,
+    noRefreshToken: 'Pinterest issued no refresh token for it.',
+    missingOAuthEnv: 'SOCIAL_OAUTH_PINTEREST_CLIENT_ID/SECRET',
+    wrongKind:
+      'A pin goes to a Pinterest board, not to the account itself — pick a board as the target. Nothing was published.',
+    idPattern: /^[A-Za-z0-9_-]{1,60}$/,
+  });
+  if ('unavailable' in opened) return opened;
+  return new PinterestPublisher({
+    ...pinterest.api,
+    accessToken: opened.accessToken,
+    boardId: account.externalAccountId,
+    grantedScopes: opened.grantedScopes,
+    onAuthRejected: reconnectOn(deps, account, opened.connectionId),
+  });
+}
+
+/**
+ * TikTok's publish ledger on SocialMediaUpload: the publish id is the guard
+ * against double-posting, and the signed upload URL is sealed like any other
+ * capability.
+ */
+function prismaTikTokLedger(
+  prisma: SpectraPrismaClient,
+  account: PublishAccount,
+  ring: KeyRing,
+): TikTokPublishLedger {
+  const row = (assetId: string) => ({
+    organizationId: account.organizationId,
+    socialAccountId: account.id,
+    mediaAssetId: assetId,
+  });
+  return {
+    async find(assetId) {
+      const found = await prisma.socialMediaUpload.findFirst({
+        where: row(assetId),
+        select: {
+          externalMediaId: true,
+          encryptedUploadUrl: true,
+          uploadedBytes: true,
+          lastPostId: true,
+          status: true,
+        },
+      });
+      if (!found) return null;
+      let uploadUrl: string | null = null;
+      if (found.encryptedUploadUrl) {
+        try {
+          uploadUrl = decryptSecret(found.encryptedUploadUrl, ring);
+        } catch {
+          uploadUrl = null;
+        }
+      }
+      return {
+        publishId: found.externalMediaId,
+        uploadUrl,
+        uploadedBytes: found.uploadedBytes,
+        postId: found.status === 'UPLOADED' ? found.lastPostId : null,
+        status: found.status,
+      };
+    },
+    async started(assetId, publishId, uploadUrl) {
+      const sealed = encryptSecret(uploadUrl, ring);
+      await prisma.socialMediaUpload.upsert({
+        where: {
+          socialAccountId_mediaAssetId: { socialAccountId: account.id, mediaAssetId: assetId },
+        },
+        create: {
+          organizationId: account.organizationId,
+          workspaceId: account.workspaceId,
+          socialAccountId: account.id,
+          mediaAssetId: assetId,
+          platform: account.platform,
+          externalMediaId: publishId,
+          status: 'REGISTERED',
+          attempts: 1,
+          uploadedBytes: 0,
+          encryptedUploadUrl: sealed,
+          credentialKeyId: sealedKeyId(sealed),
+        },
+        update: {
+          externalMediaId: publishId,
+          status: 'REGISTERED',
+          verified: false,
+          attempts: { increment: 1 },
+          uploadedBytes: 0,
+          encryptedUploadUrl: sealed,
+          credentialKeyId: sealedKeyId(sealed),
+          lastError: null,
+        },
+      });
+    },
+    async progressed(assetId, uploadedBytes) {
+      await prisma.socialMediaUpload.updateMany({ where: row(assetId), data: { uploadedBytes } });
+    },
+    async finished(assetId, postId) {
+      await prisma.socialMediaUpload.updateMany({
+        where: row(assetId),
+        data: {
+          status: 'UPLOADED',
+          lastPostId: postId,
+          uploadedAt: new Date(),
+          encryptedUploadUrl: null,
+          credentialKeyId: null,
+        },
+      });
+    },
+    async failed(assetId, reason) {
+      await prisma.socialMediaUpload.updateMany({
+        where: row(assetId),
+        data: {
+          status: 'FAILED',
+          lastError: reason.slice(0, 500),
+          encryptedUploadUrl: null,
+          credentialKeyId: null,
+        },
+      });
+    },
+  };
+}
+
+/** X's media ledger: an image X already has is attached again, not re-uploaded. */
+function prismaXMediaLedger(prisma: SpectraPrismaClient, account: PublishAccount): XMediaLedger {
+  const row = (assetId: string) => ({
+    organizationId: account.organizationId,
+    socialAccountId: account.id,
+    mediaAssetId: assetId,
+  });
+  return {
+    async find(assetId) {
+      const found = await prisma.socialMediaUpload.findFirst({
+        where: row(assetId),
+        select: { externalMediaId: true, verified: true },
+      });
+      return found ? { mediaId: found.externalMediaId, verified: found.verified } : null;
+    },
+    async registered(assetId, mediaId) {
+      await prisma.socialMediaUpload.upsert({
+        where: {
+          socialAccountId_mediaAssetId: { socialAccountId: account.id, mediaAssetId: assetId },
+        },
+        create: {
+          organizationId: account.organizationId,
+          workspaceId: account.workspaceId,
+          socialAccountId: account.id,
+          mediaAssetId: assetId,
+          platform: account.platform,
+          externalMediaId: mediaId,
+          status: 'REGISTERED',
+          attempts: 1,
+        },
+        update: {
+          externalMediaId: mediaId,
+          status: 'REGISTERED',
+          verified: false,
+          attempts: { increment: 1 },
+          lastError: null,
+        },
+      });
+    },
+    async uploaded(assetId, verified) {
+      await prisma.socialMediaUpload.updateMany({
+        where: row(assetId),
+        data: { status: 'UPLOADED', verified, uploadedAt: new Date() },
+      });
+    },
+    async failed(assetId, reason) {
+      await prisma.socialMediaUpload.updateMany({
+        where: row(assetId),
+        data: { status: 'FAILED', lastError: reason.slice(0, 500) },
+      });
+    },
+    async attached(assetId, postId) {
+      await prisma.socialMediaUpload.updateMany({
+        where: row(assetId),
+        data: { lastPostId: postId },
       });
     },
   };

@@ -1,14 +1,15 @@
 # Social Platform Capability Matrix
 
-**Status (Phase 6F):** WordPress (ADR-0022), LinkedIn (ADR-0035), Facebook Pages and Instagram
+**Status (Phase 6G):** Every platform except email now publishes for real: WordPress
+(ADR-0022), LinkedIn (ADR-0035), Facebook Pages and Instagram professional accounts (ADR-0036),
+YouTube (ADR-0037), and TikTok, X, Threads and Pinterest (ADR-0038).
 professional accounts (ADR-0036) and YouTube channels (ADR-0037, video uploads) publish for real. LinkedIn publishes text and one image, as a
 member or as a page they administer; Facebook publishes text and one photo to Pages; Instagram
 publishes one JPEG image to professional accounts linked to a Page, through a Meta (Facebook)
-connection; YouTube uploads a video to a channel. The other four OAuth platforms (Threads,
-TikTok, X, Pinterest) — and a direct
-Instagram Login connection — can be **connected**, storing a sealed authorization (ADR-0034), but
-**cannot publish**: a post through them resolves to `UNSUPPORTED`. Email is neither connectable nor
-publishable.
+connection; YouTube uploads a video to a channel; TikTok posts one video to the creator that
+authorized it; X posts text and up to four images; Threads posts text or one image; Pinterest
+creates one image pin on a board. A direct Instagram Login connection still stores an
+authorization only. **Email is deliberately not integrated** — see §8.
 
 Capability records are _declared_ from official documentation, not fetched from a live API.
 Platform rules change frequently, so `null`/"verify" means unknown-until-verified and the code fails
@@ -62,11 +63,11 @@ means the OAuth flow works end to end when configured; it says nothing about pub
 | LinkedIn        | if configured              | **live** (text + 1 image)                                         | none      | body                      | partners only                                  | no                  | `openid profile w_member_social`                                                                     |
 | Meta (Facebook) | if configured              | **live** — Pages: text + 1 photo; Instagram: 1 JPEG               | none      | body (GET, as documented) | long-lived exchange; Page tokens do not expire | no                  | `pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish` |
 | Instagram Login | if configured              | authorization only — publish through a Meta (Facebook) connection | none      | body                      | none (reconnect)                               | no                  | `instagram_business_basic,instagram_business_content_publish`                                        |
-| Threads         | if configured              | **not wired**                                                     | none      | body                      | none (reconnect)                               | no                  | `threads_basic,threads_content_publish`                                                              |
+| Threads         | if configured              | **live** (text + 1 image)                                         | none      | body                      | none (reconnect)                               | no                  | `threads_basic,threads_content_publish`                                                              |
 | YouTube         | if configured              | **live** (video upload)                                           | supported | body                      | standard (offline)                             | yes                 | `youtube.upload youtube.readonly`                                                                    |
-| TikTok          | if configured              | **not wired**                                                     | none      | body (`client_key`)       | standard                                       | yes                 | `user.info.basic,video.upload,video.publish`                                                         |
-| X               | if configured              | **not wired**                                                     | required  | HTTP Basic                | standard (`offline.access`)                    | yes                 | `tweet.read tweet.write users.read offline.access`                                                   |
-| Pinterest       | if configured              | **not wired**                                                     | none      | HTTP Basic                | standard                                       | no                  | `user_accounts:read,boards:read,pins:read,pins:write`                                                |
+| TikTok          | if configured              | **live** (1 video, Direct Post)                                   | none      | body (`client_key`)       | standard                                       | yes                 | `user.info.basic,video.upload,video.publish`                                                         |
+| X               | if configured              | **live** (text + up to 4 images)                                  | required  | HTTP Basic                | standard (`offline.access`)                    | yes                 | `tweet.read tweet.write users.read offline.access`                                                   |
+| Pinterest       | if configured              | **live** (1 image pin)                                            | none      | HTTP Basic                | standard                                       | no                  | `user_accounts:read,boards:read,pins:read,pins:write`                                                |
 | WordPress       | n/a — application password | **live**                                                          | —         | —                         | —                                              | —                   | —                                                                                                    |
 | Email           | not connectable            | not wired                                                         | —         | —                         | —                                              | —                   | —                                                                                                    |
 
@@ -187,3 +188,30 @@ YouTube itself accepts 256 GB). Two facts are always reported rather than assume
 project has its uploads "restricted to private viewing mode", and quota refusals come back as
 `QUOTA` with Google's own reason. Setup: `docs/YOUTUBE_SETUP.md`; the first real run:
 `docs/YOUTUBE_LIVE_VERIFICATION.md`.
+
+## 8. The remaining platforms (Phase 6G, ADR-0038)
+
+Official APIs only, and each adapter publishes exactly what its platform's API allows:
+
+| Platform  | Endpoints used                                                                      | What it publishes                | The gate in front of it                                           |
+| --------- | ----------------------------------------------------------------------------------- | -------------------------------- | ----------------------------------------------------------------- |
+| TikTok    | `creator_info/query`, `video/init` (FILE_UPLOAD), signed chunk PUTs, `status/fetch` | 1 video, Direct Post             | TikTok audit: unaudited clients post privately only               |
+| X         | `POST /2/tweets`; media `initialize` → `append` → `finalize` → `STATUS`             | text + up to 4 images            | Pay-per-usage credits / covering API access                       |
+| Threads   | `POST /{id}/threads` then `POST /{id}/threads_publish`; `GET /me`                   | text or 1 image                  | Meta advanced access (else own + tester accounts)                 |
+| Pinterest | `GET /v5/user_account`, `GET /v5/boards` (bookmark paging), `POST /v5/pins`         | 1 image pin on a board           | Trial access until Pinterest reviews the app                      |
+| Email     | none                                                                                | nothing — deliberate placeholder | consent, unsubscribe, suppression and domain authentication first |
+
+What each adapter does NOT do is declared per account, not implied: TikTok photo posts and inbox
+drafts, X video/polls/quotes/threads/replies, Threads video and carousels, and Pinterest video
+pins, carousels and board creation are all `NOT_IMPLEMENTED`; a text-only pin and a text-only
+TikTok post are `NOT_SUPPORTED`, because those platforms have no such thing.
+
+Two places where the platform documents nothing, so Spectra claims nothing: X states no character
+limit (Spectra caps a post at 280 and says the cap is its own), and Pinterest states no image
+formats, size or text limits (its own 403 — "The Pin's image is too small, too large or is broken" —
+is passed through). Both are in the live checklist to learn from a real run.
+
+Threads and Pinterest fetch images themselves, so they need object storage reachable from the
+internet, exactly as Instagram does; without it those posts report that reason and Threads still
+posts text. Setup: `docs/REMAINING_PLATFORMS_SETUP.md`; the first real run:
+`docs/REMAINING_PLATFORMS_LIVE_VERIFICATION.md`.

@@ -31,6 +31,11 @@ export interface PublishAccount {
   externalAccountId: string;
   encryptedToken: string | null;
   connectionId: string | null;
+  /**
+   * Allow-listed metadata discovery recorded for this account (a handle, a
+   * board's privacy). Used for things like a post's link — never a credential.
+   */
+  discoveryMetadata?: Record<string, unknown> | null;
 }
 
 /**
@@ -419,6 +424,7 @@ async function resolvePublisherFor(
       externalAccountId: true,
       encryptedToken: true,
       connectionId: true,
+      discoveryMetadata: true,
       deletedAt: true,
     },
   });
@@ -452,6 +458,12 @@ async function resolvePublisherFor(
     externalAccountId: account.externalAccountId,
     encryptedToken: account.encryptedToken,
     connectionId: account.connectionId,
+    discoveryMetadata:
+      account.discoveryMetadata &&
+      typeof account.discoveryMetadata === 'object' &&
+      !Array.isArray(account.discoveryMetadata)
+        ? (account.discoveryMetadata as Record<string, unknown>)
+        : null,
   });
 }
 

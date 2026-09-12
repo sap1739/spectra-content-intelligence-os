@@ -10,6 +10,10 @@ import {
 import { TenantIsolationError } from '@spectra/security';
 import { validateLinkedInPost } from '@spectra/social-linkedin';
 import { validateFacebookPost, validateInstagramPost } from '@spectra/social-meta';
+import { validatePinterestPin } from '@spectra/social-pinterest';
+import { validateThreadsPost } from '@spectra/social-threads';
+import { validateTikTokVideo } from '@spectra/social-tiktok';
+import { validateXPost } from '@spectra/social-x';
 import { validateYouTubeVideo } from '@spectra/social-youtube';
 import { JOB_NAMES } from '@spectra/workflow-core';
 
@@ -20,9 +24,17 @@ import type { Principal, TenantContext } from '../auth/types';
 
 const SCHEDULABLE_STATES = new Set(['APPROVED', 'SCHEDULED']);
 
+/** A pin's destination link, where the entry carries one. */
+function pinterestLink(metadata: unknown): string | null {
+  const pinterest = (metadata as { pinterest?: { link?: unknown } } | undefined)?.pinterest;
+  return typeof pinterest?.link === 'string' && pinterest.link ? pinterest.link : null;
+}
+
 interface TargetAccount {
   platform: string;
   capabilities: unknown;
+  /** A Pinterest board id, a channel id — what the platform publishes to. */
+  externalAccountId: string;
 }
 
 interface AttachedAsset {
@@ -174,7 +186,20 @@ export class CalendarService {
             ? validateInstagramPost
             : account.platform === 'YOUTUBE'
               ? validateYouTubeVideo
-              : null;
+              : account.platform === 'TIKTOK'
+                ? validateTikTokVideo
+                : account.platform === 'THREADS'
+                  ? validateThreadsPost
+                  : account.platform === 'X'
+                    ? validateXPost
+                    : account.platform === 'PINTEREST'
+                      ? (post: Parameters<typeof validatePinterestPin>[0]) =>
+                          // A pin's board is the target account itself.
+                          validatePinterestPin(post, {
+                            boardId: account.externalAccountId,
+                            link: pinterestLink(extras.metadata),
+                          })
+                      : null;
     if (validate) {
       const issues = validate({
         idempotencyKey: 'schedule-check',
@@ -210,7 +235,7 @@ export class CalendarService {
     if (input.socialAccountId) {
       account = await this.prisma.client.socialAccount.findFirst({
         where: { id: input.socialAccountId, ...this.scope(tenant), deletedAt: null },
-        select: { platform: true, capabilities: true },
+        select: { platform: true, capabilities: true, externalAccountId: true },
       });
       if (!account) throw new TenantIsolationError();
       if (account.platform !== input.platform) {

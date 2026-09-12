@@ -438,6 +438,82 @@ function refineYouTube(
   }
 }
 
+/**
+ * TikTok Content Posting API (Phase 6G, ADR-0038). The base URL is overridable
+ * only so tests can point at a local mock (https in production).
+ *
+ * `TIKTOK_API_CLIENT_AUDITED` is the operator's declaration that TikTok has
+ * audited this API client. While it is false, TikTok restricts posts to
+ * private viewing, and every surface says so.
+ */
+export const tiktokEnvSchema = z.object({
+  TIKTOK_API_BASE_URL: z.string().url().default('https://open.tiktokapis.com'),
+  TIKTOK_API_CLIENT_AUDITED: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true'),
+  /** TikTok requires 5-64 MB chunks; a file under 5 MB is sent whole. */
+  TIKTOK_UPLOAD_CHUNK_BYTES: z.coerce
+    .number()
+    .int()
+    .min(5 * 1024 * 1024)
+    .max(64 * 1024 * 1024)
+    .default(10 * 1024 * 1024),
+});
+
+function refineTikTok(
+  env: { NODE_ENV: z.infer<typeof nodeEnvSchema>; TIKTOK_API_BASE_URL: string },
+  ctx: z.RefinementCtx,
+): void {
+  if (env.NODE_ENV === 'production' && !env.TIKTOK_API_BASE_URL.startsWith('https://')) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['TIKTOK_API_BASE_URL'],
+      message: 'must use https in production',
+    });
+  }
+}
+
+/**
+ * The remaining platform APIs (Phase 6G, ADR-0038). Base URLs are overridable
+ * only so tests can point at local mocks (https in production); versions are
+ * the path segment each API uses.
+ */
+export const socialPlatformsEnvSchema = z.object({
+  THREADS_API_BASE_URL: z.string().url().default('https://graph.threads.net'),
+  THREADS_API_VERSION: z
+    .string()
+    .regex(/^v\d{1,3}\.\d{1,2}$/, { message: 'must be a Threads API version such as v1.0' })
+    .default('v1.0'),
+  X_API_BASE_URL: z.string().url().default('https://api.x.com'),
+  PINTEREST_API_BASE_URL: z.string().url().default('https://api.pinterest.com'),
+  PINTEREST_API_VERSION: z
+    .string()
+    .regex(/^v\d{1,2}$/, { message: 'must be a Pinterest API version such as v5' })
+    .default('v5'),
+});
+
+function refineSocialPlatforms(
+  env: {
+    NODE_ENV: z.infer<typeof nodeEnvSchema>;
+    THREADS_API_BASE_URL: string;
+    X_API_BASE_URL: string;
+    PINTEREST_API_BASE_URL: string;
+  },
+  ctx: z.RefinementCtx,
+): void {
+  if (env.NODE_ENV !== 'production') return;
+  for (const key of ['THREADS_API_BASE_URL', 'X_API_BASE_URL', 'PINTEREST_API_BASE_URL'] as const) {
+    if (!env[key].startsWith('https://')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [key],
+        message: 'must use https in production',
+      });
+    }
+  }
+}
+
 export const apiEnvSchema = z
   .object({
     NODE_ENV: nodeEnvSchema,
@@ -475,12 +551,18 @@ export const apiEnvSchema = z
   .merge(metaEnvSchema)
   // YouTube adapter (Phase 6F).
   .merge(youtubeEnvSchema)
+  // TikTok adapter (Phase 6G).
+  .merge(tiktokEnvSchema)
+  // Threads, X and Pinterest adapters (Phase 6G).
+  .merge(socialPlatformsEnvSchema)
   .superRefine((env, ctx) => {
     refineSocialKeyRing(env, ctx);
     refineSocialOAuth(env, ctx);
     refineLinkedIn(env, ctx);
     refineMeta(env, ctx);
     refineYouTube(env, ctx);
+    refineTikTok(env, ctx);
+    refineSocialPlatforms(env, ctx);
   });
 
 export const workerEnvSchema = z
@@ -509,12 +591,16 @@ export const workerEnvSchema = z
   .merge(linkedInEnvSchema)
   .merge(metaEnvSchema)
   .merge(youtubeEnvSchema)
+  .merge(tiktokEnvSchema)
+  .merge(socialPlatformsEnvSchema)
   .superRefine((env, ctx) => {
     refineSocialKeyRing(env, ctx);
     refineSocialOAuth(env, ctx);
     refineLinkedIn(env, ctx);
     refineMeta(env, ctx);
     refineYouTube(env, ctx);
+    refineTikTok(env, ctx);
+    refineSocialPlatforms(env, ctx);
   });
 
 export const webEnvSchema = z.object({

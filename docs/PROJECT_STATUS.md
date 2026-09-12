@@ -1,7 +1,7 @@
 # SpectraContent Intelligence OS — Project Status
 
 **Snapshot date:** 2026-09-11 · **Branch:** `main`
-**Status:** Phases 1–5 complete · Phase 6 in progress (6A–6F shipped)
+**Status:** Phases 1–5 complete · Phase 6 in progress (6A–6G shipped)
 
 > This document is a factual, audited snapshot intended as context for planning further work.
 > Every number below was measured from the repository, not estimated.
@@ -89,14 +89,14 @@ gives real end-to-end coverage of worker logic without running a worker.
 
 | Metric               | Value                                                            |
 | -------------------- | ---------------------------------------------------------------- |
-| Commits              | 34                                                               |
-| Packages             | 33                                                               |
+| Commits              | 35                                                               |
+| Packages             | 37                                                               |
 | Apps                 | 3 (`api`, `web`, `worker`)                                       |
-| TypeScript/TSX lines | ~63,000 (api 16,321 · web 12,235 · worker 553 · packages 33,954) |
-| API routes           | 118 across 29 controller files                                   |
+| TypeScript/TSX lines | ~70,000 (api 17,426 · web 12,515 · worker 582 · packages 39,671) |
+| API routes           | 120 across 29 controller files                                   |
 | Prisma models        | 43                                                               |
 | Migrations           | 28                                                               |
-| ADRs                 | 37                                                               |
+| ADRs                 | 38                                                               |
 | Permissions          | 35 (permission-oriented authz; never role-name branching)        |
 | Web pages            | 21 (all real — placeholders removed in 6A)                       |
 
@@ -130,8 +130,16 @@ social-oauth/     Provider-neutral OAuth broker: state, PKCE, tokens, sealed bun
 social-linkedin/  Real LinkedIn adapter: discovery, Images API, Posts API (text + 1 image) [Phase 6D]
 social-meta/      Real Meta adapters: Facebook Pages (text + photo), Instagram (1 JPEG) [Phase 6E]
 social-youtube/   Real YouTube adapter: channels + resumable video uploads       [Phase 6F]
+social-tiktok/    Real TikTok adapter: creator info + Direct Post video upload    [Phase 6G]
+social-x/         Real X adapter: text + up to 4 images (v2 chunked upload)       [Phase 6G]
+social-threads/   Real Threads adapter: text or 1 image via a media container     [Phase 6G]
+social-pinterest/ Real Pinterest adapter: board discovery + image pins            [Phase 6G]
+social-tiktok/    Real TikTok adapter: creator info + Direct Post video upload    [Phase 6G]
+social-x/         Real X adapter: text + up to 4 images (v2 chunked upload)       [Phase 6G]
+social-threads/   Real Threads adapter: text or 1 image via a media container     [Phase 6G]
+social-pinterest/ Real Pinterest adapter: board discovery + image pins            [Phase 6G]
 social-wordpress/ Real WordPress adapter (REST + application password)   [Phase 4D]
-publishing/       Dispatch + resolver (WordPress, LinkedIn, Meta, YouTube) + media loader/links
+publishing/       Dispatch + resolver (all nine live targets) + media loader/links
 workflow-core/    Queue-neutral job ports; BullMQ + in-memory adapters; queue inspector
 storage/          Object storage port + S3/MinIO, tenant-scoped keys
 testing/          Deterministic, schema-validated factories
@@ -319,6 +327,28 @@ standards, health/readiness endpoints, OpenAPI at `/docs`.
   unaudited API project has its uploads restricted to private viewing (quoted from Google, and
   compared against the privacy YouTube actually applied, reported in a new `publishNote`), and an
   exhausted allowance is a new `QUOTA` failure code carrying Google's own reason (ADR-0037).
+- **6G:** **TikTok, X, Threads, Pinterest — and a decision about email.** Four more adapters, each
+  publishing only what its official API allows. **TikTok** Direct Post: every publish first asks
+  `creator_info` what that creator permits (TikTok requires it), refuses a privacy level not on
+  that list, keeps an interaction the creator disabled disabled, uploads the video in TikTok's
+  5–64 MB chunks against a signed URL sealed like any other capability, and records the
+  `publish_id` so a retry asks TikTok what happened instead of posting again. Its audit rule is
+  quoted wherever it matters: "All content posted by unaudited clients will be restricted to
+  private viewing mode." **X:** text and up to four images through the v2 chunked media upload,
+  attaching an image only once X reports it processed; the pay-per-usage cost and an access/plan
+  refusal are reported as exactly that, and the 280-character cap is labelled as _Spectra's_
+  because X's reference states none. **Threads:** text or one image through a media container,
+  waiting the ~30 seconds Meta recommends, with the container id recorded so a retry publishes that
+  one rather than making another, and Meta's "your account and your app's tester accounts" limit
+  stated before anyone connects. **Pinterest:** boards are the destinations and the account itself
+  is recorded as somewhere you cannot pin; a pin carries a title, description, alt text and link,
+  and because Pinterest documents no formats, sizes or text limits, none are invented — its own 403
+  ("The Pin's image is too small, too large or is broken") is passed through. **Email was
+  deliberately not integrated:** consent records, unsubscribe handling, suppression lists and
+  domain authentication come first, so EMAIL stays unwired and the docs say why. Two small
+  extensions let the four fit the existing pipeline: a shared `openConnection` in the resolver
+  (connection, account kind, required scopes, refresh) and `subjectId` in discovery, since TikTok
+  names a creator only in its token response (ADR-0038).
 
 ---
 
@@ -337,7 +367,12 @@ standards, health/readiness endpoints, OpenAPI at `/docs`.
 | LinkedIn (publishing: text + one image, member or page)                                    | **Real — tested against a LinkedIn stand-in, not yet LinkedIn itself**    | LinkedIn connection with `w_member_social` / `w_organization_social` + `SOCIAL_TOKEN_ENCRYPTION_KEY`                                      |
 | Facebook Pages (text + one photo) and Instagram professional accounts (one JPEG)           | **Real — tested against a Graph API stand-in, not yet Meta itself**       | Meta (Facebook) connection with App-Reviewed permissions + `SOCIAL_TOKEN_ENCRYPTION_KEY`; Instagram also needs internet-reachable storage |
 | YouTube (video upload to a channel, resumable)                                             | **Real — tested against a Data API stand-in, not yet YouTube itself**     | YouTube connection with `youtube.upload` + `SOCIAL_TOKEN_ENCRYPTION_KEY`; a Google project audit decides whether uploads can be public    |
-| Publishing to Threads, TikTok, X, Pinterest, Instagram Login connections, and Email        | **NOT wired**                                                             | resolves `UNSUPPORTED`                                                                                                                    |
+| TikTok (1 video, Direct Post)                                                              | **Real — tested against a Content Posting API stand-in, not yet TikTok**  | TikTok connection with `video.publish`; an unaudited client may only post privately                                                       |
+| X (text + up to 4 images)                                                                  | **Real — tested against an X API stand-in, not yet X**                    | X connection with `tweet.write` (+ `media.write` for images) and API access covering writes                                               |
+| Threads (text or 1 image)                                                                  | **Real — tested against a Threads API stand-in, not yet Threads**         | Threads connection with `threads_content_publish`; own/tester accounts until advanced access                                              |
+| Pinterest (1 image pin on a board)                                                         | **Real — tested against a Pinterest v5 stand-in, not yet Pinterest**      | Pinterest connection with `pins:write`; Trial access until Pinterest reviews the app                                                      |
+| Email                                                                                      | **Deliberately not integrated** (ADR-0038)                                | needs consent, unsubscribe, suppression and domain authentication first; resolves `UNSUPPORTED`                                           |
+| Publishing through an Instagram Login connection                                           | **NOT wired**                                                             | resolves `UNSUPPORTED`                                                                                                                    |
 | External engagement analytics                                                              | **Not built**                                                             | reports `externalAvailable: false`                                                                                                        |
 | Payments / billing / plans                                                                 | **Not built**                                                             | usage page states nothing is charged                                                                                                      |
 | OpenTelemetry tracing                                                                      | **Real, optional**                                                        | `OTEL_EXPORTER_OTLP_ENDPOINT` (unset => SDK not loaded)                                                                                   |
@@ -380,6 +415,15 @@ the exact quota cost of an upload, which Google now expresses as a separate uplo
 caps a media object at 500 MB and holds an upload in memory while sending it, far below YouTube's
 256 GB.
 
+**Note on the 6G four (TikTok, X, Threads, Pinterest):** each adapter is exercised against a local
+server that enforces what its platform documents — TikTok's creator-info-then-init-then-chunks flow
+and its privacy options, Threads' container/publish pair, X's initialize/append/finalize/status
+upload and its plan refusals, Pinterest's paged boards and pin creation. **None has been run against
+the real platform.** `docs/REMAINING_PLATFORMS_LIVE_VERIFICATION.md` is the checklist, and it names
+the two places the documentation is silent: X states no post character limit (Spectra caps at 280
+and says the cap is its own) and Pinterest states no image formats, size or text limits (its own
+refusal is passed through).
+
 **Note on WordPress:** the adapter targets **self-hosted WordPress** (WordPress.org software with
 application passwords, WP 5.6+). WordPress.com (the hosted service) is _not_ supported — it
 requires OAuth; the OAuth broker exists since 6C, but WordPress.com is not one of its declared
@@ -391,21 +435,21 @@ platforms.
 
 | Check                | Result                                                 |
 | -------------------- | ------------------------------------------------------ |
-| `pnpm build`         | 36/36 tasks pass                                       |
-| `pnpm typecheck`     | 57/57 tasks pass                                       |
+| `pnpm build`         | 40/40 tasks pass                                       |
+| `pnpm typecheck`     | 75/75 tasks pass                                       |
 | `pnpm lint`          | pass                                                   |
 | `pnpm format`        | clean                                                  |
-| Unit tests           | **774 passing** across 31 packages/apps (incl. web 43) |
-| API integration      | **175 passing** (20 files)                             |
+| Unit tests           | **838 passing** across 35 packages/apps (incl. web 43) |
+| API integration      | **196 passing** (21 files)                             |
 | Pipeline integration | **95 passing** (11 files, `research-pipeline`)         |
 | Metering integration | **74 passing** (7 files)                               |
 | E2E (Playwright)     | **34 tests** (stubbed-API UI journeys)                 |
 | Prisma               | schema valid · 28 migrations · database up to date     |
 
-Known flake (pre-existing, not introduced by 6B–6F): `budget-hardening.spec.ts` "concurrent
+Known flake (pre-existing, not introduced by 6B–6G): `budget-hardening.spec.ts` "concurrent
 research-run starts cannot all pass the last allowance" intermittently admits more than one run. It
-failed once in the full 6F gate run and passed on both re-runs of that file; the investigation is
-tracked separately.
+failed in the full 6G gate run and again on the first re-run of that file, then passed on the
+second; the investigation is tracked separately.
 
 ---
 
@@ -413,11 +457,10 @@ tracked separately.
 
 ### 8.1 Immediate next candidates (highest value)
 
-1. **Run the LinkedIn, Meta and YouTube live-verification checklists**
-   (`docs/LINKEDIN_LIVE_VERIFICATION.md`, `docs/META_LIVE_VERIFICATION.md`,
-   `docs/YOUTUBE_LIVE_VERIFICATION.md`) against real apps — all three are built and tested against
-   stand-ins only. Then the next OAuth publisher (X): discovery ports + a `PostPublisher`, registered; the broker, sealed
-   storage, refresh and the shared resolver are in place.
+1. **Run the four live-verification checklists** (`docs/LINKEDIN_LIVE_VERIFICATION.md`,
+   `docs/META_LIVE_VERIFICATION.md`, `docs/YOUTUBE_LIVE_VERIFICATION.md`,
+   `docs/REMAINING_PLATFORMS_LIVE_VERIFICATION.md`) against real apps: all nine live targets are
+   built and tested against stand-ins only, and a real run is now worth more than another adapter.
 2. **Live `AnalyticsProvider` adapters** feeding real engagement metrics, which would also
    calibrate the `engagementPotential` input to trend scoring.
 
@@ -454,8 +497,16 @@ tracked separately.
   multi-image, articles and polls; mentions; editing and deleting posts; engagement analytics; a
   `ugcPosts` fallback if self-serve apps turn out not to be accepted by the Posts API.
 - Meta follow-ups (6E): Facebook video and multi-photo posts; Instagram Reels, stories, carousels
-  and video; Facebook photo alt text; the Instagram Login publishing path; Threads; insights; a
+  and video; Facebook photo alt text; the Instagram Login publishing path; insights; a
   public media proxy for deployments whose object storage is private.
+- 6G follow-ups: TikTok photo posts and inbox drafts; X video, polls, quotes, threads and replies;
+  Threads video and carousels; Pinterest video pins, carousels and board creation; editing or
+  deleting a published post anywhere; per-platform analytics. Two open questions belong to a live
+  run rather than more code: X's real character limit for a verified account, and what Pinterest
+  actually refuses (if that is stable, Spectra can refuse it before the call).
+- Email (deliberate, ADR-0038): a subscriber list with provable consent, `List-Unsubscribe` and a
+  one-click endpoint honoured before every send, bounce/complaint suppression with its feedback
+  loop, and per-workspace sending-domain authentication — then an ESP adapter.
 - YouTube follow-ups (6F): streaming the upload instead of holding the file in memory (a media
   object is capped at 500 MB today); captions, playlists, livestreams and community posts; editing
   or deleting a published video; a category picker fed by `videoCategories.list`; polling

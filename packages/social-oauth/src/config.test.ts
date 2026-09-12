@@ -46,6 +46,7 @@ describe('OAuth platform configuration', () => {
       'tweet.read',
       'tweet.write',
       'users.read',
+      'media.write',
       'offline.access',
     ]);
   });

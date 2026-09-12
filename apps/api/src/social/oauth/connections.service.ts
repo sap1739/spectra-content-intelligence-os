@@ -379,6 +379,7 @@ export class ConnectionsService {
         const reported = await adapter.discoverCapabilities({
           accessToken: tokens.accessToken,
           grantedScopes: null,
+          subjectId: tokens.subjectId,
           signal,
         });
         if (reported.grantedScopes) {
@@ -393,7 +394,13 @@ export class ConnectionsService {
       }
     }
 
-    const context = { accessToken: tokens.accessToken, grantedScopes, signal };
+    // TikTok names the authorizing creator only in the token response (`open_id`).
+    const context = {
+      accessToken: tokens.accessToken,
+      grantedScopes,
+      subjectId: tokens.subjectId,
+      signal,
+    };
     const [identity, destinations] = await Promise.allSettled([
       adapter.discoverIdentity(context),
       adapter.discoverDestinations(context),

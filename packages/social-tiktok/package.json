@@ -1,0 +1,24 @@
+{
+  "name": "@spectra/social-tiktok",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Real TikTok adapter over the official Content Posting API: creator info, direct post with chunked video upload, and honest reporting of the audit restriction that limits unaudited clients to private posts.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run src",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@spectra/contracts": "workspace:*",
+    "@spectra/social-core": "workspace:*",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.0"
+  }
+}

@@ -261,10 +261,21 @@ const DEFINITIONS: Record<OAuthPlatform, OAuthPlatformDefinition> = {
     approval: {
       required: true,
       notes: [
-        'Meta App Review is required for threads_content_publish.',
-        'Long-lived token exchange uses Threads-specific endpoints and arrives with the Threads adapter.',
+        'Meta App Review is required for threads_content_publish. Until advanced access is granted, "you can only post to Threads for your account and your app\'s tester accounts."',
+        'Threads limits a profile to 250 API-published posts per 24 hours.',
       ],
     },
+    products: [
+      {
+        id: 'threads-publishing',
+        name: 'Threads API — content publishing',
+        scopes: ['threads_basic', 'threads_content_publish'],
+        reviewRequired: true,
+        enables: 'Publishing text and image posts to the connected Threads profile.',
+      },
+    ],
+    tokenNote:
+      "Threads has no standard refresh grant here, so reconnect before the authorization expires. Images are fetched by Threads from a short-lived link to this deployment's storage.",
     docsUrl:
       'https://developers.facebook.com/docs/threads/get-started/get-access-tokens-and-permissions',
   },
@@ -311,7 +322,9 @@ const DEFINITIONS: Record<OAuthPlatform, OAuthPlatformDefinition> = {
     authorizationUrl: 'https://www.tiktok.com/v2/auth/authorize/',
     tokenUrl: 'https://open.tiktokapis.com/v2/oauth/token/',
     revocationUrl: 'https://open.tiktokapis.com/v2/oauth/revoke/',
-    defaultScopes: ['user.info.basic', 'video.upload', 'video.publish'],
+    // video.upload only sends a draft to the creator's inbox, which this
+    // deployment does not use, so it is not requested.
+    defaultScopes: ['user.info.basic', 'video.publish'],
     scopeSeparator: ',',
     pkce: 'none',
     clientAuth: 'client_secret_post',
@@ -325,10 +338,22 @@ const DEFINITIONS: Record<OAuthPlatform, OAuthPlatformDefinition> = {
     approval: {
       required: true,
       notes: [
-        'The Content Posting API requires TikTok to audit the app; until then, posts can only be published with private (SELF_ONLY) visibility.',
-        'video.publish must be approved for the app before it can be requested.',
+        'TikTok must audit the API client before it can post publicly: "All content posted by unaudited clients will be restricted to private viewing mode."',
+        'video.publish must be approved for the app, and Direct Post enabled in the app settings, before it can be requested.',
+        'Which privacy levels a creator may use comes from TikTok at publish time, never from Spectra.',
       ],
     },
+    products: [
+      {
+        id: 'content-posting-direct-post',
+        name: 'Content Posting API — Direct Post',
+        scopes: ['video.publish'],
+        reviewRequired: true,
+        enables: "Publishing a video directly to the creator's TikTok account.",
+      },
+    ],
+    tokenNote:
+      'A TikTok access token lasts 24 hours and its refresh token 365 days, so the worker refreshes before publishing; reconnect once the refresh token lapses.',
     docsUrl: 'https://developers.tiktok.com/doc/oauth-user-access-token-management',
   },
   X: {
@@ -337,7 +362,8 @@ const DEFINITIONS: Record<OAuthPlatform, OAuthPlatformDefinition> = {
     authorizationUrl: 'https://x.com/i/oauth2/authorize',
     tokenUrl: 'https://api.x.com/2/oauth2/token',
     revocationUrl: 'https://api.x.com/2/oauth2/revoke',
-    defaultScopes: ['tweet.read', 'tweet.write', 'users.read', 'offline.access'],
+    // media.write is needed to upload an image through the v2 endpoints.
+    defaultScopes: ['tweet.read', 'tweet.write', 'users.read', 'media.write', 'offline.access'],
     scopeSeparator: ' ',
     pkce: 'required',
     clientAuth: 'client_secret_basic',
@@ -351,10 +377,22 @@ const DEFINITIONS: Record<OAuthPlatform, OAuthPlatformDefinition> = {
     approval: {
       required: true,
       notes: [
-        'Posting requires an X developer account; how much you can post depends on the paid API access tier.',
-        'Access tokens expire after about two hours, so offline.access is requested to allow refresh.',
+        'Posting requires an X developer account with API access that covers writes. X API v2 is pay-per-usage: credits are deducted per request, and a post costs more when it contains a link.',
+        'X documents 100 posts per user per 15 minutes and 10,000 per app per 24 hours.',
+        "X's API reference states no character limit for a post, so Spectra caps one at 280 characters — a verified account may be allowed more.",
       ],
     },
+    products: [
+      {
+        id: 'x-api-write',
+        name: 'X API v2 — post and media write',
+        scopes: ['tweet.write', 'media.write'],
+        reviewRequired: false,
+        enables: 'Creating posts with up to four images, billed per request by X.',
+      },
+    ],
+    tokenNote:
+      'An X access token lasts about two hours, so offline.access is requested and the worker refreshes before publishing.',
     docsUrl:
       'https://docs.x.com/resources/fundamentals/authentication/oauth-2-0/authorization-code',
   },
@@ -379,9 +417,21 @@ const DEFINITIONS: Record<OAuthPlatform, OAuthPlatformDefinition> = {
     approval: {
       required: true,
       notes: [
-        "New apps start with Trial access; Standard access needs Pinterest's app review before production use.",
+        "New apps start with Trial access: the app can act only for accounts you have granted it, and Standard access needs Pinterest's app review before wider use.",
+        'Pinterest does not document image formats, a maximum file size or text limits for a pin; it refuses what it will not take and Spectra reports that refusal as it came.',
       ],
     },
+    products: [
+      {
+        id: 'pins-write',
+        name: 'Pinterest API v5 — pin creation',
+        scopes: ['pins:write', 'boards:read'],
+        reviewRequired: true,
+        enables: 'Creating an image pin on a board of the connected account.',
+      },
+    ],
+    tokenNote:
+      "Pinterest issues refresh tokens, so the worker renews the access token before publishing. Pinterest fetches a pin's image from a short-lived link to this deployment's storage.",
     docsUrl:
       'https://developers.pinterest.com/docs/getting-started/set-up-authentication-and-authorization/',
   },

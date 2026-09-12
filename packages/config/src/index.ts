@@ -9,6 +9,8 @@ export {
   linkedInEnvSchema,
   metaEnvSchema,
   youtubeEnvSchema,
+  tiktokEnvSchema,
+  socialPlatformsEnvSchema,
   logLevelSchema,
   nodeEnvSchema,
   redisEnvSchema,

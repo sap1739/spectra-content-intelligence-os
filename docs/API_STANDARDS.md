@@ -182,3 +182,18 @@ description, tags, categoryId, privacyStatus, madeForKids, notifySubscribers}}`)
   can show real upload progress. `failureCode` gained `QUOTA`.
 - `GET …/media/status` adds `upload: true`: files can be uploaded even where Spectra renders
   nothing of that kind.
+
+## 16. The remaining platforms (Phase 6G, ADR-0038)
+
+- `publishMetadata` gained two more slices, each validated by contracts: `tiktok` (caption, privacy
+  level, comment/duet/stitch, cover timestamp, branded-content and AI-generated declarations) and
+  `pinterest` (a destination `link`).
+- Scheduling to a board or creator is checked before anything is queued, the same way as the
+  earlier platforms: a text-only pin, a Threads video, a TikTok post without a video, or a post
+  over a documented limit is `422` with the platform's reason.
+- `GET …/social/oauth/platforms` reports all eight OAuth platforms as wired, each `limitation`
+  naming what the adapter does NOT do, and each `approval.notes` naming the platform's gate
+  (TikTok's audit, X's pay-per-usage access, Meta's advanced access for Threads, Pinterest's Trial
+  access).
+- `POST …/social/oauth/email/start` stays a `400` — email is not an OAuth platform and does not
+  pretend to be one.

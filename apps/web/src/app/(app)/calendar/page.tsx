@@ -107,6 +107,14 @@ export default function CalendarPage() {
   const [ytPrivacy, setYtPrivacy] = React.useState('private');
   const [ytMadeForKids, setYtMadeForKids] = React.useState(false);
   const [ytNotify, setYtNotify] = React.useState(true);
+  // TikTok publishes a video with its own caption and privacy (Phase 6G).
+  const [ttCaption, setTtCaption] = React.useState('');
+  const [ttPrivacy, setTtPrivacy] = React.useState('SELF_ONLY');
+  const [ttDisableComment, setTtDisableComment] = React.useState(false);
+  const [ttDisableDuet, setTtDisableDuet] = React.useState(false);
+  const [ttDisableStitch, setTtDisableStitch] = React.useState(false);
+  // A pin can send people somewhere.
+  const [pinLink, setPinLink] = React.useState('');
 
   // Only accounts on the chosen platform can be targets.
   const targets = (accounts.data ?? []).filter((a) => a.platform === platform);
@@ -129,6 +137,8 @@ export default function CalendarPage() {
   // What the platform itself warned about this account (audit status, quota).
   const accountNotes = ((selected?.capabilities as { notes?: unknown } | null)?.notes ??
     []) as string[];
+  const isTikTok = platform === 'TIKTOK';
+  const isPinterest = platform === 'PINTEREST';
   const selectedItemTitle = approved.find((i) => i.id === contentItemId)?.title ?? '';
   // A video needs a title of its own; the content item's is the obvious start.
   React.useEffect(() => {
@@ -138,6 +148,43 @@ export default function CalendarPage() {
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!contentItemId || !when) return;
+    const publishMetadata = {
+      ...(isTikTok && canPublishVideo && mediaAssetId
+        ? {
+            tiktok: {
+              title: ttCaption.trim() || selectedItemTitle,
+              privacyLevel: ttPrivacy as 'PUBLIC_TO_EVERYONE' | 'SELF_ONLY',
+              disableComment: ttDisableComment,
+              disableDuet: ttDisableDuet,
+              disableStitch: ttDisableStitch,
+              // Declarations the creator is responsible for; Spectra never sets them.
+              brandContentToggle: false,
+              brandOrganicToggle: false,
+              isAigc: false,
+            },
+          }
+        : {}),
+      ...(isPinterest && canAttachImage && mediaAssetId && pinLink.trim()
+        ? { pinterest: { link: pinLink.trim() } }
+        : {}),
+      ...(isYouTube && canPublishVideo && mediaAssetId
+        ? {
+            youtube: {
+              title: ytTitle.trim(),
+              ...(ytDescription.trim() ? { description: ytDescription } : {}),
+              tags: ytTags
+                .split(',')
+                .map((tag) => tag.trim())
+                .filter(Boolean),
+              ...(ytCategory.trim() ? { categoryId: ytCategory.trim() } : {}),
+              privacyStatus: ytPrivacy as 'private' | 'unlisted' | 'public',
+              madeForKids: ytMadeForKids,
+              notifySubscribers: ytNotify,
+            },
+          }
+        : {}),
+    };
+
     await schedule.mutateAsync({
       contentItemId,
       platform: platform as never,
@@ -146,26 +193,11 @@ export default function CalendarPage() {
       ...(canAttachImage && mediaAssetId
         ? { mediaAssetId, ...(altText.trim() ? { mediaAltText: altText.trim() } : {}) }
         : {}),
-      ...(isYouTube && canPublishVideo && mediaAssetId
-        ? {
-            mediaAssetId,
-            ...(thumbnailAssetId ? { thumbnailAssetId } : {}),
-            publishMetadata: {
-              youtube: {
-                title: ytTitle.trim(),
-                ...(ytDescription.trim() ? { description: ytDescription } : {}),
-                tags: ytTags
-                  .split(',')
-                  .map((tag) => tag.trim())
-                  .filter(Boolean),
-                ...(ytCategory.trim() ? { categoryId: ytCategory.trim() } : {}),
-                privacyStatus: ytPrivacy as 'private' | 'unlisted' | 'public',
-                madeForKids: ytMadeForKids,
-                notifySubscribers: ytNotify,
-              },
-            },
-          }
+      ...((isTikTok || isYouTube) && canPublishVideo && mediaAssetId ? { mediaAssetId } : {}),
+      ...(isYouTube && canPublishVideo && mediaAssetId && thumbnailAssetId
+        ? { thumbnailAssetId }
         : {}),
+      ...(Object.keys(publishMetadata).length > 0 ? { publishMetadata } : {}),
     });
     setWhen('');
     setMediaAssetId('');
@@ -221,6 +253,7 @@ export default function CalendarPage() {
                       setAccountId('');
                       setMediaAssetId('');
                       setThumbnailAssetId('');
+                      setPinLink('');
                     }}
                   >
                     {SOCIAL_PLATFORMS.map((p) => (
@@ -270,6 +303,97 @@ export default function CalendarPage() {
                       </li>
                     ))}
                   </ul>
+                ) : null}
+                {isTikTok && selected && canPublishVideo ? (
+                  <>
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="cal-tt-video">Video (required)</Label>
+                      <select
+                        id="cal-tt-video"
+                        className={fieldClass}
+                        value={mediaAssetId}
+                        onChange={(e) => setMediaAssetId(e.target.value)}
+                      >
+                        <option value="">Select a video…</option>
+                        {videos.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.mimeType.replace('video/', '').toUpperCase()} ·{' '}
+                            {(m.sizeBytes / (1024 * 1024)).toFixed(1)} MB
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-[11px] text-muted-foreground">
+                        {videos.length === 0
+                          ? 'No videos yet — upload one on the Media page.'
+                          : 'Uploaded in chunks; an interrupted publish is checked, never sent twice.'}
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="cal-tt-caption">Caption</Label>
+                      <textarea
+                        id="cal-tt-caption"
+                        className={cn(fieldClass, 'min-h-16')}
+                        value={ttCaption}
+                        maxLength={2200}
+                        onChange={(e) => setTtCaption(e.target.value)}
+                        placeholder="Leave blank to use the content item"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="cal-tt-privacy">Privacy</Label>
+                      <select
+                        id="cal-tt-privacy"
+                        className={fieldClass}
+                        value={ttPrivacy}
+                        onChange={(e) => setTtPrivacy(e.target.value)}
+                      >
+                        <option value="SELF_ONLY">Private (only me)</option>
+                        <option value="FOLLOWER_OF_CREATOR">Followers</option>
+                        <option value="MUTUAL_FOLLOW_FRIENDS">Friends</option>
+                        <option value="PUBLIC_TO_EVERYONE">Everyone</option>
+                      </select>
+                      <p className="text-[11px] text-muted-foreground">
+                        TikTok decides what this creator may use, and refuses anything else when the
+                        post runs.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-3">
+                      {(
+                        [
+                          ['Comments off', ttDisableComment, setTtDisableComment],
+                          ['Duets off', ttDisableDuet, setTtDisableDuet],
+                          ['Stitches off', ttDisableStitch, setTtDisableStitch],
+                        ] as Array<[string, boolean, (value: boolean) => void]>
+                      ).map(([label, value, set]) => (
+                        <label
+                          key={label}
+                          className="flex items-center gap-2 text-xs text-muted-foreground"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={value}
+                            onChange={(e) => set(e.target.checked)}
+                          />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                  </>
+                ) : null}
+                {isPinterest && selected && canAttachImage ? (
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="cal-pin-link">Destination link (optional)</Label>
+                    <Input
+                      id="cal-pin-link"
+                      value={pinLink}
+                      onChange={(e) => setPinLink(e.target.value)}
+                      placeholder="https://example.com/page"
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Where the pin sends people. Pinterest fetches the image itself from a
+                      short-lived link.
+                    </p>
+                  </div>
                 ) : null}
                 {isYouTube && selected && canPublishVideo ? (
                   <>
@@ -451,7 +575,8 @@ export default function CalendarPage() {
                     !contentItemId ||
                     !when ||
                     (imageRequired && !mediaAssetId) ||
-                    (isYouTube && canPublishVideo && (!mediaAssetId || !ytTitle.trim()))
+                    (isYouTube && canPublishVideo && (!mediaAssetId || !ytTitle.trim())) ||
+                    (isTikTok && canPublishVideo && !mediaAssetId)
                   }
                 >
                   {schedule.isPending ? 'Scheduling…' : 'Schedule'}
