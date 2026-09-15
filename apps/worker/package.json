@@ -15,6 +15,7 @@
   "dependencies": {
     "@spectra/ai-anthropic": "workspace:*",
     "@spectra/ai-voyage": "workspace:*",
+    "@spectra/analytics-pipeline": "workspace:*",
     "@spectra/config": "workspace:*",
     "@spectra/content-pipeline": "workspace:*",
     "@spectra/database": "workspace:*",

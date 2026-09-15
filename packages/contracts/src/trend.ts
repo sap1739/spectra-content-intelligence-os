@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { analyticsSignalSourceSchema, analyticsUnavailableReasonSchema } from './analytics';
 import {
   auditTimestampsSchema,
   geographySchema,
@@ -72,7 +73,14 @@ export const TREND_SCORE_COMPONENT_KEYS = [
   'audienceRelevance',
   'brandRelevance',
   'geographicRelevance',
+  /** ESTIMATED from research — never a measurement. */
   'engagementPotential',
+  /**
+   * EXTERNAL_MEASURED engagement of the workspace's own published posts on this
+   * topic, from platform analytics (ADR-0039). Absent — never zero — when no
+   * platform reported both interactions and a denominator.
+   */
+  'measuredEngagement',
   'commercialIntent',
   'novelty',
   'seasonality',
@@ -93,6 +101,8 @@ export const trendScoreComponentSchema = z.object({
   /** normalizedValue × weight (negative for penalty components). */
   weightedValue: z.number(),
   rationale: z.string().max(2000).optional(),
+  /** Where the observation came from. Absent on scores computed before Phase 6H. */
+  source: analyticsSignalSourceSchema.optional(),
 });
 export type TrendScoreComponent = z.infer<typeof trendScoreComponentSchema>;
 
@@ -108,6 +118,7 @@ export const trendScoringWeightsSchema = z
     brandRelevance: z.number().optional(),
     geographicRelevance: z.number().optional(),
     engagementPotential: z.number().optional(),
+    measuredEngagement: z.number().optional(),
     commercialIntent: z.number().optional(),
     novelty: z.number().optional(),
     seasonality: z.number().optional(),
@@ -158,6 +169,20 @@ export const trendScoreResultSchema = z.object({
   displayScore: z.number().min(0).max(100),
   components: z.array(trendScoreComponentSchema),
   explanation: trendExplanationSchema,
+  /**
+   * Signals that were considered but had nothing to contribute, and why. They
+   * did not participate in the score — they were not counted as zero.
+   */
+  unavailableSignals: z
+    .array(
+      z.object({
+        key: trendScoreComponentKeySchema,
+        source: z.literal('UNAVAILABLE'),
+        reason: analyticsUnavailableReasonSchema,
+        detail: z.string().max(1000),
+      }),
+    )
+    .optional(),
   computedAt: isoDateTimeSchema,
 });
 export type TrendScoreResult = z.infer<typeof trendScoreResultSchema>;

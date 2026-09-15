@@ -50,7 +50,9 @@ packages/
   document-extract/ PDF/DOCX/TXT extraction with page/section citation anchors (ADR-0031)
   metering/       Usage ledger + versioned cost ESTIMATES (never invoices; ADR-0026)
   research-brave/ Brave Search adapters for the web/news discovery ports (env-gated; ADR-0024)
-  trend-core/     Versioned, explainable TrendScoringEngine + trend lifecycle
+  trend-core/     Versioned, explainable TrendScoringEngine + trend lifecycle + measured-engagement signal (ADR-0039)
+  analytics-core/ AnalyticsProvider port + metric model where unavailable is never zero, aggregation, freshness (ADR-0039)
+  analytics-pipeline/ Analytics provider resolver, idempotent budget-checked sync runs with backoff, read models (ADR-0039)
   knowledge-core/ Vector store port, chunking, prompt-injection scanner & isolation
   ai-core/        12 provider-neutral AI interfaces (ports; vendors plug in behind them)
   ai-anthropic/   Anthropic Claude adapter for the TextGenerationProvider port (env-gated; ADR-0017)
@@ -77,7 +79,7 @@ infrastructure/
   docker/         PostgreSQL (pgvector), Redis, MinIO via Docker Compose
   scripts/        bootstrap.sh, verify.sh
 docs/             Product, architecture, security and strategy documentation
-docs/adr/         38 Architecture Decision Records
+docs/adr/         39 Architecture Decision Records
 ```
 
 ## Quick start

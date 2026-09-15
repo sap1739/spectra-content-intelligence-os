@@ -39,6 +39,10 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'SocialConnection',
   'SocialOAuthAttempt',
   'SocialMediaUpload',
+  // External analytics (ADR-0039): per-tenant engagement history.
+  'AnalyticsSyncRun',
+  'AnalyticsSnapshot',
+  'AnalyticsMetricValue',
 ]);
 
 const GUARDED_OPERATIONS: ReadonlySet<string> = new Set([

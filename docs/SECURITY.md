@@ -387,3 +387,27 @@ A bulk re-seal job for long-idle rows is not built yet; today rotation advances 
 - **Email sends nothing.** Rather than ship an ESP adapter without consent records, unsubscribe
   handling, suppression lists and domain authentication, EMAIL stays unwired and says so — a
   capability that could send mail an operator is not allowed to send is worse than none.
+
+## 19. External analytics **[P1]** (Phase 6H, ADR-0039)
+
+- **Same credential boundary as publishing.** Analytics providers are built per account from the
+  connection's sealed token (`openConnection`, shared with the publisher resolver), the Page token
+  sealed on a Meta account, or the WordPress application password. Decrypted secrets never leave the
+  resolver; a rejected token marks the connection `REAUTH_REQUIRED`, as publishing does.
+- **Nothing sensitive is stored.** Snapshots keep normalized metrics and allow-listed provider
+  metadata only: `sanitizeProviderMetadata` drops non-primitives, keys that look like tokens, URLs,
+  emails or phone numbers, long opaque strings and anything containing `Bearer` or a URL — once in
+  the adapter result and again at write. Run errors pass `sanitizeErrorMessage` (bounded, tokens and
+  `access_token=` scrubbed). The integration suite searches every stored snapshot and run for the
+  test token marker.
+- **No personal content ingested.** Comment and reaction **counts** only; comment text, commenter
+  identities and demographics are never requested.
+- **Scopes decided before calls.** A metric whose scope was not granted is `MISSING_SCOPE` without a
+  request; analytics scopes are not added to default scope lists.
+- **Tenant isolation.** All three analytics tables are tenant-guarded; every API read filters by
+  organization and workspace; a foreign id is the same `404` as a missing one; the cross-tenant
+  dispatcher scan is raw SQL returning ids only. Tested for runs, accounts, entries, campaigns and
+  content items.
+- **Permissions.** Reading is `analytics:read`; starting a sync (which spends platform quota, and
+  could spend money on a paid provider) is the separate `analytics:sync`, and goes through the
+  `ANALYTICS_SYNC` budget pre-flight before any provider is called.

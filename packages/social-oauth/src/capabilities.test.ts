@@ -60,12 +60,26 @@ describe('connection capabilities', () => {
   });
 
   it('says so when no scope grants a capability at all', () => {
+    // TikTok's definition has no analytics scope: Spectra requests none.
     const analytics = pick(
-      resolveConnectionCapabilities(linkedin, ['openid'], NOTHING_WIRED),
+      resolveConnectionCapabilities(getOAuthDefinition('TIKTOK'), ['video.publish'], NOTHING_WIRED),
       'analytics',
     );
     expect(analytics.available).toBe(false);
-    expect(analytics.reason).toMatch(/No LinkedIn OAuth scope grants analytics/);
+    expect(analytics.reason).toMatch(/No TikTok OAuth scope grants analytics/);
+  });
+
+  it('names the analytics scope a LinkedIn connection is missing', () => {
+    const analytics = pick(
+      resolveConnectionCapabilities(linkedin, ['openid', 'w_member_social'], {
+        discovery: true,
+        publish: true,
+        analytics: true,
+      }),
+      'analytics',
+    );
+    expect(analytics.available).toBe(false);
+    expect(analytics.reason).toContain('r_member_postAnalytics');
   });
 
   it('reports every capability', () => {

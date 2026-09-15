@@ -109,6 +109,7 @@ export const COUNTER_ONLY_KINDS = new Set([
   'MEDIA_RENDER',
   'PUBLISH_ATTEMPT',
   'DOCUMENT_EXTRACTION',
+  'ANALYTICS_SYNC',
 ]);
 
 export interface EstimateInput {

@@ -126,6 +126,9 @@ model Organization {
   socialConnections     SocialConnection[]
   socialOAuthAttempts   SocialOAuthAttempt[]
   socialMediaUploads    SocialMediaUpload[]
+  analyticsSyncRuns     AnalyticsSyncRun[]
+  analyticsSnapshots    AnalyticsSnapshot[]
+  analyticsMetricValues AnalyticsMetricValue[]
 
   @@map("organizations")
 }
@@ -243,6 +246,9 @@ model Workspace {
   budgetOperationLimits BudgetOperationLimit[]
   domainPolicies        DomainPolicy[]
   budgetReservations    BudgetReservation[]
+  analyticsSyncRuns     AnalyticsSyncRun[]
+  analyticsSnapshots    AnalyticsSnapshot[]
+  analyticsMetricValues AnalyticsMetricValue[]
 
   @@unique([organizationId, slug])
   @@index([organizationId, status])
@@ -1129,12 +1135,13 @@ model Campaign {
   updatedAt DateTime  @updatedAt @db.Timestamptz(6)
   deletedAt DateTime? @db.Timestamptz(6)
 
-  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  workspace    Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  vertical     CustomVertical? @relation(fields: [verticalId], references: [id], onDelete: SetNull)
-  brand        Brand?          @relation(fields: [brandId], references: [id], onDelete: SetNull)
-  contentItems ContentItem[]
-  brief        CampaignBrief?
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  vertical           CustomVertical?     @relation(fields: [verticalId], references: [id], onDelete: SetNull)
+  brand              Brand?              @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  contentItems       ContentItem[]
+  brief              CampaignBrief?
+  analyticsSnapshots AnalyticsSnapshot[]
 
   @@index([workspaceId, status])
   @@map("campaigns")
@@ -1174,13 +1181,14 @@ model ContentItem {
   updatedAt DateTime  @updatedAt @db.Timestamptz(6)
   deletedAt DateTime? @db.Timestamptz(6)
 
-  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  workspace       Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  campaign        Campaign?              @relation(fields: [campaignId], references: [id], onDelete: SetNull)
-  brand           Brand?                 @relation(fields: [brandId], references: [id], onDelete: SetNull)
-  vertical        CustomVertical?        @relation(fields: [verticalId], references: [id], onDelete: SetNull)
-  drafts          ContentDraft[]
-  scheduleEntries ContentScheduleEntry[]
+  organization       Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace          Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaign           Campaign?              @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  brand              Brand?                 @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  vertical           CustomVertical?        @relation(fields: [verticalId], references: [id], onDelete: SetNull)
+  drafts             ContentDraft[]
+  scheduleEntries    ContentScheduleEntry[]
+  analyticsSnapshots AnalyticsSnapshot[]
 
   @@index([workspaceId, lifecycleState])
   @@index([campaignId])
@@ -1403,11 +1411,13 @@ model ContentScheduleEntry {
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  workspace      Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  contentItem    ContentItem  @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
-  mediaAsset     MediaAsset?  @relation("ScheduleEntryMedia", fields: [mediaAssetId], references: [id], onDelete: SetNull)
-  thumbnailAsset MediaAsset?  @relation("ScheduleEntryThumbnail", fields: [thumbnailAssetId], references: [id], onDelete: SetNull)
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contentItem        ContentItem         @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+  mediaAsset         MediaAsset?         @relation("ScheduleEntryMedia", fields: [mediaAssetId], references: [id], onDelete: SetNull)
+  thumbnailAsset     MediaAsset?         @relation("ScheduleEntryThumbnail", fields: [thumbnailAssetId], references: [id], onDelete: SetNull)
+  analyticsSyncRuns  AnalyticsSyncRun[]
+  analyticsSnapshots AnalyticsSnapshot[]
 
   @@index([workspaceId, scheduledAt])
   @@index([contentItemId])
@@ -1531,10 +1541,12 @@ model SocialAccount {
   updatedAt DateTime  @updatedAt @db.Timestamptz(6)
   deletedAt DateTime? @db.Timestamptz(6)
 
-  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  workspace    Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  connection   SocialConnection?   @relation(fields: [connectionId], references: [id], onDelete: SetNull)
-  mediaUploads SocialMediaUpload[]
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connection         SocialConnection?   @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  mediaUploads       SocialMediaUpload[]
+  analyticsSyncRuns  AnalyticsSyncRun[]
+  analyticsSnapshots AnalyticsSnapshot[]
 
   @@index([workspaceId, platform])
   @@index([connectionId])
@@ -1710,6 +1722,204 @@ model SocialMediaUpload {
 }
 
 // ---------------------------------------------------------------------------
+// External analytics (Phase 6H, ADR-0039)
+// ---------------------------------------------------------------------------
+
+enum AnalyticsSyncStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  /// Some targets or metrics came back, others did not.
+  PARTIAL
+  FAILED
+  /// Nothing could be fetched: no provider implemented, configured or connected. A no-op, said plainly.
+  UNAVAILABLE
+}
+
+enum AnalyticsSyncTrigger {
+  MANUAL
+  SCHEDULED
+}
+
+enum AnalyticsSyncTarget {
+  WORKSPACE
+  SOCIAL_ACCOUNT
+  SCHEDULE_ENTRY
+}
+
+enum AnalyticsSnapshotLevel {
+  ACCOUNT
+  CONTENT
+}
+
+enum AnalyticsSnapshotCompleteness {
+  COMPLETE
+  PARTIAL
+  UNAVAILABLE
+}
+
+enum AnalyticsMetricCompleteness {
+  EXACT
+  APPROXIMATE
+  DERIVED
+  UNAVAILABLE
+}
+
+/// Mirrors ANALYTICS_UNAVAILABLE_REASONS in @spectra/contracts.
+enum AnalyticsUnavailableReason {
+  NOT_EXPOSED_BY_PLATFORM
+  DEPRECATED_BY_PLATFORM
+  NOT_IMPLEMENTED
+  MISSING_SCOPE
+  APPROVAL_REQUIRED
+  PROVIDER_UNCONFIGURED
+  NOT_CONNECTED
+  REAUTH_REQUIRED
+  ACCOUNT_KIND_UNSUPPORTED
+  CONTENT_NOT_PUBLISHED
+  CONTENT_TYPE_UNSUPPORTED
+  OUTSIDE_RETENTION_WINDOW
+  NOT_YET_AVAILABLE
+  RATE_LIMITED
+  QUOTA_EXCEEDED
+  PROVIDER_ERROR
+  DENOMINATOR_UNKNOWN
+  NOT_ADDITIVE
+  BUDGET_BLOCKED
+  NOT_REPORTED
+}
+
+/// One request to pull platform analytics for a workspace, one account, or one
+/// published schedule entry. Idempotent by `idempotencyKey` (a double click, a
+/// redelivered job and one scheduled window all map to one run). A rate-limited
+/// or transiently failed run records `nextAttemptAt`, and the worker retries it
+/// with backoff until `maxAttempts`.
+model AnalyticsSyncRun {
+  id                String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String               @db.Uuid
+  workspaceId       String               @db.Uuid
+  trigger           AnalyticsSyncTrigger @default(MANUAL)
+  target            AnalyticsSyncTarget
+  socialAccountId   String?              @db.Uuid
+  scheduleEntryId   String?              @db.Uuid
+  status            AnalyticsSyncStatus  @default(QUEUED)
+  idempotencyKey    String               @unique
+  requestedById     String?              @db.Uuid
+  attempt           Int                  @default(0)
+  maxAttempts       Int                  @default(3)
+  /// When the next retry is due. NULL = none scheduled.
+  nextAttemptAt     DateTime?            @db.Timestamptz(6)
+  succeededCount    Int                  @default(0)
+  partialCount      Int                  @default(0)
+  failedCount       Int                  @default(0)
+  unavailableCount  Int                  @default(0)
+  /// AnalyticsErrorCode (contracts) — why the run did not fully succeed.
+  errorCode         String?
+  /// Bounded, token-scrubbed message. Never a provider response body.
+  errorMessage      String?
+  /// Seconds a platform asked us to wait, when it said.
+  retryAfterSeconds Int?
+  /// AnalyticsTargetResult[] — one outcome per account or post, bounded.
+  results           Json                 @default("[]")
+  startedAt         DateTime?            @db.Timestamptz(6)
+  finishedAt        DateTime?            @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  organization  Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace     Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccount SocialAccount?        @relation(fields: [socialAccountId], references: [id], onDelete: SetNull)
+  scheduleEntry ContentScheduleEntry? @relation(fields: [scheduleEntryId], references: [id], onDelete: SetNull)
+  snapshots     AnalyticsSnapshot[]
+
+  @@index([workspaceId, createdAt])
+  @@index([status, nextAttemptAt])
+  @@map("analytics_sync_runs")
+}
+
+/// What one platform reported about one account or one post at `retrievedAt`.
+/// Snapshots are append-only history: the latest per target is the current
+/// number, older ones are how it moved. Metric values live in
+/// AnalyticsMetricValue, where "unavailable" is a reason, never a zero.
+model AnalyticsSnapshot {
+  id                String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String                        @db.Uuid
+  workspaceId       String                        @db.Uuid
+  syncRunId         String?                       @db.Uuid
+  platform          SocialPlatform
+  /// e.g. `youtube-data-v3` — which adapter produced it.
+  providerId        String
+  level             AnalyticsSnapshotLevel
+  socialAccountId   String?                       @db.Uuid
+  scheduleEntryId   String?                       @db.Uuid
+  contentItemId     String?                       @db.Uuid
+  campaignId        String?                       @db.Uuid
+  externalAccountId String?
+  externalContentId String?
+  publishedAt       DateTime?                     @db.Timestamptz(6)
+  completeness      AnalyticsSnapshotCompleteness
+  retrievedAt       DateTime                      @db.Timestamptz(6)
+  /// After this instant the numbers are shown as stale.
+  staleAfter        DateTime                      @db.Timestamptz(6)
+  /// The last day the platform's data covers, when it reports with a delay.
+  dataAsOf          DateTime?                     @db.Timestamptz(6)
+  /// Allow-listed, redacted provider metadata (primitives only). Never a raw response.
+  providerMetadata  Json                          @default("{}")
+  notes             String[]                      @default([])
+  /// One snapshot per run and target: a redelivered job rewrites, never duplicates.
+  dedupeKey         String                        @unique
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  organization  Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace     Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  syncRun       AnalyticsSyncRun?      @relation(fields: [syncRunId], references: [id], onDelete: SetNull)
+  socialAccount SocialAccount?         @relation(fields: [socialAccountId], references: [id], onDelete: SetNull)
+  scheduleEntry ContentScheduleEntry?  @relation(fields: [scheduleEntryId], references: [id], onDelete: SetNull)
+  contentItem   ContentItem?           @relation(fields: [contentItemId], references: [id], onDelete: SetNull)
+  campaign      Campaign?              @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  metrics       AnalyticsMetricValue[]
+
+  @@index([workspaceId, level, retrievedAt])
+  @@index([scheduleEntryId, retrievedAt])
+  @@index([contentItemId, retrievedAt])
+  @@index([campaignId, retrievedAt])
+  @@index([socialAccountId, level, retrievedAt])
+  @@map("analytics_snapshots")
+}
+
+/// One normalized metric in a snapshot. `value` NULL means unavailable and
+/// `unavailableReason` says why; a database CHECK makes it impossible to store
+/// one without the other, so a missing metric can never read back as zero.
+model AnalyticsMetricValue {
+  id                String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String                      @db.Uuid
+  workspaceId       String                      @db.Uuid
+  snapshotId        String                      @db.Uuid
+  /// AnalyticsMetricKey (contracts), e.g. `views`.
+  metricKey         String
+  /// The platform's own name, e.g. `statistics.viewCount`.
+  sourceMetricName  String?
+  value             Float?
+  /// AnalyticsMetricUnit (contracts).
+  unit              String
+  completeness      AnalyticsMetricCompleteness
+  unavailableReason AnalyticsUnavailableReason?
+  detail            String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  snapshot     AnalyticsSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@unique([snapshotId, metricKey])
+  @@index([workspaceId, metricKey])
+  @@map("analytics_metric_values")
+}
+
+// ---------------------------------------------------------------------------
 // Audit
 // ---------------------------------------------------------------------------
 
@@ -1810,6 +2020,8 @@ enum UsageKind {
   DOCUMENT_EXTRACTION
   MEDIA_RENDER
   PUBLISH_ATTEMPT
+  /// One external analytics sync run (Phase 6H) — counter only.
+  ANALYTICS_SYNC
 }
 
 /// Why an event carries no cost estimate. NEVER absent on an unpriced row —

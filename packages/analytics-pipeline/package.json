@@ -1,0 +1,34 @@
+{
+  "name": "@spectra/analytics-pipeline",
+  "version": "0.1.0",
+  "private": true,
+  "description": "External analytics ingestion: resolves an analytics provider per connected account, runs idempotent, budget-checked, rate-limit-aware sync runs with backoff, stores snapshots where unavailable is never zero, and builds the read models the API serves.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run src",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@spectra/analytics-core": "workspace:*",
+    "@spectra/contracts": "workspace:*",
+    "@spectra/database": "workspace:*",
+    "@spectra/logging": "workspace:*",
+    "@spectra/metering": "workspace:*",
+    "@spectra/publishing": "workspace:*",
+    "@spectra/security": "workspace:*",
+    "@spectra/social-linkedin": "workspace:*",
+    "@spectra/social-meta": "workspace:*",
+    "@spectra/social-oauth": "workspace:*",
+    "@spectra/social-wordpress": "workspace:*",
+    "@spectra/social-youtube": "workspace:*",
+    "@spectra/trend-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.0"
+  }
+}

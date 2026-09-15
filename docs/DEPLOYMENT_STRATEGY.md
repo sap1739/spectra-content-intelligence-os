@@ -146,3 +146,24 @@ enablement, CDN strategy for media delivery.
   sent, so size the worker for the file (Spectra caps a media object at 500 MB). Browser uploads
   need CORS on the bucket for `PUT` from the web origin. Run
   `docs/YOUTUBE_LIVE_VERIFICATION.md` before announcing it.
+
+## 8. External analytics (Phase 6H, ADR-0039)
+
+- **Worker:** runs every sync, so it needs `SOCIAL_TOKEN_ENCRYPTION_KEY` and the same OAuth client
+  credentials as the API (to refresh tokens). It registers `analytics.sync.execute` and a
+  five-minute `analytics.sync.dispatch`, and logs at boot whether scheduled sync is on.
+- **Scheduled sync is off by default.** `ANALYTICS_SCHEDULED_SYNC_ENABLED=true` turns it on;
+  `ANALYTICS_SYNC_INTERVAL_MINUTES` (default 360, minimum 15) sets the cadence per workspace. Every
+  sync spends platform quota (YouTube's daily units, LinkedIn's daily limits, Meta's rate limits), so
+  size the interval to the number of workspaces and posts. The dispatcher always picks up due
+  retries, whether or not scheduling is on.
+- **Other settings:** `ANALYTICS_STALE_AFTER_HOURS` (24), `ANALYTICS_SYNC_MAX_ATTEMPTS` (3),
+  `YOUTUBE_ANALYTICS_API_BASE_URL` (https in production; override only for tests).
+- **Scopes:** analytics scopes are not in the default scope lists. Add them per platform with
+  `SOCIAL_OAUTH_<PLATFORM>_SCOPES` after the platform approves them, then have users reconnect
+  (`docs/ANALYTICS_PROVIDER_SETUP.md`).
+- **Cost control:** set an `ANALYTICS_SYNC` operation limit where syncs must be capped; a refused run
+  calls no platform.
+- **Migration:** `20260914043605_phase6h_external_analytics` adds three tables and two `CHECK`
+  constraints; it is additive and safe to deploy before the worker.
+- Run `docs/ANALYTICS_LIVE_VERIFICATION.md` before presenting platform numbers to customers.

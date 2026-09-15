@@ -2,6 +2,10 @@ import { expect, test } from '@playwright/test';
 
 import {
   ALL_PERMISSIONS,
+  analyticsAvailability,
+  analyticsOverview,
+  analyticsSummary,
+  contentAnalytics,
   ORG_ID,
   WORKSPACE_ID,
   failedJob,
@@ -231,6 +235,79 @@ test.describe('usage and budgets', () => {
 
     await expect(page.getByText(/estimates, not invoices/i)).toBeVisible();
     await expect(page.getByText(/no known rate/i).first()).toBeVisible();
+  });
+});
+
+test.describe('analytics', () => {
+  const analyticsRoutes = (externalAvailable: boolean) => ({
+    '/analytics/overview': analyticsOverview(externalAvailable),
+    '/analytics/summary': analyticsSummary(externalAvailable),
+    '/analytics/availability': analyticsAvailability(),
+    '/analytics/providers': {
+      metricDefinitions: [],
+      providers: [],
+      scheduledSync: { enabled: false, intervalMinutes: 360 },
+      note: '',
+    },
+    '/analytics/sync-runs': [],
+    '/analytics/unavailable-metrics': { metrics: [] },
+  });
+
+  test('labels first-party and platform numbers, and never renders unavailable as zero', async ({
+    page,
+  }) => {
+    await stubApi(page, { routes: analyticsRoutes(true) });
+    await gotoAuthenticated(page, '/analytics');
+
+    await expect(page.getByText('First-party · counted by Spectra')).toBeVisible();
+    await expect(page.getByText('External · reported by platforms')).toBeVisible();
+    await expect(page.getByText(/Fresh · retrieved/).first()).toBeVisible();
+    // A reported zero is 0; a missing metric says unavailable, with the reason.
+    await expect(page.getByText('Unavailable · Not offered by the platform')).toBeVisible();
+    await expect(page.getByText(/not counted as 0/).first()).toBeVisible();
+    await expect(page.getByText('≈ 12,300')).toBeVisible();
+    await expect(page.getByText(/Partial analytics/)).toBeVisible();
+    // Platform status: missing scope and not-implemented are named.
+    await expect(page.getByText('Partial', { exact: true })).toBeVisible();
+    await expect(page.getByText(/yt-analytics.readonly/)).toBeVisible();
+    await expect(page.getByText('Not implemented', { exact: true })).toBeVisible();
+    // No chart is drawn from analytics data.
+    await expect(page.locator('svg[class*="recharts"], canvas')).toHaveCount(0);
+  });
+
+  test('shows the external-analytics unavailable state instead of zeros', async ({ page }) => {
+    await stubApi(page, { routes: analyticsRoutes(false) });
+    await gotoAuthenticated(page, '/analytics');
+
+    await expect(page.getByText('External analytics are unavailable')).toBeVisible();
+    await expect(page.getByText(/nothing is estimated in their place/i).first()).toBeVisible();
+    await expect(page.getByText('Never synced').first()).toBeVisible();
+  });
+
+  test('the sync button needs analytics:sync, and says so', async ({ page }) => {
+    await stubApi(page, { routes: analyticsRoutes(true) });
+    await gotoAuthenticated(page, '/analytics');
+    await expect(page.getByRole('button', { name: /sync analytics now/i })).toBeVisible();
+
+    await stubApi(page, {
+      permissions: ALL_PERMISSIONS.filter((permission) => permission !== 'analytics:sync'),
+      routes: analyticsRoutes(true),
+    });
+    await gotoAuthenticated(page, '/analytics');
+    await expect(page.getByRole('button', { name: /sync analytics now/i })).toHaveCount(0);
+    await expect(page.getByText('analytics:sync')).toBeVisible();
+  });
+
+  test('post analytics show each metric’s reason, source field and freshness', async ({ page }) => {
+    await stubApi(page, { routes: { '/analytics/content/': contentAnalytics() } });
+    await gotoAuthenticated(page, '/analytics/content/item-1');
+
+    await expect(page.getByRole('heading', { name: 'Quarterly roast report' })).toBeVisible();
+    await expect(page.getByText('statistics.viewsCount')).toBeVisible();
+    await expect(page.getByText('Unavailable · Missing permission')).toBeVisible();
+    await expect(page.getByText(/Partial: some metrics could have been read/)).toBeVisible();
+    await expect(page.getByText(/No platform analytics\. Not implemented/)).toBeVisible();
+    await expect(page.getByRole('button', { name: /sync this post/i }).first()).toBeVisible();
   });
 });
 

@@ -514,6 +514,42 @@ function refineSocialPlatforms(
   }
 }
 
+/**
+ * External analytics (Phase 6H, ADR-0039). Scheduled sync is OFF by default:
+ * every platform call spends a quota, so an operator turns it on deliberately.
+ * Manual syncs work either way.
+ */
+export const analyticsEnvSchema = z.object({
+  ANALYTICS_SCHEDULED_SYNC_ENABLED: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true'),
+  /** Minutes between scheduled workspace syncs (at least 15). */
+  ANALYTICS_SYNC_INTERVAL_MINUTES: z.coerce.number().int().min(15).max(10_080).default(360),
+  /** Hours before a snapshot is labelled stale. */
+  ANALYTICS_STALE_AFTER_HOURS: z.coerce.number().int().min(1).max(720).default(24),
+  /** Attempts per sync run, including rate-limit retries with backoff. */
+  ANALYTICS_SYNC_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
+  /** YouTube Analytics API host (reports.query); overridable for tests. */
+  YOUTUBE_ANALYTICS_API_BASE_URL: z
+    .string()
+    .url()
+    .default('https://youtubeanalytics.googleapis.com'),
+});
+
+function refineAnalytics(
+  env: { NODE_ENV: z.infer<typeof nodeEnvSchema>; YOUTUBE_ANALYTICS_API_BASE_URL: string },
+  ctx: z.RefinementCtx,
+): void {
+  if (env.NODE_ENV === 'production' && !env.YOUTUBE_ANALYTICS_API_BASE_URL.startsWith('https://')) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['YOUTUBE_ANALYTICS_API_BASE_URL'],
+      message: 'must use https in production',
+    });
+  }
+}
+
 export const apiEnvSchema = z
   .object({
     NODE_ENV: nodeEnvSchema,
@@ -555,6 +591,8 @@ export const apiEnvSchema = z
   .merge(tiktokEnvSchema)
   // Threads, X and Pinterest adapters (Phase 6G).
   .merge(socialPlatformsEnvSchema)
+  // External analytics (Phase 6H).
+  .merge(analyticsEnvSchema)
   .superRefine((env, ctx) => {
     refineSocialKeyRing(env, ctx);
     refineSocialOAuth(env, ctx);
@@ -563,6 +601,7 @@ export const apiEnvSchema = z
     refineYouTube(env, ctx);
     refineTikTok(env, ctx);
     refineSocialPlatforms(env, ctx);
+    refineAnalytics(env, ctx);
   });
 
 export const workerEnvSchema = z
@@ -593,6 +632,8 @@ export const workerEnvSchema = z
   .merge(youtubeEnvSchema)
   .merge(tiktokEnvSchema)
   .merge(socialPlatformsEnvSchema)
+  // External analytics (Phase 6H): the worker runs syncs and scheduled syncs.
+  .merge(analyticsEnvSchema)
   .superRefine((env, ctx) => {
     refineSocialKeyRing(env, ctx);
     refineSocialOAuth(env, ctx);
@@ -601,6 +642,7 @@ export const workerEnvSchema = z
     refineYouTube(env, ctx);
     refineTikTok(env, ctx);
     refineSocialPlatforms(env, ctx);
+    refineAnalytics(env, ctx);
   });
 
 export const webEnvSchema = z.object({

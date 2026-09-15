@@ -771,10 +771,19 @@ describe('API integration: Meta — Facebook Pages and Instagram (ADR-0036)', ()
       expect(list.body).not.toContain('encryptedToken');
       const [row] = list.json() as Array<{
         tokenNote: string | null;
-        permissions: Array<{ status: string }>;
+        permissions: Array<{ id: string; status: string }>;
         accounts: Array<{ platform: string; externalAccountId: string }>;
       }>;
-      expect(row?.permissions.every((p) => p.status === 'GRANTED')).toBe(true);
+      // Publishing products are granted; the insights products (6H) are listed and MISSING,
+      // because read_insights and instagram_manage_insights are not requested by default.
+      const insights = new Set(['page-insights', 'instagram-insights']);
+      expect(
+        row?.permissions.filter((p) => !insights.has(p.id)).every((p) => p.status === 'GRANTED'),
+      ).toBe(true);
+      expect(row?.permissions.filter((p) => insights.has(p.id)).map((p) => p.status)).toEqual([
+        'MISSING',
+        'MISSING',
+      ]);
       expect(row?.tokenNote).toMatch(/Page tokens obtained with it do not expire/);
       expect(row?.accounts.map((a) => `${a.platform}:${a.externalAccountId}`).sort()).toEqual(
         [

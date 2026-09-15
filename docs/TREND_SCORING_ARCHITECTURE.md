@@ -13,8 +13,8 @@
 ## 2. Components (`TREND_SCORE_COMPONENT_KEYS`)
 
 Positive-capable: freshness, velocity, searchInterest, sourceDiversity, sourceCredibility,
-audienceRelevance, brandRelevance, geographicRelevance, engagementPotential, commercialIntent,
-novelty, seasonality.
+audienceRelevance, brandRelevance, geographicRelevance, engagementPotential (estimated),
+measuredEngagement (platform-measured, 6H), commercialIntent, novelty, seasonality.
 Penalty-typical: saturation, misinformationRisk, complianceRisk.
 
 Component inputs are normalized to [0,1] before weighting. Producers (Phase 2 pipeline) map
@@ -51,7 +51,7 @@ ensembles) without changing consumers — the result contract is the invariant.
 
 ## 6. Configuration management (Phase 2+)
 
-Configs are stored per tenant (fallback to the shipped `spectra-default@1.0.0`), versioned
+Configs are stored per tenant (fallback to the shipped `spectra-default@1.1.0`), versioned
 immutably: editing creates a new version. Vertical `relevanceCriteria` weights feed the
 `brandRelevance`/`audienceRelevance` component producers. Score recomputation is a queued job
 that never mutates historical `TrendScoreResult`s — new results append.
@@ -75,3 +75,24 @@ sources and duplicates are excluded upstream, with this as the safety net.
 
 Scores for snippet-heavy or syndicated topics are therefore lower than before 5F. That is the
 correction; the previous numbers overstated the evidence.
+
+## Measured engagement (Phase 6H, ADR-0039)
+
+`engagementPotential` is an **estimate** and stays one. `measuredEngagement` is a separate component
+fed by platform analytics:
+
+- **Source labels.** Every `TrendScoreComponent` may carry `source`: `ESTIMATED`,
+  `FIRST_PARTY_MEASURED` or `EXTERNAL_MEASURED`. The Trends page shows it beside the component
+  ("platform measured", "estimated").
+- **The signal.** `measuredEngagementForTopic` takes the latest snapshot of each published post whose
+  content item carries the candidate's `topicKey`, and pools one engagement rate —
+  Σ interactions / Σ impressions (or views) over the posts that reported both. It is scaled to
+  [0, 1] against `DEFAULT_ENGAGEMENT_REFERENCE_RATE` (5%): a Spectra calibration constant, shown in
+  the rationale, to be revisited once real distributions exist.
+- **Missing is not zero.** With no measured posts, or none reporting a denominator, the signal is
+  added to `unavailableSignals` (`source: UNAVAILABLE`, a reason and a detail) and does **not**
+  participate: the score equals the research-only score exactly, and the explanation says "not
+  counted, not treated as zero". Passing the same key as both a component and an unavailable signal
+  throws.
+- **Config.** `spectra-default` moved to **1.1.0**, adding `measuredEngagement: 0.1`. Because missing
+  components do not participate, every score without measured engagement is unchanged.

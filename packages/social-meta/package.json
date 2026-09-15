@@ -12,6 +12,7 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
+    "@spectra/analytics-core": "workspace:*",
     "@spectra/contracts": "workspace:*",
     "@spectra/social-core": "workspace:*",
     "zod": "^3.25.0"

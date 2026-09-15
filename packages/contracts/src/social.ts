@@ -329,30 +329,6 @@ export const publishResultSchema = z.object({
 });
 export type PublishResult = z.infer<typeof publishResultSchema>;
 
-export const analyticsMetricSchema = z.object({
-  key: z.string().min(1).max(120),
-  value: z.number(),
-  capturedAt: isoDateTimeSchema,
-});
-
-export const analyticsRequestSchema = z
-  .object({
-    accountId: uuidSchema,
-    externalPostId: z.string().nullish(),
-    metricKeys: z.array(z.string()).default([]),
-    from: isoDateTimeSchema.nullish(),
-    to: isoDateTimeSchema.nullish(),
-  })
-  .merge(tenantScopeSchema);
-export type AnalyticsRequest = z.infer<typeof analyticsRequestSchema>;
-
-export const analyticsResultSchema = z.object({
-  accountId: uuidSchema,
-  externalPostId: z.string().nullish(),
-  metrics: z.array(analyticsMetricSchema).default([]),
-});
-export type AnalyticsResult = z.infer<typeof analyticsResultSchema>;
-
 export const socialCommentSchema = z.object({
   externalCommentId: z.string().min(1),
   externalPostId: z.string().min(1),

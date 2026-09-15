@@ -2,7 +2,7 @@
   "name": "@spectra/social-wordpress",
   "version": "0.1.0",
   "private": true,
-  "description": "Real WordPress publisher: posts via the WordPress REST API with application-password Basic auth. The first live platform adapter — only publishes when a site + credential are configured.",
+  "description": "Real WordPress publisher: posts via the WordPress REST API with application-password Basic auth. The first live platform adapter \u2014 only publishes when a site + credential are configured.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
@@ -12,6 +12,7 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
+    "@spectra/analytics-core": "workspace:*",
     "@spectra/contracts": "workspace:*",
     "@spectra/social-core": "workspace:*"
   },

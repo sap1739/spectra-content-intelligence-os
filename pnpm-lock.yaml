@@ -62,6 +62,12 @@ importers:
       '@spectra/ai-voyage':
         specifier: workspace:*
         version: link:../../packages/ai-voyage
+      '@spectra/analytics-core':
+        specifier: workspace:*
+        version: link:../../packages/analytics-core
+      '@spectra/analytics-pipeline':
+        specifier: workspace:*
+        version: link:../../packages/analytics-pipeline
       '@spectra/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -137,6 +143,9 @@ importers:
       '@spectra/telemetry':
         specifier: workspace:*
         version: link:../../packages/telemetry
+      '@spectra/trend-core':
+        specifier: workspace:*
+        version: link:../../packages/trend-core
       '@spectra/workflow-core':
         specifier: workspace:*
         version: link:../../packages/workflow-core
@@ -274,6 +283,9 @@ importers:
       '@spectra/ai-voyage':
         specifier: workspace:*
         version: link:../../packages/ai-voyage
+      '@spectra/analytics-pipeline':
+        specifier: workspace:*
+        version: link:../../packages/analytics-pipeline
       '@spectra/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -409,6 +421,74 @@ importers:
       '@spectra/contracts':
         specifier: workspace:*
         version: link:../contracts
+    devDependencies:
+      '@types/node':
+        specifier: ^22.15.0
+        version: 22.20.0
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(jsdom@25.0.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0)
+
+  packages/analytics-core:
+    dependencies:
+      '@spectra/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+    devDependencies:
+      '@types/node':
+        specifier: ^22.15.0
+        version: 22.20.0
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(jsdom@25.0.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0)
+
+  packages/analytics-pipeline:
+    dependencies:
+      '@spectra/analytics-core':
+        specifier: workspace:*
+        version: link:../analytics-core
+      '@spectra/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@spectra/database':
+        specifier: workspace:*
+        version: link:../database
+      '@spectra/logging':
+        specifier: workspace:*
+        version: link:../logging
+      '@spectra/metering':
+        specifier: workspace:*
+        version: link:../metering
+      '@spectra/publishing':
+        specifier: workspace:*
+        version: link:../publishing
+      '@spectra/security':
+        specifier: workspace:*
+        version: link:../security
+      '@spectra/social-linkedin':
+        specifier: workspace:*
+        version: link:../social-linkedin
+      '@spectra/social-meta':
+        specifier: workspace:*
+        version: link:../social-meta
+      '@spectra/social-oauth':
+        specifier: workspace:*
+        version: link:../social-oauth
+      '@spectra/social-wordpress':
+        specifier: workspace:*
+        version: link:../social-wordpress
+      '@spectra/social-youtube':
+        specifier: workspace:*
+        version: link:../social-youtube
+      '@spectra/trend-core':
+        specifier: workspace:*
+        version: link:../trend-core
     devDependencies:
       '@types/node':
         specifier: ^22.15.0
@@ -875,6 +955,9 @@ importers:
 
   packages/social-linkedin:
     dependencies:
+      '@spectra/analytics-core':
+        specifier: workspace:*
+        version: link:../analytics-core
       '@spectra/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -897,6 +980,9 @@ importers:
 
   packages/social-meta:
     dependencies:
+      '@spectra/analytics-core':
+        specifier: workspace:*
+        version: link:../analytics-core
       '@spectra/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -1010,6 +1096,9 @@ importers:
 
   packages/social-wordpress:
     dependencies:
+      '@spectra/analytics-core':
+        specifier: workspace:*
+        version: link:../analytics-core
       '@spectra/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -1051,6 +1140,9 @@ importers:
 
   packages/social-youtube:
     dependencies:
+      '@spectra/analytics-core':
+        specifier: workspace:*
+        version: link:../analytics-core
       '@spectra/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -1142,6 +1234,9 @@ importers:
 
   packages/trend-core:
     dependencies:
+      '@spectra/analytics-core':
+        specifier: workspace:*
+        version: link:../analytics-core
       '@spectra/contracts':
         specifier: workspace:*
         version: link:../contracts

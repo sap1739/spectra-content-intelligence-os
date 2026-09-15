@@ -20,3 +20,11 @@ export { LinkedInAccountDiscovery } from './discovery';
 export { LinkedInPublisher } from './publisher';
 export type { LinkedInPublisherOptions, MediaUploadLedger } from './publisher';
 export { linkedInApiOptionsFromEnv, registerLinkedInAdapter } from './register';
+export {
+  LINKEDIN_ANALYTICS_PROVIDER_ID,
+  LINKEDIN_ANALYTICS_SCOPES,
+  LinkedInAnalyticsProvider,
+  describeLinkedInAnalytics,
+  linkedInAnalyticsSpecs,
+  type LinkedInAnalyticsProviderOptions,
+} from './analytics';

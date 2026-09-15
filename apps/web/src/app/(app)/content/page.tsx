@@ -13,7 +13,8 @@ import {
   Skeleton,
   cn,
 } from '@spectra/ui';
-import { FileText, Sparkles, TriangleAlert } from 'lucide-react';
+import { BarChart3, FileText, Sparkles, TriangleAlert } from 'lucide-react';
+import Link from 'next/link';
 import * as React from 'react';
 
 import { PageHeader } from '@/components/page-header';
@@ -272,6 +273,15 @@ function ItemDetail({ workspaceId, itemId }: { workspaceId: string; itemId: stri
             <span>{data.contentType}</span>
             {data.funnelStage ? <span>· {data.funnelStage}</span> : null}
             {data.topicKey ? <span>· topic: {data.topicKey}</span> : null}
+            {data.lifecycleState === 'PUBLISHED' ? (
+              <Link
+                href={`/analytics/content/${data.id}`}
+                className="inline-flex items-center gap-1 underline underline-offset-2"
+              >
+                <BarChart3 aria-hidden="true" className="size-3" />
+                Post analytics
+              </Link>
+            ) : null}
           </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">

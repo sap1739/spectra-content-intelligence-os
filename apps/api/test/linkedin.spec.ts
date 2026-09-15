@@ -602,7 +602,20 @@ describe('API integration: LinkedIn live publishing (ADR-0035)', () => {
         permissions: Array<{ id: string; status: string }>;
         accounts: Array<{ externalAccountId: string; capabilities: unknown }>;
       }>;
-      expect(row?.permissions.every((p) => p.status === 'GRANTED')).toBe(true);
+      // Publishing and discovery products are granted. Analytics products (6H) are listed too, and
+      // member analytics is honestly MISSING: Spectra does not request r_member_postAnalytics.
+      const analyticsProducts = new Set([
+        'community-management-member-analytics',
+        'community-management-page-analytics',
+      ]);
+      expect(
+        row?.permissions
+          .filter((p) => !analyticsProducts.has(p.id))
+          .every((p) => p.status === 'GRANTED'),
+      ).toBe(true);
+      expect(
+        row?.permissions.find((p) => p.id === 'community-management-member-analytics')?.status,
+      ).toBe('MISSING');
       expect(row?.accounts.map((a) => a.externalAccountId).sort()).toEqual(
         [PAGE_URN, MEMBER_URN].sort(),
       );

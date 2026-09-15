@@ -1,4 +1,6 @@
 import {
+  type AnalyticsSignalSource,
+  type AnalyticsUnavailableReason,
   type TrendExplanation,
   type TrendScoreComponent,
   type TrendScoreComponentKey,
@@ -23,6 +25,18 @@ export interface TrendScoringInput {
   rationales?: Partial<Record<TrendScoreComponentKey, string>>;
   /** Distinct source count backing the candidate (evidence floor). */
   sourceCount?: number;
+  /**
+   * Where each component's observation came from. `engagementPotential` is
+   * ESTIMATED; `measuredEngagement` is EXTERNAL_MEASURED. Never UNAVAILABLE —
+   * an unavailable signal goes in `unavailableSignals` and is not scored.
+   */
+  sources?: Partial<Record<TrendScoreComponentKey, Exclude<AnalyticsSignalSource, 'UNAVAILABLE'>>>;
+  /** Signals that had nothing to contribute. Recorded and explained, never scored as 0. */
+  unavailableSignals?: Array<{
+    key: TrendScoreComponentKey;
+    reason: AnalyticsUnavailableReason;
+    detail: string;
+  }>;
 }
 
 export interface TrendScoringEngine {
@@ -54,6 +68,13 @@ export class WeightedTrendScoringEngine implements TrendScoringEngine {
   score(input: TrendScoringInput, now: () => Date = () => new Date()): TrendScoreResult {
     const penalties = new Set(this.config.penalties);
     const components: TrendScoreComponent[] = [];
+    for (const signal of input.unavailableSignals ?? []) {
+      if (input.components[signal.key] !== undefined) {
+        throw new InvalidScoringInputError(
+          `Component ${signal.key} cannot be both observed and unavailable`,
+        );
+      }
+    }
 
     let positiveWeightTotal = 0;
     let positiveSum = 0;
@@ -78,6 +99,7 @@ export class WeightedTrendScoringEngine implements TrendScoringEngine {
         weight: isPenalty ? -weight : weight,
         weightedValue,
         ...(input.rationales?.[key] ? { rationale: input.rationales[key] } : {}),
+        ...(input.sources?.[key] ? { source: input.sources[key] } : {}),
       });
       if (isPenalty) {
         penaltySum += normalized * weight;
@@ -106,6 +128,16 @@ export class WeightedTrendScoringEngine implements TrendScoringEngine {
       displayScore: Math.round(normalizedScore * 1000) / 10,
       components: components.sort((a, b) => Math.abs(b.weightedValue) - Math.abs(a.weightedValue)),
       explanation,
+      ...(input.unavailableSignals && input.unavailableSignals.length > 0
+        ? {
+            unavailableSignals: input.unavailableSignals.map((signal) => ({
+              key: signal.key,
+              source: 'UNAVAILABLE' as const,
+              reason: signal.reason,
+              detail: signal.detail,
+            })),
+          }
+        : {}),
       computedAt: now().toISOString(),
     };
   }
@@ -141,8 +173,14 @@ export class WeightedTrendScoringEngine implements TrendScoringEngine {
 
     const reasoning = sorted.map((c) => {
       const direction = c.weightedValue >= 0 ? 'contributed' : 'subtracted';
-      return `${c.key} ${direction} ${Math.abs(c.weightedValue).toFixed(3)} (raw ${c.rawValue.toFixed(2)}, weight ${c.weight})`;
+      const source = c.source ? `, ${c.source.toLowerCase().replace(/_/g, ' ')}` : '';
+      return `${c.key} ${direction} ${Math.abs(c.weightedValue).toFixed(3)} (raw ${c.rawValue.toFixed(2)}, weight ${c.weight}${source})`;
     });
+    for (const signal of input.unavailableSignals ?? []) {
+      reasoning.push(
+        `${signal.key} unavailable (${signal.reason}) — not counted, not treated as zero: ${signal.detail}`,
+      );
+    }
 
     return {
       headline: `Scored ${(normalizedScore * 100).toFixed(1)}/100 using config ${this.config.id}@${this.config.version}`,
@@ -159,10 +197,12 @@ export class WeightedTrendScoringEngine implements TrendScoringEngine {
  */
 export const DEFAULT_TREND_SCORING_CONFIG: TrendScoringConfig = {
   id: 'spectra-default',
-  version: '1.0.0',
+  // 1.1.0 (Phase 6H): adds measuredEngagement. It participates only when a
+  // platform reported engagement, so every score without it is unchanged.
+  version: '1.1.0',
   name: 'Spectra default weighted scoring',
   description:
-    'Balanced default: freshness/velocity/relevance weighted positively; misinformation and compliance risk as penalties.',
+    'Balanced default: freshness/velocity/relevance weighted positively; measured engagement counts only where platforms reported it; misinformation and compliance risk as penalties.',
   weights: {
     freshness: 0.15,
     velocity: 0.15,
@@ -173,6 +213,7 @@ export const DEFAULT_TREND_SCORING_CONFIG: TrendScoringConfig = {
     brandRelevance: 0.1,
     geographicRelevance: 0.05,
     engagementPotential: 0.05,
+    measuredEngagement: 0.1,
     commercialIntent: 0.05,
     novelty: 0.05,
     saturation: 0.1,

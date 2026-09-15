@@ -106,6 +106,8 @@ const DEFINITIONS: Record<OAuthPlatform, OAuthPlatformDefinition> = {
       read_profile: ['profile'],
       list_destinations: ['r_organization_admin'],
       publish: ['w_member_social'],
+      // Member post analytics; page analytics need rw_organization_admin (ADR-0039).
+      analytics: ['r_member_postAnalytics'],
     },
     approval: {
       required: true,
@@ -145,6 +147,22 @@ const DEFINITIONS: Record<OAuthPlatform, OAuthPlatformDefinition> = {
         reviewRequired: true,
         enables: 'Posting text and images as those pages.',
       },
+      {
+        id: 'community-management-member-analytics',
+        name: 'Community Management API — member post analytics',
+        scopes: ['r_member_postAnalytics'],
+        reviewRequired: true,
+        enables:
+          'Reading impressions, reach, reactions, comments, reshares, saves and link clicks for the member’s posts. Not requested by default.',
+      },
+      {
+        id: 'community-management-page-analytics',
+        name: 'Community Management API — page share statistics',
+        scopes: ['rw_organization_admin'],
+        reviewRequired: true,
+        enables:
+          'Reading organic share statistics for pages the member administers. Not requested by default.',
+      },
     ],
     docsUrl:
       'https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow',
@@ -173,7 +191,8 @@ const DEFINITIONS: Record<OAuthPlatform, OAuthPlatformDefinition> = {
     capabilityScopes: {
       list_destinations: ['pages_show_list'],
       publish: ['pages_manage_posts'],
-      analytics: ['pages_read_engagement'],
+      // Page post insights need read_insights as well (ADR-0039).
+      analytics: ['read_insights', 'pages_read_engagement'],
     },
     approval: {
       required: true,
@@ -205,6 +224,22 @@ const DEFINITIONS: Record<OAuthPlatform, OAuthPlatformDefinition> = {
         reviewRequired: true,
         enables:
           'Finding Instagram professional accounts linked to your Pages and publishing to them.',
+      },
+      {
+        id: 'page-insights',
+        name: 'Pages API — Page and post insights',
+        scopes: ['read_insights'],
+        reviewRequired: true,
+        enables:
+          'Reading Facebook Page post insights (views, unique viewers, clicks, reactions). Not requested by default.',
+      },
+      {
+        id: 'instagram-insights',
+        name: 'Instagram API with Facebook Login — insights',
+        scopes: ['instagram_manage_insights'],
+        reviewRequired: true,
+        enables:
+          'Reading Instagram media insights (likes, comments, shares, saves, reach, views). Not requested by default.',
       },
     ],
     tokenRequestMethod: 'GET',

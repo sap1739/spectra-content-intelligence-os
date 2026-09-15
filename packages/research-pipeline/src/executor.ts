@@ -10,6 +10,8 @@ import {
   DEFAULT_TREND_SCORING_CONFIG,
   WeightedTrendScoringEngine,
   canTransitionTrend,
+  withMeasuredEngagement,
+  type MeasuredEngagementSignal,
 } from '@spectra/trend-core';
 
 import type { DocumentExtractionProvider, ResearchProviderRegistry } from '@spectra/research-core';
@@ -58,6 +60,16 @@ export interface PipelineDeps {
   embedder?: EmbeddingProvider;
   /** Defaults to the pgvector store bound to `prisma`. */
   vectorStore?: VectorStoreProvider;
+  /**
+   * Measured engagement of the workspace's own published posts on a topic,
+   * from platform analytics (ADR-0039). Omitted: trend scores use research
+   * signals only. When it returns UNAVAILABLE the score ignores the signal and
+   * records why — it is never counted as zero engagement.
+   */
+  measuredEngagement?: (
+    tenant: { organizationId: string; workspaceId: string },
+    topicKey: string,
+  ) => Promise<MeasuredEngagementSignal>;
   /**
    * Discovery providers (web/news search). Omitted or empty => the run uses
    * only its configured feeds; search discovery is honestly unavailable.
@@ -841,17 +853,23 @@ async function runResearch(deps: PipelineDeps, input: ExecuteRunInput): Promise<
           });
         }
 
-        const result = engine.score(
-          {
-            trendCandidateId: candidate.id,
-            components: {
-              freshness: weightedAvg((f) => f.freshnessScore ?? 0),
-              velocity: velocityScore(recentCount, scoreable.length),
-              sourceDiversity: sourceDiversityScore(diversityUnits.size, scoreable.length),
-              sourceCredibility: weightedAvg((f) => f.credibilityScore ?? 0.5),
-            },
-            sourceCount: effectiveSourceCount,
+        const researchInput = {
+          trendCandidateId: candidate.id,
+          components: {
+            freshness: weightedAvg((f) => f.freshnessScore ?? 0),
+            velocity: velocityScore(recentCount, scoreable.length),
+            sourceDiversity: sourceDiversityScore(diversityUnits.size, scoreable.length),
+            sourceCredibility: weightedAvg((f) => f.credibilityScore ?? 0.5),
           },
+          sourceCount: effectiveSourceCount,
+        };
+        // Research signals are the score; measured engagement joins only when
+        // a platform actually reported it, and is recorded as unavailable
+        // otherwise — the research-based score is never lowered by a gap.
+        const result = engine.score(
+          deps.measuredEngagement
+            ? withMeasuredEngagement(researchInput, await deps.measuredEngagement(tenant, topicKey))
+            : researchInput,
           now,
         );
 

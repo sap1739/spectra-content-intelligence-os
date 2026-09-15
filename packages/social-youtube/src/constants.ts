@@ -18,7 +18,12 @@ export const YOUTUBE_SCOPES = {
   upload: 'https://www.googleapis.com/auth/youtube.upload',
   readonly: 'https://www.googleapis.com/auth/youtube.readonly',
   manage: 'https://www.googleapis.com/auth/youtube',
+  /** YouTube Analytics API reports (watch time, average view duration, shares). */
+  analytics: 'https://www.googleapis.com/auth/yt-analytics.readonly',
 } as const;
+
+/** The YouTube Analytics API host (reports.query), separate from the Data API. */
+export const DEFAULT_YOUTUBE_ANALYTICS_API_BASE_URL = 'https://youtubeanalytics.googleapis.com';
 
 /** videos.insert accepts `video/*` and `application/octet-stream`. */
 export const VIDEO_MIME_PREFIX = 'video/';

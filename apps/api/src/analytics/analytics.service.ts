@@ -5,10 +5,10 @@ import type { TenantContext } from '../auth/types';
 
 /**
  * First-party workspace reporting. Every number here is REAL — counts of the
- * user's own content, drafts, publications, research and trends. External
- * platform engagement (impressions, clicks, likes) is honestly reported as
- * unavailable until a platform adapter is connected — the product never shows
- * fabricated engagement metrics.
+ * user's own content, drafts, publications, research and trends, labelled
+ * FIRST_PARTY_MEASURED. External platform engagement lives in the external
+ * analytics read models (ADR-0039); this overview only says whether any has
+ * been retrieved, and never fills it in.
  */
 @Injectable()
 export class AnalyticsService {
@@ -29,6 +29,7 @@ export class AnalyticsService {
       findings,
       evidencePacksReady,
       trendsByState,
+      externalSnapshots,
     ] = await Promise.all([
       p.contentItem.groupBy({
         by: ['lifecycleState'],
@@ -45,6 +46,7 @@ export class AnalyticsService {
         where: { ...scope, deletedAt: null },
         _count: { _all: true },
       }),
+      p.analyticsMetricValue.count({ where: { ...scope, value: { not: null } } }),
     ]);
 
     const toMap = <T extends string>(
@@ -66,6 +68,7 @@ export class AnalyticsService {
     const trends = toMap(trendsByState, 'state');
 
     return {
+      source: 'FIRST_PARTY_MEASURED' as const,
       content: {
         total: sum(funnel),
         byLifecycleState: funnel,
@@ -87,8 +90,11 @@ export class AnalyticsService {
       },
       trends: { total: sum(trends), byState: trends },
       engagement: {
-        externalAvailable: false,
-        note: 'External platform engagement (impressions, clicks, likes) is unavailable until a social platform is connected. No engagement metrics are fabricated.',
+        externalAvailable: externalSnapshots > 0,
+        note:
+          externalSnapshots > 0
+            ? 'External platform metrics have been retrieved for this workspace — see the external analytics summary, where each metric shows its source, freshness and what is unavailable.'
+            : 'External platform engagement (impressions, clicks, likes) is unavailable: no analytics have been retrieved from a connected platform yet. No engagement metrics are fabricated.',
       },
       generatedAt: new Date().toISOString(),
     };

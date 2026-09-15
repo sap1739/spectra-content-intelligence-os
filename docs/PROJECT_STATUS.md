@@ -1,7 +1,7 @@
 # SpectraContent Intelligence OS — Project Status
 
-**Snapshot date:** 2026-09-11 · **Branch:** `main`
-**Status:** Phases 1–5 complete · Phase 6 in progress (6A–6G shipped)
+**Snapshot date:** 2026-09-15 · **Branch:** `main`
+**Status:** Phases 1–5 complete · Phase 6 in progress (6A–6H shipped)
 
 > This document is a factual, audited snapshot intended as context for planning further work.
 > Every number below was measured from the repository, not estimated.
@@ -89,16 +89,16 @@ gives real end-to-end coverage of worker logic without running a worker.
 
 | Metric               | Value                                                            |
 | -------------------- | ---------------------------------------------------------------- |
-| Commits              | 35                                                               |
-| Packages             | 37                                                               |
+| Commits              | 36                                                               |
+| Packages             | 39                                                               |
 | Apps                 | 3 (`api`, `web`, `worker`)                                       |
-| TypeScript/TSX lines | ~70,000 (api 17,426 · web 12,515 · worker 582 · packages 39,671) |
-| API routes           | 120 across 29 controller files                                   |
-| Prisma models        | 43                                                               |
-| Migrations           | 28                                                               |
-| ADRs                 | 38                                                               |
-| Permissions          | 35 (permission-oriented authz; never role-name branching)        |
-| Web pages            | 21 (all real — placeholders removed in 6A)                       |
+| TypeScript/TSX lines | ~80,000 (api 19,100 · web 13,960 · worker 697 · packages 46,123) |
+| API routes           | 131 across 29 controller files                                   |
+| Prisma models        | 46                                                               |
+| Migrations           | 29                                                               |
+| ADRs                 | 39                                                               |
+| Permissions          | 36 (permission-oriented authz; never role-name branching)        |
+| Web pages            | 23 (all real — placeholders removed in 6A)                       |
 
 ### Packages
 
@@ -115,7 +115,9 @@ metering/         Usage ledger + versioned cost ESTIMATES               [Phase 5
 research-core/    11 research ports, provider registry, 23-stage pipeline model
 research-pipeline/ Ingest pipeline: feeds + search → one candidate path
 research-brave/   Brave Search adapters (web + news), env-gated          [Phase 5B]
-trend-core/       Versioned, explainable trend scoring engine
+trend-core/       Versioned, explainable trend scoring engine (+ measured engagement signal, 6H)
+analytics-core/   AnalyticsProvider port, metric model where unavailable ≠ 0, aggregation [Phase 6H]
+analytics-pipeline/ Provider resolver, idempotent sync runs, backoff, read models   [Phase 6H]
 knowledge-core/   Vector store port, chunking, prompt-injection scanner + isolation
 ai-core/          12 provider-neutral AI ports
 ai-anthropic/     Anthropic adapter for TextGenerationProvider, env-gated
@@ -134,11 +136,7 @@ social-tiktok/    Real TikTok adapter: creator info + Direct Post video upload  
 social-x/         Real X adapter: text + up to 4 images (v2 chunked upload)       [Phase 6G]
 social-threads/   Real Threads adapter: text or 1 image via a media container     [Phase 6G]
 social-pinterest/ Real Pinterest adapter: board discovery + image pins            [Phase 6G]
-social-tiktok/    Real TikTok adapter: creator info + Direct Post video upload    [Phase 6G]
-social-x/         Real X adapter: text + up to 4 images (v2 chunked upload)       [Phase 6G]
-social-threads/   Real Threads adapter: text or 1 image via a media container     [Phase 6G]
-social-pinterest/ Real Pinterest adapter: board discovery + image pins            [Phase 6G]
-social-wordpress/ Real WordPress adapter (REST + application password)   [Phase 4D]
+social-wordpress/ Real WordPress adapter (REST + application password; comment-count analytics) [Phase 4D/6H]
 publishing/       Dispatch + resolver (all nine live targets) + media loader/links
 workflow-core/    Queue-neutral job ports; BullMQ + in-memory adapters; queue inspector
 storage/          Object storage port + S3/MinIO, tenant-scoped keys
@@ -349,6 +347,29 @@ standards, health/readiness endpoints, OpenAPI at `/docs`.
   extensions let the four fit the existing pipeline: a shared `openConnection` in the resolver
   (connection, account kind, required scopes, refresh) and `subjectId` in discovery, since TikTok
   names a creator only in its token response (ADR-0038).
+- **6H:** **External analytics — ingested where platforms really report them, and unavailable is
+  never zero.** A provider-neutral model (`@spectra/contracts/analytics.ts`) where every metric is a
+  value **or** a reason: `null` always carries one of 20 `AnalyticsUnavailableReason`s, enforced by
+  the schema, by every adapter (`finalizeMetrics`) and by two Postgres `CHECK` constraints. Each value
+  keeps the platform's own field name and a completeness label (`EXACT`, `APPROXIMATE` when the
+  platform says so, `DERIVED` for Spectra's engagement rate, which is computed only with a reported
+  denominator). Four adapters beside their publishers: **WordPress** (approved comment counts — core
+  records nothing else), **YouTube** (views, likes, comments; watch time, average view duration and
+  shares with `yt-analytics.readonly`; channel views and rounded subscribers), **LinkedIn** (page share
+  statistics with `rw_organization_admin`; member post analytics with `r_member_postAnalytics`), and
+  **Meta** (Page and Instagram followers; post insights with `read_insights` /
+  `instagram_manage_insights`, impressions reported as deprecated). TikTok, X, Threads and Pinterest
+  are explicitly `NOT_IMPLEMENTED` with what each would take; email is `UNSUPPORTED`. Analytics scopes
+  are not added to defaults — missing ones are named per metric and never requested. Sync runs
+  (`@spectra/analytics-pipeline`) are idempotent (Idempotency-Key, active-run join, per-target
+  snapshot keys), budget-checked on a new `ANALYTICS_SYNC` kind, stop calling an account after a
+  rate limit or rejected token, retry with backoff, and finish `SUCCEEDED`, `PARTIAL`, `FAILED` or
+  the honest no-op `UNAVAILABLE`; scheduled sync exists but is off by default. Eleven API routes and a
+  rebuilt Analytics page separate first-party from platform numbers, show freshness everywhere, name
+  missing scopes, warn on partial data, gate sync on the new `analytics:sync` permission, and draw no
+  charts. Trend scoring gained `measuredEngagement` (EXTERNAL_MEASURED) beside the estimated
+  `engagementPotential`; with no measured posts the signal is recorded as unavailable and the
+  research score is unchanged (ADR-0039).
 
 ---
 
@@ -373,7 +394,12 @@ standards, health/readiness endpoints, OpenAPI at `/docs`.
 | Pinterest (1 image pin on a board)                                                         | **Real — tested against a Pinterest v5 stand-in, not yet Pinterest**      | Pinterest connection with `pins:write`; Trial access until Pinterest reviews the app                                                      |
 | Email                                                                                      | **Deliberately not integrated** (ADR-0038)                                | needs consent, unsubscribe, suppression and domain authentication first; resolves `UNSUPPORTED`                                           |
 | Publishing through an Instagram Login connection                                           | **NOT wired**                                                             | resolves `UNSUPPORTED`                                                                                                                    |
-| External engagement analytics                                                              | **Not built**                                                             | reports `externalAvailable: false`                                                                                                        |
+| External analytics: WordPress (approved comment counts)                                    | **Real — tested against a WordPress REST stand-in, not yet a live site**  | the stored application password                                                                                                           |
+| External analytics: YouTube (video + channel statistics; watch time, avg duration, shares) | **Real — tested against Data/Analytics API stand-ins, not yet YouTube**   | `youtube.readonly` (default); `yt-analytics.readonly` for the report metrics                                                              |
+| External analytics: LinkedIn (page share statistics; member post analytics)                | **Real — tested against a LinkedIn stand-in, not yet LinkedIn**           | `rw_organization_admin` (page) / `r_member_postAnalytics` (member) — Community Management API, not requested by default                   |
+| External analytics: Facebook Pages and Instagram (followers; post insights)                | **Real — tested against a Graph API stand-in, not yet Meta**              | followers with default scopes; `read_insights` / `instagram_manage_insights` (App Review) for post insights                               |
+| External analytics: TikTok, X, Threads, Pinterest                                          | **Not implemented** (ADR-0039) — each account reports why                 | resolves `UNAVAILABLE`; X would be billed per call                                                                                        |
+| External analytics: Email                                                                  | **Unsupported** — no sending provider                                     | resolves `UNAVAILABLE`                                                                                                                    |
 | Payments / billing / plans                                                                 | **Not built**                                                             | usage page states nothing is charged                                                                                                      |
 | OpenTelemetry tracing                                                                      | **Real, optional**                                                        | `OTEL_EXPORTER_OTLP_ENDPOINT` (unset => SDK not loaded)                                                                                   |
 | Prometheus metrics                                                                         | **Real, working**                                                         | `GET /v1/meta/metrics` (API series only — see below)                                                                                      |
@@ -424,6 +450,15 @@ the two places the documentation is silent: X states no post character limit (Sp
 and says the cap is its own) and Pinterest states no image formats, size or text limits (its own
 refusal is passed through).
 
+**Note on external analytics (6H):** every adapter is exercised against local stand-ins that follow
+the platform's documentation (counts as strings, rounded subscriber counts, omitted-means-zero share
+statistics, insights refusals, rate limits). **None has been run against the real platform.**
+`docs/ANALYTICS_LIVE_VERIFICATION.md` is the checklist; its open questions include whether LinkedIn
+ever returns `uniqueImpressionsCount` per share, how many days YouTube Analytics reports lag the Data
+API counts, and how long Instagram insights take to appear (Meta says up to 48 hours). With default
+scopes YouTube reads counts only and Meta reads followers only — by design, and the UI names the
+scope to add.
+
 **Note on WordPress:** the adapter targets **self-hosted WordPress** (WordPress.org software with
 application passwords, WP 5.6+). WordPress.com (the hosted service) is _not_ supported — it
 requires OAuth; the OAuth broker exists since 6C, but WordPress.com is not one of its declared
@@ -435,16 +470,33 @@ platforms.
 
 | Check                | Result                                                 |
 | -------------------- | ------------------------------------------------------ |
-| `pnpm build`         | 40/40 tasks pass                                       |
-| `pnpm typecheck`     | 75/75 tasks pass                                       |
+| `pnpm build`         | 42/42 tasks pass                                       |
+| `pnpm typecheck`     | 79/79 tasks pass                                       |
 | `pnpm lint`          | pass                                                   |
 | `pnpm format`        | clean                                                  |
-| Unit tests           | **838 passing** across 35 packages/apps (incl. web 43) |
-| API integration      | **196 passing** (21 files)                             |
+| Unit tests           | **909 passing** across 37 packages/apps (incl. web 48) |
+| API integration      | **215 passing** (22 files)                             |
 | Pipeline integration | **95 passing** (11 files, `research-pipeline`)         |
 | Metering integration | **74 passing** (7 files)                               |
-| E2E (Playwright)     | **34 tests** (stubbed-API UI journeys)                 |
-| Prisma               | schema valid · 28 migrations · database up to date     |
+| E2E (Playwright)     | **38 tests** (stubbed-API UI journeys)                 |
+| Prisma               | schema valid · 29 migrations · database up to date     |
+
+Known flake (pre-existing, not introduced by 6B–6H): `budget-hardening.spec.ts` "concurrent
+research-run starts cannot all pass the last allowance" intermittently admits more than one run. It
+failed twice during the 6G gate; in the 6H gate it passed in both full integration runs (14/14 each
+time). It is not fixed — the investigation is tracked separately.
+
+-------------------- | ------------------------------------------------------ |
+| `pnpm build` | 40/40 tasks pass |
+| `pnpm typecheck` | 75/75 tasks pass |
+| `pnpm lint` | pass |
+| `pnpm format` | clean |
+| Unit tests | **838 passing** across 35 packages/apps (incl. web 43) |
+| API integration | **196 passing** (21 files) |
+| Pipeline integration | **95 passing** (11 files, `research-pipeline`) |
+| Metering integration | **74 passing** (7 files) |
+| E2E (Playwright) | **34 tests** (stubbed-API UI journeys) |
+| Prisma | schema valid · 28 migrations · database up to date |
 
 Known flake (pre-existing, not introduced by 6B–6G): `budget-hardening.spec.ts` "concurrent
 research-run starts cannot all pass the last allowance" intermittently admits more than one run. It
@@ -461,8 +513,10 @@ second; the investigation is tracked separately.
    `docs/META_LIVE_VERIFICATION.md`, `docs/YOUTUBE_LIVE_VERIFICATION.md`,
    `docs/REMAINING_PLATFORMS_LIVE_VERIFICATION.md`) against real apps: all nine live targets are
    built and tested against stand-ins only, and a real run is now worth more than another adapter.
-2. **Live `AnalyticsProvider` adapters** feeding real engagement metrics, which would also
-   calibrate the `engagementPotential` input to trend scoring.
+2. **Run `docs/ANALYTICS_LIVE_VERIFICATION.md`** with the analytics scopes granted, then calibrate
+   the trend-scoring engagement reference rate (a 5% constant today) from real distributions.
+3. **Analytics for the platforms marked `NOT_IMPLEMENTED`** (TikTok Display API, Threads Insights,
+   Pinterest pin analytics; X only with a budget in place, since every call is billed).
 
 ### 8.2 Research/quality track
 
@@ -487,6 +541,10 @@ second; the investigation is tracked separately.
   - `templates` — claims "Phase 3"; prompt/visual templates never built.
 - ~~Publishing DLQ / failed-attempt dashboard~~ — **shipped in 6B** as the workspace-scoped
   `/operations` page (failed + dead-lettered jobs, reasons, correlation ids, safe retry).
+- Analytics follow-ups (6H): LinkedIn page follower statistics; Facebook comment and share counts;
+  daily breakdowns and history charts once enough real snapshots exist; honouring `Retry-After`
+  from YouTube, LinkedIn and Meta (their clients do not surface headers yet); a dedicated worker
+  metric for sync durations.
 - Per-attempt publication history table (the queue shows the current failure, not the attempt
   history).
 - A metrics scrape endpoint on the worker — pipeline series are emitted there but not scrapable.
@@ -501,7 +559,7 @@ second; the investigation is tracked separately.
   public media proxy for deployments whose object storage is private.
 - 6G follow-ups: TikTok photo posts and inbox drafts; X video, polls, quotes, threads and replies;
   Threads video and carousels; Pinterest video pins, carousels and board creation; editing or
-  deleting a published post anywhere; per-platform analytics. Two open questions belong to a live
+  deleting a published post anywhere; analytics for these four (6H marks them not implemented). Two open questions belong to a live
   run rather than more code: X's real character limit for a verified account, and what Pinterest
   actually refuses (if that is stable, Spectra can refuse it before the call).
 - Email (deliberate, ADR-0038): a subscriber list with provable consent, `List-Unsubscribe` and a

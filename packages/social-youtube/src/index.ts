@@ -1,6 +1,7 @@
 export {
   CHANNEL_ID,
   DEFAULT_UPLOAD_CHUNK_BYTES,
+  DEFAULT_YOUTUBE_ANALYTICS_API_BASE_URL,
   DEFAULT_YOUTUBE_API_BASE_URL,
   MAX_THUMBNAIL_BYTES,
   SPECTRA_MAX_VIDEO_BYTES,
@@ -34,3 +35,10 @@ export {
   youTubeApiOptionsFromEnv,
   type YouTubeAdapterOptions,
 } from './register';
+export {
+  YOUTUBE_ANALYTICS_PROVIDER_ID,
+  YOUTUBE_ANALYTICS_SPECS,
+  YouTubeAnalyticsProvider,
+  describeYouTubeAnalytics,
+  type YouTubeAnalyticsProviderOptions,
+} from './analytics';

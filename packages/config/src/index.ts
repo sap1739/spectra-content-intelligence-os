@@ -11,6 +11,7 @@ export {
   youtubeEnvSchema,
   tiktokEnvSchema,
   socialPlatformsEnvSchema,
+  analyticsEnvSchema,
   logLevelSchema,
   nodeEnvSchema,
   redisEnvSchema,

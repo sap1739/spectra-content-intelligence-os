@@ -29,6 +29,8 @@ const JOB_CATEGORIES: Record<string, string> = {
   'publication.publish': 'Publishing',
   'publication.dispatch': 'Publishing',
   'knowledge.reembed': 'Embedding / re-embed',
+  'analytics.sync.execute': 'Analytics sync',
+  'analytics.sync.dispatch': 'Analytics sync',
 };
 
 @Injectable()

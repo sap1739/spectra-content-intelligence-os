@@ -197,3 +197,35 @@ description, tags, categoryId, privacyStatus, madeForKids, notifySubscribers}}`)
   access).
 - `POST …/social/oauth/email/start` stays a `400` — email is not an OAuth platform and does not
   pretend to be one.
+
+## 17. External analytics (Phase 6H, ADR-0039)
+
+Routes under `workspaces/:workspaceId/analytics`, each checked with `hasPermission()`:
+
+| Method & path                | Permission       | Notes                                                                                                                          |
+| ---------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `GET overview`               | `analytics:read` | First-party counts (unchanged), now labelled `source: FIRST_PARTY_MEASURED`                                                    |
+| `GET providers`              | `analytics:read` | Every platform: implemented, availability, per-metric reason and scopes, `paidApi`                                             |
+| `GET availability`           | `analytics:read` | Per connected account, from its grant and connection state; no token is opened                                                 |
+| `POST sync`                  | `analytics:sync` | `202 { created, run }`; body `{target: WORKSPACE}` / `{SOCIAL_ACCOUNT, socialAccountId}` / `{SCHEDULE_ENTRY, scheduleEntryId}` |
+| `GET sync-runs[?limit]`      | `analytics:read` | Newest first, ≤100                                                                                                             |
+| `GET sync-runs/:runId`       | `analytics:read` | Status, attempt, per-target outcomes, `error`, `rateLimit`                                                                     |
+| `GET summary`                | `analytics:read` | Aggregates with `contributing` / `unavailable` counts and freshness                                                            |
+| `GET campaigns/:campaignId`  | `analytics:read` | `aggregation: SUM_OF_POST_SNAPSHOTS` plus each post                                                                            |
+| `GET content/:contentItemId` | `analytics:read` | Per placement: latest snapshot, earlier retrievals, or why there is none                                                       |
+| `GET unavailable-metrics`    | `analytics:read` | Grouped by platform, level, metric and reason                                                                                  |
+| `GET freshness`              | `analytics:read` | Fresh/stale counts and per-snapshot freshness                                                                                  |
+| `GET provider-status`        | `analytics:read` | Recent provider error codes and rate limits                                                                                    |
+
+- **Unavailable is not zero, in every response.** A metric is `{ value: number }` or
+  `{ value: null, unavailableReason, detail }`, never a stand-in 0. Aggregates carry `value: null`
+  with a reason when nothing contributed, and `NOT_ADDITIVE` for reach and averages.
+- **Idempotency.** `POST sync` accepts `Idempotency-Key` (8–120 of `A-Za-z0-9_.:-`, else `422`),
+  namespaced by workspace; the same key, or an unfinished run for the same target, returns the
+  existing run with `created: false`.
+- **No existence leaks.** A foreign or missing run, account, entry, campaign or content item is the
+  same `404` problem.
+- **Honest no-op.** A sync with nothing to read finishes `UNAVAILABLE` with an error code
+  (`NOT_CONNECTED`, `VALIDATION`, `UNSUPPORTED`, …) — it is not an HTTP error.
+- `analytics:sync` is in ORG_OWNER, ORG_ADMIN, WORKSPACE_ADMIN, PUBLISHER and ANALYST; roles that can
+  only read analytics (RESEARCHER, CONTENT_STRATEGIST, READ_ONLY) cannot start one.

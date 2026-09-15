@@ -29,7 +29,7 @@ describe('WeightedTrendScoringEngine', () => {
     );
 
     expect(result.configId).toBe('spectra-default');
-    expect(result.configVersion).toBe('1.0.0');
+    expect(result.configVersion).toBe('1.1.0');
     expect(result.computedAt).toBe('2026-07-01T12:00:00.000Z');
     expect(result.normalizedScore).toBeGreaterThan(0.6);
     expect(result.normalizedScore).toBeLessThanOrEqual(1);

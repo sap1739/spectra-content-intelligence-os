@@ -44,6 +44,8 @@ export const PERMISSIONS = [
   'social:connect',
   'social:publish',
   'analytics:read',
+  // Start external analytics syncs (Phase 6H). Reading stays analytics:read.
+  'analytics:sync',
   'audit:read',
   // Budget controls (Phase 5E.1). Org-level ceilings are an org-admin concern,
   // so they are deliberately absent from workspace-scoped role bundles.

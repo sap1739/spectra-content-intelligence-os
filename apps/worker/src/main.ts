@@ -3,6 +3,13 @@ import { hostname } from 'node:os';
 import { resolve } from 'node:path';
 
 import { AnthropicTextGenerationProvider } from '@spectra/ai-anthropic';
+import {
+  ANALYTICS_ADAPTER_PLATFORMS,
+  claimDueAnalyticsSyncs,
+  createAnalyticsProviderResolver,
+  executeAnalyticsSync,
+  measuredEngagementForTopic,
+} from '@spectra/analytics-pipeline';
 import { VoyageEmbeddingProvider } from '@spectra/ai-voyage';
 import { BraveNewsSearchProvider, BraveWebSearchProvider } from '@spectra/research-brave';
 import { ResearchProviderRegistry } from '@spectra/research-core';
@@ -180,6 +187,14 @@ async function main(): Promise<void> {
   // One ledger for every metered operation this worker performs (Phase 5D).
   const usage = new PrismaUsageRecorder(prisma, logger);
 
+  // Trend scoring reads measured engagement from stored platform analytics
+  // (ADR-0039). No snapshots for a topic = the signal is unavailable and the
+  // score stays research-only — never zero engagement.
+  const measuredEngagement = (
+    scope: { organizationId: string; workspaceId: string },
+    topicKey: string,
+  ) => measuredEngagementForTopic(prisma, scope, topicKey);
+
   // Document extraction (Phase 5G): first-party, no external service, so it is
   // always available — discovered PDFs/DOCX/TXT stop being snippet-only.
   const documentExtractor = new FirstPartyDocumentExtractor();
@@ -217,6 +232,7 @@ async function main(): Promise<void> {
           providerRegistry,
           documentExtractor,
           usage,
+          measuredEngagement,
           logger: jobLogger,
         },
         {
@@ -274,6 +290,7 @@ async function main(): Promise<void> {
           providerRegistry,
           documentExtractor,
           usage,
+          measuredEngagement,
           logger: jobLogger,
         },
         {
@@ -427,6 +444,102 @@ async function main(): Promise<void> {
     { concurrency: 3, timeoutMs: 2 * 60_000 },
   );
 
+  // External analytics (ADR-0039). Providers read through the same sealed
+  // connections as publishing; an account without an adapter, a connection or
+  // a scope resolves to an honest UNAVAILABLE with the reason — nothing is
+  // estimated in its place.
+  const resolveAnalyticsProvider = createAnalyticsProviderResolver({
+    prisma,
+    ring: socialRing,
+    youtube: {
+      api: youTubeApiOptionsFromEnv(env),
+      oauth: youtubeOAuth.configured ? youtubeOAuth.config : null,
+      analyticsApiBaseUrl: env.YOUTUBE_ANALYTICS_API_BASE_URL,
+    },
+    linkedin: {
+      api: linkedInApiOptionsFromEnv(env),
+      oauth: linkedinOAuth.configured ? linkedinOAuth.config : null,
+    },
+    meta: {
+      api: metaGraphOptionsFromEnv(
+        env,
+        facebookOAuth.configured ? facebookOAuth.config.clientSecret : null,
+      ),
+    },
+    logger,
+  });
+  const analyticsDeps = {
+    prisma,
+    resolveProvider: resolveAnalyticsProvider,
+    usage,
+    staleAfterMs: env.ANALYTICS_STALE_AFTER_HOURS * 3_600_000,
+  };
+
+  // One sync attempt. A rate-limited or transiently failed run comes back with
+  // `nextAttemptAt`, and a delayed job retries it then (the dispatcher below is
+  // the safety net if that job is lost).
+  runtime.register<{ runId: string }, unknown>(
+    JOB_NAMES.analyticsSyncExecute,
+    instrument('analytics.sync.execute', async (envelope, context) => {
+      const jobLogger = withCorrelation(logger, context.correlationId);
+      const outcome = await executeAnalyticsSync(
+        { ...analyticsDeps, logger: jobLogger },
+        { runId: envelope.payload.runId },
+      );
+      if (outcome.nextAttemptAt) {
+        await queue.enqueue(
+          JOB_NAMES.analyticsSyncExecute,
+          { runId: outcome.runId },
+          {
+            delayMs: Math.max(0, outcome.nextAttemptAt.getTime() - Date.now()),
+            idempotencyKey: `analytics-${outcome.runId}-${outcome.nextAttemptAt.getTime()}`,
+            ...(envelope.tenant ? { tenant: envelope.tenant } : {}),
+          },
+        );
+      }
+      return outcome;
+    }),
+    { concurrency: 2, timeoutMs: 10 * 60_000 },
+  );
+
+  // Due analytics runs: retries whose backoff elapsed, and — only when
+  // ANALYTICS_SCHEDULED_SYNC_ENABLED — one scheduled run per workspace per
+  // interval. Off by default, because every sync spends platform quota.
+  runtime.register(
+    JOB_NAMES.analyticsSyncDispatch,
+    async (_envelope, context) => {
+      const runIds = await claimDueAnalyticsSyncs(prisma, new Date(), {
+        scheduled: env.ANALYTICS_SCHEDULED_SYNC_ENABLED,
+        intervalMs: env.ANALYTICS_SYNC_INTERVAL_MINUTES * 60_000,
+        platforms: [...ANALYTICS_ADAPTER_PLATFORMS],
+      });
+      for (const runId of runIds) {
+        await queue.enqueue(
+          JOB_NAMES.analyticsSyncExecute,
+          { runId },
+          { idempotencyKey: `analytics-dispatch-${runId}-${Math.floor(Date.now() / 60_000)}` },
+        );
+      }
+      if (runIds.length > 0) {
+        withCorrelation(logger, context.correlationId).info(
+          { dispatched: runIds.length },
+          'Dispatched due analytics syncs',
+        );
+      }
+      return { dispatched: runIds.length };
+    },
+    { concurrency: 1, timeoutMs: 60_000 },
+  );
+  logger.info(
+    {
+      scheduledAnalytics: env.ANALYTICS_SCHEDULED_SYNC_ENABLED,
+      intervalMinutes: env.ANALYTICS_SYNC_INTERVAL_MINUTES,
+    },
+    env.ANALYTICS_SCHEDULED_SYNC_ENABLED
+      ? 'Scheduled analytics sync enabled'
+      : 'Scheduled analytics sync disabled (ANALYTICS_SCHEDULED_SYNC_ENABLED) — manual syncs only',
+  );
+
   // Backfill: re-embed a workspace's chunks into the ACTIVE collection. Needed
   // when the embedding model changes, otherwise search would point at a new,
   // empty collection and silently return nothing for existing findings.
@@ -469,6 +582,8 @@ async function main(): Promise<void> {
   await queue.schedule(JOB_NAMES.publicationDispatch, {}, { everyMs: 60_000 });
   // Sweep expired budget holds every five minutes.
   await queue.schedule(JOB_NAMES.budgetReservationSweep, {}, { everyMs: 5 * 60_000 });
+  // Look for due analytics runs (retries, and scheduled syncs when enabled) every five minutes.
+  await queue.schedule(JOB_NAMES.analyticsSyncDispatch, {}, { everyMs: 5 * 60_000 });
 
   // Immediate first beat so readiness sees the worker without waiting a cycle.
   await queue.enqueue(

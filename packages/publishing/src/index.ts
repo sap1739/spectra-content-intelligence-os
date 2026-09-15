@@ -13,6 +13,7 @@ export {
   createMediaLoader,
   createMediaUrlSigner,
   createPublisherResolver,
+  openConnection,
   publicMediaLinkProblem,
 } from './resolver';
-export type { PublisherResolverDeps } from './resolver';
+export type { ConnectionDeps, PublisherResolverDeps } from './resolver';

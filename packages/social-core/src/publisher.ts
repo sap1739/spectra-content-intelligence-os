@@ -1,6 +1,4 @@
 import type {
-  AnalyticsRequest,
-  AnalyticsResult,
   MediaUploadRequest,
   MediaUploadResult,
   PlatformCapability,
@@ -41,8 +39,9 @@ export interface SocialPublisher {
   deletePost?(externalPostId: string, tenant: TenantScope): Promise<void>;
 
   // --- Analytics & engagement -------------------------------------------------
-  /** Optional: only when capabilities.supports.analytics is true. */
-  fetchAnalytics?(request: AnalyticsRequest): Promise<AnalyticsResult>;
+  // Analytics are NOT part of this port. They are read through the
+  // AnalyticsProvider port in @spectra/analytics-core (ADR-0039), which keeps
+  // an unavailable metric separate from a zero.
   /** Optional: only when capabilities.supports.comments is true. */
   fetchComments?(externalPostId: string, tenant: TenantScope): Promise<SocialComment[]>;
 

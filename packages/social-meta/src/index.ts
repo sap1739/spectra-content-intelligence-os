@@ -27,3 +27,11 @@ export { MetaAccountDiscovery } from './discovery';
 export { FacebookPagePublisher, InstagramPublisher } from './publisher';
 export type { ContainerLedger, InstagramPublisherOptions, MetaPublisherOptions } from './publisher';
 export { metaGraphOptionsFromEnv, registerMetaAdapters } from './register';
+export {
+  META_ANALYTICS_PROVIDER_ID,
+  META_ANALYTICS_SCOPES,
+  MetaAnalyticsProvider,
+  describeMetaAnalytics,
+  metaAnalyticsSpecs,
+  type MetaAnalyticsProviderOptions,
+} from './analytics';

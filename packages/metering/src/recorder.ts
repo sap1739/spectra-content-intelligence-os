@@ -17,7 +17,8 @@ export type UsageKind =
   | 'CONTENT_DRAFT'
   | 'DOCUMENT_EXTRACTION'
   | 'MEDIA_RENDER'
-  | 'PUBLISH_ATTEMPT';
+  | 'PUBLISH_ATTEMPT'
+  | 'ANALYTICS_SYNC';
 
 /** Every kind that can be capped by a per-operation monthly limit. */
 export const USAGE_KINDS = [
@@ -31,6 +32,7 @@ export const USAGE_KINDS = [
   'DOCUMENT_EXTRACTION',
   'MEDIA_RENDER',
   'PUBLISH_ATTEMPT',
+  'ANALYTICS_SYNC',
 ] as const satisfies readonly UsageKind[];
 
 export interface UsageRecord {

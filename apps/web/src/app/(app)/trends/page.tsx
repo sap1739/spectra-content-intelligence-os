@@ -143,7 +143,9 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
   const negative = value < 0;
   return (
     <div className="flex items-center gap-2 text-xs">
-      <span className="w-36 shrink-0 truncate text-muted-foreground">{label}</span>
+      <span className="w-56 shrink-0 truncate text-muted-foreground" title={label}>
+        {label}
+      </span>
       <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
         <div
           className={negative ? 'h-full bg-destructive/70' : 'h-full bg-primary/80'}
@@ -157,6 +159,13 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
     </div>
   );
 }
+
+/** Where each score component came from (ADR-0039): an estimate is never shown as a measurement. */
+const SIGNAL_SOURCE_LABEL: Record<string, string> = {
+  ESTIMATED: 'estimated',
+  FIRST_PARTY_MEASURED: 'first-party measured',
+  EXTERNAL_MEASURED: 'platform measured',
+};
 
 function TrendCard({ trend }: { trend: TrendRow }) {
   const [expanded, setExpanded] = React.useState(false);
@@ -187,9 +196,19 @@ function TrendCard({ trend }: { trend: TrendRow }) {
                 {score.components.map((component) => (
                   <ScoreBar
                     key={component.key}
-                    label={component.key}
+                    label={
+                      component.source
+                        ? `${component.key} · ${SIGNAL_SOURCE_LABEL[component.source]}`
+                        : component.key
+                    }
                     value={component.weightedValue}
                   />
+                ))}
+                {(score.unavailableSignals ?? []).map((signal) => (
+                  <p key={signal.key} className="text-xs text-muted-foreground">
+                    <span className="font-medium">{signal.key}</span> · unavailable — not counted,
+                    not treated as zero: {signal.detail}
+                  </p>
                 ))}
                 {score.explanation.riskFlags.length > 0 ? (
                   <ul className="mt-1 flex flex-col gap-1">

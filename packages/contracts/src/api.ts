@@ -628,6 +628,7 @@ export const usageKindSchema = z.enum([
   'DOCUMENT_EXTRACTION',
   'MEDIA_RENDER',
   'PUBLISH_ATTEMPT',
+  'ANALYTICS_SYNC',
 ]);
 export type UsageKindName = z.infer<typeof usageKindSchema>;
 

@@ -123,6 +123,12 @@ export interface PublisherResolverDeps {
   now?: () => Date;
 }
 
+/**
+ * What opening a connection's token needs — shared by publishing and the
+ * analytics sync (ADR-0039), which read through the same sealed connections.
+ */
+export type ConnectionDeps = Pick<PublisherResolverDeps, 'prisma' | 'ring' | 'logger' | 'now'>;
+
 function unavailable(
   status: PublisherUnavailable['status'],
   reason: string,
@@ -380,6 +386,8 @@ interface RefreshCopy {
   noRefreshToken: string;
   /** Which client credentials the worker is missing. */
   missingOAuthEnv: string;
+  /** What did not happen because of it (default: "Nothing was published."). */
+  consequence?: string;
 }
 
 /**
@@ -391,7 +399,7 @@ interface RefreshCopy {
  * declaring the connection dead.
  */
 async function refreshConnectionToken(
-  deps: PublisherResolverDeps,
+  deps: ConnectionDeps,
   copy: RefreshCopy,
   ring: KeyRing,
   account: PublishAccount,
@@ -403,6 +411,7 @@ async function refreshConnectionToken(
     connection.accessTokenExpiresAt !== null && connection.accessTokenExpiresAt <= now;
   const expiredOn = connection.accessTokenExpiresAt?.toISOString().slice(0, 10);
   const scope = { id: connection.id, organizationId: account.organizationId };
+  const consequence = copy.consequence ?? 'Nothing was published.';
 
   if (!connection.hasRefreshToken || !bundle.refreshToken) {
     if (!expired) return { accessToken: bundle.accessToken };
@@ -412,7 +421,7 @@ async function refreshConnectionToken(
     });
     return unavailable(
       'FAILED',
-      `The ${copy.name} authorization expired on ${expiredOn}, and ${copy.noRefreshToken} Reconnect ${copy.name}. Nothing was published.`,
+      `The ${copy.name} authorization expired on ${expiredOn}, and ${copy.noRefreshToken} Reconnect ${copy.name}. ${consequence}`,
       'REAUTH_REQUIRED',
     );
   }
@@ -420,7 +429,7 @@ async function refreshConnectionToken(
     if (!expired) return { accessToken: bundle.accessToken };
     return unavailable(
       'FAILED',
-      `The ${copy.name} authorization expired and ${copy.name} OAuth is not configured on the worker (${copy.missingOAuthEnv}), so it cannot be refreshed. Nothing was published.`,
+      `The ${copy.name} authorization expired and ${copy.name} OAuth is not configured on the worker (${copy.missingOAuthEnv}), so it cannot be refreshed. ${consequence}`,
       'REAUTH_REQUIRED',
     );
   }
@@ -451,7 +460,7 @@ async function refreshConnectionToken(
     });
     deps.logger?.info(
       { connectionId: connection.id, platform: account.platform },
-      'Refreshed the connection token before publishing',
+      'Refreshed the connection token before using it',
     );
     return { accessToken: tokens.accessToken };
   } catch (error) {
@@ -474,14 +483,14 @@ async function refreshConnectionToken(
       });
       return unavailable(
         'FAILED',
-        `${copy.name} rejected the refresh token (revoked or expired). Reconnect ${copy.name}. Nothing was published.`,
+        `${copy.name} rejected the refresh token (revoked or expired). Reconnect ${copy.name}. ${consequence}`,
         'REAUTH_REQUIRED',
       );
     }
     if (!expired) return { accessToken: bundle.accessToken };
     return unavailable(
       'FAILED',
-      `${copy.name} could not be reached to refresh the authorization (${error.code}). Try again. Nothing was published.`,
+      `${copy.name} could not be reached to refresh the authorization (${error.code}). Try again. ${consequence}`,
       'TRANSIENT',
     );
   }
@@ -971,8 +980,8 @@ function handleOf(account: PublishAccount): string | null {
  * a token opened for this one publish (refreshed first where the platform
  * issues refresh tokens).
  */
-async function openConnection(
-  deps: PublisherResolverDeps,
+export async function openConnection(
+  deps: ConnectionDeps,
   account: PublishAccount,
   spec: {
     platform: SocialPlatform;
@@ -984,16 +993,22 @@ async function openConnection(
     missingOAuthEnv: string;
     wrongKind: string;
     idPattern: RegExp;
+    /** What does not happen when the connection cannot be used (default: "Nothing was published."). */
+    consequence?: string;
+    /** Verb for the scope refusal (default: "Publishing to"). */
+    purpose?: string;
   },
 ): Promise<
   | { accessToken: string; grantedScopes: string[] | null; connectionId: string }
   | PublisherUnavailable
 > {
   const now = (deps.now ?? (() => new Date()))();
+  const consequence = spec.consequence ?? 'Nothing was published.';
+  const forPublishing = spec.consequence === undefined;
   if (!account.connectionId || !spec.idPattern.test(account.externalAccountId)) {
     return unavailable(
       'UNSUPPORTED',
-      `This ${spec.name} target was registered by hand, not connected through ${spec.name}. Connect ${spec.name} on Social Accounts and publish to a discovered account. Nothing was published.`,
+      `This ${spec.name} target was registered by hand, not connected through ${spec.name}. Connect ${spec.name} on Social Accounts and ${forPublishing ? 'publish to' : 'use'} a discovered account. ${consequence}`,
       'NOT_CONNECTED',
     );
   }
@@ -1004,7 +1019,7 @@ async function openConnection(
   if (!ring) {
     return unavailable(
       'UNSUPPORTED',
-      `Credential storage is not configured on the worker (SOCIAL_TOKEN_ENCRYPTION_KEY), so the ${spec.name} token cannot be read. Nothing was published.`,
+      `Credential storage is not configured on the worker (SOCIAL_TOKEN_ENCRYPTION_KEY), so the ${spec.name} token cannot be read. ${consequence}`,
       'NOT_CONNECTED',
     );
   }
@@ -1031,14 +1046,14 @@ async function openConnection(
   if (!connection || connection.disconnectedAt || !connection.encryptedCredential) {
     return unavailable(
       'UNSUPPORTED',
-      `The ${spec.name} connection behind this target was disconnected. Reconnect ${spec.name} to publish. Nothing was published.`,
+      `The ${spec.name} connection behind this target was disconnected. Reconnect ${spec.name} to ${forPublishing ? 'publish' : 'use it'}. ${consequence}`,
       'NOT_CONNECTED',
     );
   }
   if (connection.status === 'REAUTH_REQUIRED' || connection.status === 'REVOKED') {
     return unavailable(
       'FAILED',
-      `${spec.name} needs to be reconnected: it rejected this authorization. Nothing was published.`,
+      `${spec.name} needs to be reconnected: it rejected this authorization. ${consequence}`,
       'REAUTH_REQUIRED',
     );
   }
@@ -1050,7 +1065,7 @@ async function openConnection(
   if (missing.length > 0) {
     return unavailable(
       'FAILED',
-      `Publishing to ${spec.name} needs ${missing.join(', ')}, which this connection was not granted. Reconnect ${spec.name} and allow it. Nothing was published.`,
+      `${spec.purpose ?? 'Publishing to'} ${spec.name} needs ${missing.join(', ')}, which this connection was not granted. Reconnect ${spec.name} and allow it. ${consequence}`,
       'PERMISSION',
     );
   }
@@ -1061,7 +1076,7 @@ async function openConnection(
   } catch {
     return unavailable(
       'FAILED',
-      `The stored ${spec.name} credential could not be decrypted with the configured keys. Reconnect ${spec.name}. Nothing was published.`,
+      `The stored ${spec.name} credential could not be decrypted with the configured keys. Reconnect ${spec.name}. ${consequence}`,
       'REAUTH_REQUIRED',
     );
   }
@@ -1076,6 +1091,7 @@ async function openConnection(
         oauth: spec.oauth,
         noRefreshToken: spec.noRefreshToken,
         missingOAuthEnv: spec.missingOAuthEnv,
+        consequence,
       },
       ring,
       account,

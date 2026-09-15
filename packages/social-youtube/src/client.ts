@@ -186,6 +186,27 @@ export class YouTubeClient {
   }
 
   /**
+   * A YouTube Analytics API report (`GET /v2/reports`). It lives on its own
+   * host (youtubeanalytics.googleapis.com), so the base is passed in; the same
+   * bearer token, timeout and error handling apply.
+   */
+  async analyticsReport<T>(
+    analyticsApiBaseUrl: string,
+    params: Record<string, string>,
+  ): Promise<T> {
+    const url = new URL(`${analyticsApiBaseUrl.replace(/\/+$/, '')}/v2/reports`);
+    for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+    const { status, body } = await this.send(
+      url.toString(),
+      { method: 'GET', headers: this.headers() },
+      this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+      false,
+    );
+    if (status >= 400) throw errorFrom(status, body, this.accessToken);
+    return body as T;
+  }
+
+  /**
    * Starts a resumable upload: the metadata goes in the body, the file's size
    * and type in headers, and Google answers with the session URI.
    */

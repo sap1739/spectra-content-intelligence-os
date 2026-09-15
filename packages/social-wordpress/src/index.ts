@@ -177,3 +177,11 @@ function errText(err: unknown): string {
   if (err instanceof Error) return err.message;
   return String(err);
 }
+
+export {
+  WORDPRESS_ANALYTICS_PROVIDER_ID,
+  WORDPRESS_ANALYTICS_SPECS,
+  WordPressAnalyticsProvider,
+  describeWordPressAnalytics,
+  type WordPressAnalyticsOptions,
+} from './analytics';

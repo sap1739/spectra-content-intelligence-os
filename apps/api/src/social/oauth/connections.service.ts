@@ -1,3 +1,4 @@
+import { hasAnalyticsAdapter } from '@spectra/analytics-pipeline';
 import { Injectable, Logger } from '@nestjs/common';
 import type {
   OAuthPlatform,
@@ -797,7 +798,7 @@ export class ConnectionsService {
       capabilities: resolveConnectionCapabilities(definition, grantedScopes, {
         discovery: accountDiscoveryRegistry.isWired(row.platform),
         publish: socialPublisherRegistry.isWired(row.platform),
-        analytics: false,
+        analytics: hasAnalyticsAdapter(row.platform),
       }),
       declared: getPlatformCapability(row.platform),
       approval: definition.approval,

@@ -37,6 +37,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'social:connect',
     'social:publish',
     'analytics:read',
+    'analytics:sync',
     'audit:read',
   ],
   RESEARCHER: [
@@ -101,8 +102,16 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'social:connect',
     'social:publish',
     'analytics:read',
+    'analytics:sync',
   ],
-  ANALYST: ['content:read', 'campaign:read', 'trend:read', 'research:read', 'analytics:read'],
+  ANALYST: [
+    'content:read',
+    'campaign:read',
+    'trend:read',
+    'research:read',
+    'analytics:read',
+    'analytics:sync',
+  ],
   CLIENT_REVIEWER: ['content:read', 'content:review', 'campaign:read'],
   READ_ONLY: [
     'brand:read',

@@ -42,6 +42,7 @@ export const ALL_PERMISSIONS = [
   'social:connect',
   'social:publish',
   'analytics:read',
+  'analytics:sync',
   'audit:read',
   'ops:read',
   'ops:retry',
@@ -466,4 +467,170 @@ export async function gotoAuthenticated(page: Page, path: string): Promise<void>
     WORKSPACE_ID,
   );
   await page.goto(path);
+}
+
+// ---------------------------------------------------------------------------
+// External analytics (Phase 6H)
+// ---------------------------------------------------------------------------
+
+const freshness = (state: 'FRESH' | 'STALE' | 'NEVER_SYNCED') => ({
+  state,
+  retrievedAt: state === 'NEVER_SYNCED' ? null : new Date(Date.now() - 20 * 60_000).toISOString(),
+  staleAfter: null,
+  dataAsOf: null,
+  note: null,
+});
+
+export function analyticsOverview(externalAvailable: boolean) {
+  return {
+    source: 'FIRST_PARTY_MEASURED',
+    content: {
+      total: 4,
+      byLifecycleState: { PUBLISHED: 3, DRAFT: 1 },
+      published: 3,
+      awaitingReview: 0,
+    },
+    drafts: { total: 2, byStatus: { READY: 2 } },
+    publications: { total: 3, byStatus: { PUBLISHED: 3 }, unsupported: 0 },
+    research: { runs: 1, runsByStatus: { SUCCEEDED: 1 }, findings: 5, evidencePacksReady: 1 },
+    trends: { total: 0, byState: {} },
+    engagement: { externalAvailable, note: 'n/a' },
+    generatedAt: '2026-09-14T10:00:00.000Z',
+  };
+}
+
+const aggregate = (key: string, value: number | null, extra: Record<string, unknown> = {}) => ({
+  key,
+  unit: key === 'engagementRate' ? 'RATIO' : 'COUNT',
+  value,
+  completeness: value === null ? 'UNAVAILABLE' : 'EXACT',
+  contributing: value === null ? 0 : 2,
+  unavailable: value === null ? 3 : 1,
+  unavailableReason: value === null ? 'NOT_EXPOSED_BY_PLATFORM' : null,
+  detail: value === null ? 'No snapshot reported likes.' : null,
+  ...extra,
+});
+
+export function analyticsSummary(externalAvailable: boolean) {
+  return {
+    source: 'EXTERNAL_MEASURED',
+    externalAvailable,
+    publishedPosts: 3,
+    postsWithSnapshots: externalAvailable ? 2 : 0,
+    postsWithMeasuredValues: externalAvailable ? 2 : 0,
+    postsWithoutAnalytics: externalAvailable ? 1 : 3,
+    accountsWithSnapshots: externalAvailable ? 1 : 0,
+    content: externalAvailable
+      ? [
+          aggregate('views', 5200),
+          aggregate('impressions', null, {
+            unavailableReason: 'NOT_IMPLEMENTED',
+            detail: 'No snapshot reported impressions.',
+          }),
+          aggregate('likes', null),
+          aggregate('comments', 0),
+          aggregate('shares', 17),
+          aggregate('engagementRate', 0.0431, { completeness: 'DERIVED' }),
+        ]
+      : [aggregate('views', null), aggregate('likes', null)],
+    followers: aggregate(
+      'followers',
+      externalAvailable ? 12300 : null,
+      externalAvailable ? { completeness: 'APPROXIMATE' } : {},
+    ),
+    byPlatform: [],
+    freshness: freshness(externalAvailable ? 'FRESH' : 'NEVER_SYNCED'),
+    lastRun: null,
+    note: 'No external analytics yet. Connect a platform with an analytics adapter and run a sync — nothing is estimated in their place.',
+  };
+}
+
+export function analyticsAvailability() {
+  const capability = { metrics: [], summary: 's' };
+  return {
+    note: 'n/a',
+    accounts: [
+      {
+        socialAccountId: 'a1',
+        platform: 'YOUTUBE',
+        kind: 'CHANNEL',
+        displayName: 'Acme Coffee',
+        availability: 'PARTIAL',
+        reason:
+          'Some metrics are readable. Missing: https://www.googleapis.com/auth/yt-analytics.readonly.',
+        capability,
+        freshness: freshness('FRESH'),
+      },
+      {
+        socialAccountId: 'a2',
+        platform: 'TIKTOK',
+        kind: 'PROFILE',
+        displayName: '@acme',
+        availability: 'NOT_IMPLEMENTED',
+        reason: 'Not implemented. No TikTok analytics adapter exists yet.',
+        capability,
+        freshness: freshness('NEVER_SYNCED'),
+      },
+    ],
+  };
+}
+
+export function contentAnalytics() {
+  const metric = (key: string, value: number | null, extra: Record<string, unknown> = {}) => ({
+    key,
+    sourceMetricName: value === null ? null : `statistics.${key}Count`,
+    value,
+    unit: key === 'watchTimeMinutes' ? 'MINUTES' : 'COUNT',
+    completeness: value === null ? 'UNAVAILABLE' : 'EXACT',
+    unavailableReason: value === null ? 'MISSING_SCOPE' : null,
+    detail:
+      value === null
+        ? 'Needs https://www.googleapis.com/auth/yt-analytics.readonly, which this connection was not granted.'
+        : null,
+    ...extra,
+  });
+  return {
+    item: {
+      id: 'item-1',
+      title: 'Quarterly roast report',
+      lifecycleState: 'PUBLISHED',
+      campaignId: null,
+    },
+    source: 'EXTERNAL_MEASURED',
+    entries: [
+      {
+        scheduleEntryId: 'e1',
+        platform: 'YOUTUBE',
+        status: 'PUBLISHED',
+        externalUrl: 'https://www.youtube.com/watch?v=vid_abcdefgh',
+        publishedAt: '2026-09-10T10:00:00.000Z',
+        latest: {
+          id: 's1',
+          level: 'CONTENT',
+          providerId: 'youtube-data-v3+analytics-v2',
+          attribution: {},
+          completeness: 'PARTIAL',
+          retrievedAt: new Date().toISOString(),
+          freshness: freshness('FRESH'),
+          metrics: [metric('views', 4200), metric('comments', 0), metric('watchTimeMinutes', null)],
+          notes: [],
+          syncRunId: 'r1',
+        },
+        history: [],
+        freshness: freshness('FRESH'),
+        unavailableReason: null,
+      },
+      {
+        scheduleEntryId: 'e2',
+        platform: 'TIKTOK',
+        status: 'PUBLISHED',
+        externalUrl: null,
+        publishedAt: '2026-09-11T10:00:00.000Z',
+        latest: null,
+        history: [],
+        freshness: freshness('NEVER_SYNCED'),
+        unavailableReason: 'Not implemented. No TikTok analytics adapter exists yet.',
+      },
+    ],
+  };
 }

@@ -308,7 +308,45 @@ These are NULL for web-page citations, which have no internal structure.
 No new tables: extracted text flows into the existing `document_chunks` and snapshot storage, so
 tenant isolation, embedding-collection pairing and budget pre-flight all apply unchanged.
 
-## 12. Future entities
+## 12. Phase 6H external analytics (ADR-0039)
+
+Migration `20260914043605_phase6h_external_analytics`. Three tables, all tenant-guarded
+(`AnalyticsSyncRun`, `AnalyticsSnapshot`, `AnalyticsMetricValue` are in `TENANT_SCOPED_MODELS`), plus
+`UsageKind.ANALYTICS_SYNC` (a counter-only kind, so a per-kind operation limit can cap syncs).
+
+- **`analytics_sync_runs`** — one requested sync: `trigger` (MANUAL/SCHEDULED), `target`
+  (WORKSPACE/SOCIAL_ACCOUNT/SCHEDULE_ENTRY) with optional `socialAccountId`/`scheduleEntryId`,
+  `status` (`AnalyticsSyncStatus`: QUEUED, RUNNING, SUCCEEDED, PARTIAL, FAILED, UNAVAILABLE),
+  `idempotencyKey` (unique, workspace-namespaced), `attempt`/`maxAttempts`, `nextAttemptAt` (retry
+  due), per-outcome counts, `errorCode` + bounded, token-scrubbed `errorMessage`,
+  `retryAfterSeconds`, `results` (bounded JSON of per-target outcomes), `startedAt`/`finishedAt`.
+  Indexes: `(workspaceId, createdAt)` for the dashboard list, `(status, nextAttemptAt)` for the
+  retry dispatcher.
+- **`analytics_snapshots`** — what one platform reported about one account (`level` ACCOUNT) or one
+  published entry (CONTENT) at `retrievedAt`: `platform`, `providerId`, `socialAccountId`,
+  `scheduleEntryId`, `contentItemId`, `campaignId`, `externalAccountId`, `externalContentId`,
+  `publishedAt`, `completeness` (COMPLETE/PARTIAL/UNAVAILABLE), `staleAfter` (freshness), `dataAsOf`,
+  `providerMetadata` (allow-listed primitives, redacted twice), `notes`. `dedupeKey` (unique) = run +
+  level + account + entry, so a retried attempt rewrites its own snapshot. Snapshots are history;
+  "latest" is the newest per (level, account, entry). Indexes: `(workspaceId, level, retrievedAt)`,
+  `(scheduleEntryId, retrievedAt)`, `(contentItemId, retrievedAt)`, `(campaignId, retrievedAt)`,
+  `(socialAccountId, level, retrievedAt)`.
+- **`analytics_metric_values`** — one normalized metric per snapshot (`@@unique(snapshotId,
+metricKey)`): `metricKey`, `sourceMetricName` (the platform's own field), `value` (Float, NULL =
+  unavailable), `unit`, `completeness` (`AnalyticsMetricCompleteness`), `unavailableReason`
+  (`AnalyticsUnavailableReason`, 20 values), `detail`. Two `CHECK` constraints —
+  `analytics_metric_value_xor_reason` and `analytics_metric_unavailable_has_no_value` — make a
+  missing metric without a reason, or a value with one, impossible to store: a gap can never read
+  back as zero.
+
+**Deletion and disconnects.** Organization and workspace deletion cascade. Relations to social
+accounts, schedule entries, content items, campaigns and the sync run are `SET NULL`: removing one
+never deletes or re-attributes another tenant's history, and every read filters by
+`organizationId` and `workspaceId`. A soft-deleted (disconnected) account keeps its past snapshots
+and is excluded from new syncs. The only cross-tenant reads are the dispatcher's raw id scans
+(`claimDueAnalyticsSyncs`), which return ids only; every write after them is tenant-scoped.
+
+## 13. Future entities
 
 Remaining contract-only entities (angles, publications, workspace budgets, knowledge
 documents) are documented in [DOMAIN_MODEL.md](DOMAIN_MODEL.md) §6 and materialize in later

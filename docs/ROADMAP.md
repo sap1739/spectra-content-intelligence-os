@@ -101,7 +101,8 @@ providers.**
   API marks WordPress wired + validates credential format; web collects the credential
   (ADR-0022).
 - Next: live `AnalyticsProvider` adapters feeding `engagementPotential` trend-score calibration
-  and campaign reporting. Billing & usage metering.
+  and campaign reporting. Billing & usage metering. _(Analytics adapters delivered in 6H, as a
+  separate measured signal rather than a recalibration of the estimate.)_
 
 ## Phase 5 — Optimization & Scale
 
@@ -337,8 +338,23 @@ weakest link in the differentiator: research and evidence quality.
   discovery, since TikTok names a creator only in its token response. Tested against local
   stand-ins that enforce each documented rule; **none has been run against the real platform**
   (ADR-0038, `docs/REMAINING_PLATFORMS_LIVE_VERIFICATION.md`).
-- Next: run the four live-verification checklists against real apps (LinkedIn, Meta, YouTube and
-  the 6G four); video for the platforms that support it but are not implemented (LinkedIn Videos
+- ✅ **Increment H — external analytics.** Analytics read through the same connections publishing
+  uses, with a metric model where unavailable is never zero: every `null` carries a reason (schema,
+  adapters and database `CHECK` constraints), every value its completeness and the platform's own
+  field name, and engagement rate exists only with a reported denominator. Adapters for WordPress
+  (comment counts), YouTube (Data API statistics; Analytics API watch time, average view duration and
+  shares), LinkedIn (page share statistics; member post analytics) and Meta (followers; Page and
+  Instagram post insights, impressions reported as deprecated); TikTok, X, Threads and Pinterest are
+  explicitly not implemented and email unsupported. Missing analytics scopes are named per metric and
+  never requested. Idempotent, budget-checked, rate-limit-aware sync runs with backoff and an honest
+  `UNAVAILABLE` no-op; scheduled sync off by default. An Analytics page that separates first-party
+  from platform numbers, shows freshness, partial-data warnings and missing-scope states, and draws
+  no charts; content and campaign analytics pages; a permission-aware sync. Trend scoring gained a
+  measured-engagement component that never lowers a research score when analytics are missing.
+  Tested against local stand-ins; **none run against the real platforms** (ADR-0039,
+  `docs/ANALYTICS_LIVE_VERIFICATION.md`).
+- Next: run the live-verification checklists against real apps (LinkedIn, Meta, YouTube, the 6G
+  four, and analytics); video for the platforms that support it but are not implemented (LinkedIn Videos
   API, Facebook video, Instagram Reels, X and Threads video, TikTok photo posts); a background
   refresh sweep ahead of token expiry; a metrics endpoint on the worker; anchor-aware citation
   selection.

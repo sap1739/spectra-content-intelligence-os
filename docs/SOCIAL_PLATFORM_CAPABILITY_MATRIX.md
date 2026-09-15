@@ -1,9 +1,9 @@
 # Social Platform Capability Matrix
 
-**Status (Phase 6G):** Every platform except email now publishes for real: WordPress
+**Status (Phase 6H):** Every platform except email now publishes for real: WordPress
 (ADR-0022), LinkedIn (ADR-0035), Facebook Pages and Instagram professional accounts (ADR-0036),
-YouTube (ADR-0037), and TikTok, X, Threads and Pinterest (ADR-0038).
-professional accounts (ADR-0036) and YouTube channels (ADR-0037, video uploads) publish for real. LinkedIn publishes text and one image, as a
+YouTube (ADR-0037), and TikTok, X, Threads and Pinterest (ADR-0038). External analytics are read for
+WordPress, YouTube, LinkedIn, Facebook Pages and Instagram — see §9. LinkedIn publishes text and one image, as a
 member or as a page they administer; Facebook publishes text and one photo to Pages; Instagram
 publishes one JPEG image to professional accounts linked to a Page, through a Meta (Facebook)
 connection; YouTube uploads a video to a channel; TikTok posts one video to the creator that
@@ -215,3 +215,27 @@ Threads and Pinterest fetch images themselves, so they need object storage reach
 internet, exactly as Instagram does; without it those posts report that reason and Threads still
 posts text. Setup: `docs/REMAINING_PLATFORMS_SETUP.md`; the first real run:
 `docs/REMAINING_PLATFORMS_LIVE_VERIFICATION.md`.
+
+## 9. External analytics (Phase 6H, ADR-0039)
+
+What Spectra reads, per platform, from each platform's documented analytics APIs (checked
+2026-09-14). "≈" means the platform documents the value as approximate. Every metric not listed is
+reported as unavailable **with a reason** — never as zero. Full model: `docs/ANALYTICS_ARCHITECTURE.md`;
+setup: `docs/ANALYTICS_PROVIDER_SETUP.md`.
+
+| Platform        | Status              | With Spectra's default scopes                                    | Extra scope (not requested by default) → adds                                                                           | Approval                                      | Unavailable by platform or type                                             |
+| --------------- | ------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | --------------------------------------------------------------------------- |
+| WordPress       | **live**            | approved comments per post                                       | —                                                                                                                       | none                                          | views, likes, shares, followers (core records none; Jetpack not integrated) |
+| YouTube         | **live (partial)**  | per video: views, likes, comments; channel: views, subscribers ≈ | `yt-analytics.readonly` → watch time, average view duration, shares                                                     | Google OAuth verification                     | saves, reactions (likes only; dislikes private); impressions/reach not read |
+| LinkedIn page   | **scope required**  | nothing                                                          | `rw_organization_admin` → impressions, unique impressions, clicks, likes, comments, shares, engagement ratio            | Community Management API + ADMINISTRATOR role | saves, reactions, link clicks, video metrics; posts older than 12 months    |
+| LinkedIn member | **scope required**  | nothing                                                          | `r_member_postAnalytics` → impressions, reach, reactions, comments, reshares, saves, link clicks, profile views (all ≈) | Community Management API                      | likes separately, all clicks, video metrics                                 |
+| Facebook Page   | **live (partial)**  | Page followers                                                   | `read_insights` → per post: views, unique viewers ≈, clicks, reactions, likes                                           | Meta App Review                               | impressions (deprecated above Graph v25); comments and shares not read yet  |
+| Instagram (pro) | **live (partial)**  | followers                                                        | `instagram_manage_insights` → likes, comments, shares, saves, profile visits, reach ≈, views ≈                          | Meta App Review                               | impressions (deprecated for media after 2 July 2024), clicks, reactions     |
+| TikTok          | **not implemented** | —                                                                | (Display API counts exist; scope not requested)                                                                         | TikTok scope review                           | everything                                                                  |
+| X               | **not implemented** | —                                                                | (public and owner-only metrics exist; billed per call)                                                                  | paid API access                               | everything                                                                  |
+| Threads         | **not implemented** | —                                                                | (`threads_manage_insights` documents views, likes, replies, reposts, quotes, shares)                                    | Meta App Review                               | everything                                                                  |
+| Pinterest       | **not implemented** | —                                                                | (pin analytics exist; not verified for this release)                                                                    | Standard access                               | everything                                                                  |
+| Email           | **unsupported**     | —                                                                | —                                                                                                                       | —                                             | everything (no sending provider)                                            |
+
+Campaign analytics are Spectra's sum over a campaign's published posts on every platform — organic
+platform APIs have no campaign object. Reach and averages are never summed (`NOT_ADDITIVE`).
