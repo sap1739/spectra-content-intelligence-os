@@ -80,6 +80,9 @@ importers:
       '@spectra/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@spectra/design-studio':
+        specifier: workspace:*
+        version: link:../../packages/design-studio
       '@spectra/knowledge-core':
         specifier: workspace:*
         version: link:../../packages/knowledge-core
@@ -186,6 +189,9 @@ importers:
       '@types/node':
         specifier: ^22.15.0
         version: 22.20.0
+      sharp:
+        specifier: ^0.33.5
+        version: 0.33.5
       tsx:
         specifier: ^4.20.0
         version: 4.22.4
@@ -626,6 +632,28 @@ importers:
         specifier: ^3.2.0
         version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(jsdom@25.0.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0)
 
+  packages/design-studio:
+    dependencies:
+      '@spectra/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+    devDependencies:
+      '@types/node':
+        specifier: ^22.15.0
+        version: 22.20.0
+      sharp:
+        specifier: ^0.33.5
+        version: 0.33.5
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      unpdf:
+        specifier: ^1.8.1
+        version: 1.8.1
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(jsdom@25.0.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0)
+
   packages/document-extract:
     dependencies:
       '@spectra/contracts':
@@ -694,6 +722,9 @@ importers:
       '@spectra/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@spectra/design-studio':
+        specifier: workspace:*
+        version: link:../design-studio
     devDependencies:
       '@types/node':
         specifier: ^22.15.0
@@ -707,6 +738,9 @@ importers:
       '@spectra/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@spectra/design-studio':
+        specifier: workspace:*
+        version: link:../design-studio
       '@spectra/media-core':
         specifier: workspace:*
         version: link:../media-core

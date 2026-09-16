@@ -263,6 +263,25 @@ export class CalendarService {
       if (!thumbnail) throw new TenantIsolationError();
     }
 
+    // A design export may only be scheduled once its design is approved
+    // (ADR-0040): the approval covers exactly the files that were reviewed.
+    const attached = [asset?.id, thumbnail?.id].filter((id): id is string => Boolean(id));
+    if (attached.length > 0) {
+      const unapproved = await this.prisma.client.designRender.findFirst({
+        where: {
+          ...this.scope(tenant),
+          mediaAssetId: { in: attached },
+          design: { status: { notIn: ['APPROVED', 'PUBLISHED'] } },
+        },
+        select: { design: { select: { name: true, status: true } } },
+      });
+      if (unapproved) {
+        throw new UnprocessableEntityException(
+          `This file is an export of the design "${unapproved.design.name}", which is ${unapproved.design.status}. Approve the design before scheduling it.`,
+        );
+      }
+    }
+
     if (account) {
       const problems = this.targetProblems(account, item, asset, input.mediaAltText, {
         thumbnail,

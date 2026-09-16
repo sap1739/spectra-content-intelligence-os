@@ -8,13 +8,16 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   createBrandInputSchema,
   updateBrandInputSchema,
+  updateBrandKitInputSchema,
   type CreateBrandInput,
   type UpdateBrandInput,
+  type UpdateBrandKitInput,
 } from '@spectra/contracts';
 
 import { CurrentPrincipal, CurrentTenant, RequirePermissions } from '../auth/decorators';
@@ -62,6 +65,21 @@ export class BrandsController {
     @CurrentPrincipal() principal: Principal,
   ) {
     return this.brands.update(tenant, principal, id, body);
+  }
+
+  @Put(':id/kit')
+  @RequirePermissions('brand:write')
+  @ApiOperation({
+    summary:
+      'Set the brand kit: logo, colours, fonts, tagline, visual style and offerings (Phase 7A)',
+  })
+  updateKit(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(updateBrandKitInputSchema)) body: UpdateBrandKitInput,
+    @CurrentTenant() tenant: TenantContext,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    return this.brands.updateKit(tenant, principal, id, body);
   }
 
   @Delete(':id')

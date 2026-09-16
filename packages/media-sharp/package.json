@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@spectra/contracts": "workspace:*",
+    "@spectra/design-studio": "workspace:*",
     "@spectra/media-core": "workspace:*",
     "@spectra/storage": "workspace:*",
     "sharp": "^0.33.5"

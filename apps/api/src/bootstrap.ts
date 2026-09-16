@@ -71,7 +71,10 @@ export async function createApp(env: ApiEnv): Promise<NestFastifyApplication> {
   app.enableCors({
     origin: env.API_CORS_ORIGIN,
     credentials: true,
-    exposedHeaders: [CORRELATION_HEADER],
+    // A browser can only read these on a cross-origin response. The design
+    // preview carries its page count and render warnings in headers, and the
+    // editor must be able to show them (ADR-0040).
+    exposedHeaders: [CORRELATION_HEADER, 'x-design-page-count', 'x-design-warnings'],
   });
 
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });

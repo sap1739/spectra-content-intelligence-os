@@ -78,6 +78,10 @@ function fakePrisma(entry: { status: string; platform?: string; mediaAssetId?: s
       findUnique: vi.fn(async () => ({ title: 'Hello', body: '<p>World</p>' })),
       update: vi.fn(async () => ({})),
     },
+    // A published export moves its design to PUBLISHED (ADR-0040).
+    design: {
+      updateMany: vi.fn(async () => ({ count: 0 })),
+    },
   };
   // Publishing reserves atomically (ADR-0029): the fake must model the
   // transaction boundary the executor now relies on.

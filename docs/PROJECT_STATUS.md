@@ -1,7 +1,7 @@
 # SpectraContent Intelligence OS — Project Status
 
-**Snapshot date:** 2026-09-15 · **Branch:** `main`
-**Status:** Phases 1–5 complete · Phase 6 in progress (6A–6H shipped)
+**Snapshot date:** 2026-09-16 · **Branch:** `main`
+**Status:** Phases 1–5 complete · Phase 6 complete (6A–6H shipped) · Phase 7 in progress (7A shipped)
 
 > This document is a factual, audited snapshot intended as context for planning further work.
 > Every number below was measured from the repository, not estimated.
@@ -125,8 +125,9 @@ ai-voyage/        Voyage adapter for EmbeddingProvider, env-gated        [Phase 
 content-pipeline/ Evidence-grounded drafting with prompt isolation
 claim-verification/ Corroboration, contradiction, staleness, eligibility  [Phase 5H]
 document-extract/ PDF/DOCX/TXT extraction with citation anchors           [Phase 5G]
-media-core/       Rendering ports (image/video/audio/subtitles)
-media-sharp/      Real sharp ImageRenderer adapter
+media-core/       Rendering ports (image/video/audio/subtitles/design)
+media-sharp/      Real sharp ImageRenderer + DesignRenderer adapters            [Phase 3/7A]
+design-studio/    Template layout model, render planner, raster PDF writer      [Phase 7A]
 social-core/      SocialPublisher + PostPublisher + account-discovery ports, capability matrix
 social-oauth/     Provider-neutral OAuth broker: state, PKCE, tokens, sealed bundles [Phase 6C]
 social-linkedin/  Real LinkedIn adapter: discovery, Images API, Posts API (text + 1 image) [Phase 6D]
@@ -370,6 +371,32 @@ standards, health/readiness endpoints, OpenAPI at `/docs`.
   charts. Trend scoring gained `measuredEngagement` (EXTERNAL_MEASURED) beside the estimated
   `engagementPotential`; with no measured posts the signal is recorded as unavailable and the
   research score is unchanged (ADR-0039).
+- **7A:** **Visual template and design studio — real pixels, no generated imagery.** A flyer, a
+  poster, a carousel, a social image and a YouTube thumbnail are now produced by this codebase:
+  `SharpDesignRenderer` composites with libvips, draws Spectra's own rectangles through librsvg and
+  lays out text with Pango (word wrapping, real font metrics, uploaded TTF/OTF brand fonts). **No
+  image-generation API is wired**, and the capability response and the UI say so — the studio
+  arranges assets the workspace already uploaded. Templates are layout **data** in
+  `@spectra/contracts/design.ts` (normalized fractional boxes, brand colour roles, TEXT/IMAGE
+  fields, up to 40 layers a page), validated structurally by `validateTemplateLayout`; six built-ins
+  ship as code (quote card, announcement, three-page tips carousel, YouTube thumbnail, event flyer,
+  product spotlight) and a workspace can copy and edit any of them, with every design keeping a
+  snapshot of the layout it was made from. `buildRenderPlan` is pure and deterministic — it resolves
+  brand, tokens, fonts and pixel boxes, refuses every invalid field at once, and reports each
+  substitution as a named warning. Eleven output sizes (platform presets plus A4/A3/US Letter at
+  150 dpi), each stating where its number comes from; YouTube's documented 2 MB thumbnail limit is
+  met by stepping JPEG quality down and saying so. PDF export is a dependency-free PDF 1.4 writer
+  embedding each page JPEG via `/DCTDecode` — raster, described as raster everywhere. The brand kit
+  lives on `Brand` (logo, palette, typography, tagline, visual style, offerings); its assets must be
+  in the same workspace, checked on save and again at render, and SVG is refused as a logo. Exports
+  are ordinary tenant-rooted `MediaAsset`s under `renders/`, so the calendar, the publishing
+  adapters and the media library use them with no new plumbing; they are idempotent by `renderHash`
+  and take a `MEDIA_RENDER` budget pre-flight for their page count before any pixel is drawn.
+  Designs move DRAFT → IN_REVIEW → APPROVED → PUBLISHED, and the state is load-bearing: submitting
+  needs at least one export, the calendar refuses to schedule an export whose design is not
+  approved, and a successful publish marks the design published within that tenant only. The
+  integration suite proves the rendering by **decoding the stored bytes** — dimensions, format, PDF
+  page count, the brand's primary colour at a pixel, the thumbnail under 2 MB (ADR-0040).
 
 ---
 
@@ -382,6 +409,8 @@ standards, health/readiness endpoints, OpenAPI at `/docs`.
 | Brave (web + news search)                                                                  | **Real, working**                                                         | `BRAVE_SEARCH_API_KEY`                                                                                                                    |
 | WordPress (publishing)                                                                     | **Real, working**                                                         | Per-account credential + `SOCIAL_TOKEN_ENCRYPTION_KEY`                                                                                    |
 | sharp (image rendering)                                                                    | **Real, working**                                                         | none (local)                                                                                                                              |
+| Design studio rendering (PNG/JPEG pages, raster PDF) via sharp/libvips + Pango             | **Real, working** — bytes decoded and asserted in the integration suite   | none (local); uploaded TTF/OTF for guaranteed fonts, else the API host's installed fonts                                                  |
+| AI image generation                                                                        | **Not built, and not planned here** (ADR-0040)                            | the studio renders the workspace's own assets; no provider to configure                                                                   |
 | PostgreSQL / Redis / MinIO                                                                 | **Real, working**                                                         | docker-compose                                                                                                                            |
 | RSS/Atom ingestion                                                                         | **Real, working** (first-party parser)                                    | none                                                                                                                                      |
 | OAuth connect: LinkedIn, Facebook Pages, Instagram, Threads, YouTube, TikTok, X, Pinterest | **Real flow, when configured** (6C) — not yet run against a live platform | `SOCIAL_OAUTH_<PLATFORM>_CLIENT_ID/SECRET` + redirect base + `SOCIAL_TOKEN_ENCRYPTION_KEY`                                                |
@@ -470,21 +499,31 @@ platforms.
 
 | Check                | Result                                                 |
 | -------------------- | ------------------------------------------------------ |
-| `pnpm build`         | 42/42 tasks pass                                       |
-| `pnpm typecheck`     | 79/79 tasks pass                                       |
+| `pnpm build`         | 43/43 tasks pass                                       |
+| `pnpm typecheck`     | 81/81 tasks pass                                       |
 | `pnpm lint`          | pass                                                   |
 | `pnpm format`        | clean                                                  |
-| Unit tests           | **909 passing** across 37 packages/apps (incl. web 48) |
-| API integration      | **215 passing** (22 files)                             |
+| Unit tests           | **925 passing** across 38 packages/apps (incl. web 48) |
+| API integration      | **227 passing** (23 files)                             |
 | Pipeline integration | **95 passing** (11 files, `research-pipeline`)         |
 | Metering integration | **74 passing** (7 files)                               |
-| E2E (Playwright)     | **38 tests** (stubbed-API UI journeys)                 |
-| Prisma               | schema valid · 29 migrations · database up to date     |
+| E2E (Playwright)     | **41 tests** (stubbed-API UI journeys)                 |
+| Prisma               | schema valid · 30 migrations · database up to date     |
 
-Known flake (pre-existing, not introduced by 6B–6H): `budget-hardening.spec.ts` "concurrent
+Known flake 1 (pre-existing, not introduced by 6B–7A): `budget-hardening.spec.ts` "concurrent
 research-run starts cannot all pass the last allowance" intermittently admits more than one run. It
-failed twice during the 6G gate; in the 6H gate it passed in both full integration runs (14/14 each
-time). It is not fixed — the investigation is tracked separately.
+failed twice during the 6G gate; it passed in both 6H gate runs; during the 7A gate it failed on one
+API-only run and passed on the full run that followed. It is not fixed — the investigation is
+tracked separately.
+
+Known flake 2 (observed first in the 7A gate, harness-level): one `pnpm test:integration` run
+produced 20 failures across six unrelated API spec files (`analytics-sync`, `design-studio`,
+`linkedin`, `meta`, `remaining-platforms`, `youtube`), every one of them a foreign-key violation or
+`findFirstOrThrow` for the spec's **own** organization row — i.e. the tenant the file created was
+absent mid-run. Turbo runs the three integration suites concurrently against one dev Postgres and
+each vitest pool sizes itself to the CPU count, so the suites oversubscribe the machine. Re-running
+the API suite alone gave 226/227 (only flake 1) and re-running the full gate gave 227/227. Not
+reproduced since; the durable fix is per-suite database isolation, tracked with flake 1.
 
 -------------------- | ------------------------------------------------------ |
 | `pnpm build` | 40/40 tasks pass |

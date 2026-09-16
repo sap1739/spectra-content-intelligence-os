@@ -1,5 +1,5 @@
-import { ConflictException, Injectable } from '@nestjs/common';
-import type { CreateBrandInput, UpdateBrandInput } from '@spectra/contracts';
+import { ConflictException, Injectable, UnprocessableEntityException } from '@nestjs/common';
+import type { CreateBrandInput, UpdateBrandInput, UpdateBrandKitInput } from '@spectra/contracts';
 import { Prisma, type Brand } from '@spectra/database';
 import { TenantIsolationError } from '@spectra/security';
 
@@ -102,6 +102,67 @@ export class BrandsService {
       resourceType: 'Brand',
       resourceId: id,
       changes: definedOnly(fields),
+    });
+    return brand;
+  }
+
+  /**
+   * Sets the brand kit (Phase 7A, ADR-0040). A logo must be a PNG, JPEG or WebP
+   * media asset and a font a TTF/OTF media asset, both in THIS workspace — a
+   * foreign or missing asset is refused the same way, so a kit can never point
+   * a render at another tenant's file.
+   */
+  async updateKit(
+    tenant: TenantContext,
+    principal: Principal,
+    id: string,
+    input: UpdateBrandKitInput,
+  ) {
+    await this.get(tenant, id);
+    const scope = {
+      organizationId: tenant.organizationId,
+      workspaceId: tenant.workspaceId as string,
+    };
+    const check = async (assetId: string, allowed: string[], label: string) => {
+      const asset = await this.prisma.client.mediaAsset.findFirst({
+        where: { id: assetId, ...scope },
+        select: { mimeType: true },
+      });
+      if (!asset || !allowed.includes(asset.mimeType)) {
+        throw new UnprocessableEntityException(
+          `The ${label} must be a ${allowed.join(', ')} media asset in this workspace.`,
+        );
+      }
+    };
+    if (input.logoAssetId)
+      await check(input.logoAssetId, ['image/png', 'image/jpeg', 'image/webp'], 'logo');
+    for (const role of ['heading', 'body'] as const) {
+      const fontAssetId = input.typography?.[role]?.fontAssetId;
+      if (fontAssetId) await check(fontAssetId, ['font/ttf', 'font/otf'], `${role} font`);
+    }
+    const brand = await this.prisma.client.brand.update({
+      where: { id },
+      data: {
+        ...(input.logoAssetId !== undefined ? { logoAssetId: input.logoAssetId } : {}),
+        ...(input.palette !== undefined ? { palette: input.palette as Prisma.InputJsonValue } : {}),
+        ...(input.typography !== undefined
+          ? { typography: input.typography as Prisma.InputJsonValue }
+          : {}),
+        ...(input.tagline !== undefined ? { tagline: input.tagline } : {}),
+        ...(input.visualStyle !== undefined ? { visualStyle: input.visualStyle } : {}),
+        ...(input.offerings !== undefined
+          ? { offerings: input.offerings as unknown as Prisma.InputJsonValue }
+          : {}),
+      },
+    });
+    await this.audit.record({
+      organizationId: tenant.organizationId,
+      workspaceId: tenant.workspaceId,
+      actorUserId: principal.userId,
+      action: 'brand.kit_updated',
+      resourceType: 'Brand',
+      resourceId: id,
+      changes: { fields: Object.keys(input) },
     });
     return brand;
   }

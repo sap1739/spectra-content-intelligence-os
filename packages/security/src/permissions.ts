@@ -39,6 +39,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'analytics:read',
     'analytics:sync',
     'audit:read',
+    'design:read',
+    'design:write',
   ],
   RESEARCHER: [
     'vertical:read',
@@ -64,6 +66,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'campaign:write',
     'content:read',
     'analytics:read',
+    'design:read',
   ],
   CREATOR: [
     'brand:read',
@@ -77,8 +80,18 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'campaign:read',
     'media:read',
     'media:write',
+    'design:read',
+    'design:write',
   ],
-  DESIGNER: ['brand:read', 'content:read', 'campaign:read', 'media:read', 'media:write'],
+  DESIGNER: [
+    'brand:read',
+    'content:read',
+    'campaign:read',
+    'media:read',
+    'media:write',
+    'design:read',
+    'design:write',
+  ],
   EDITOR: [
     'brand:read',
     'research:read',
@@ -87,6 +100,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'content:review',
     'campaign:read',
     'media:read',
+    'design:read',
   ],
   APPROVER: [
     'brand:read',
@@ -95,6 +109,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'content:review',
     'content:approve',
     'campaign:read',
+    'design:read',
   ],
   PUBLISHER: [
     'content:read',
@@ -103,6 +118,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'social:publish',
     'analytics:read',
     'analytics:sync',
+    'design:read',
   ],
   ANALYST: [
     'content:read',
@@ -112,7 +128,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'analytics:read',
     'analytics:sync',
   ],
-  CLIENT_REVIEWER: ['content:read', 'content:review', 'campaign:read'],
+  CLIENT_REVIEWER: ['content:read', 'content:review', 'campaign:read', 'design:read'],
   READ_ONLY: [
     'brand:read',
     'vertical:read',
@@ -123,6 +139,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'campaign:read',
     'media:read',
     'analytics:read',
+    'design:read',
   ],
 };
 

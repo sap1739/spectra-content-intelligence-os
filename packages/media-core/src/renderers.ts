@@ -1,3 +1,5 @@
+import type { RenderPlan } from '@spectra/design-studio';
+
 import type {
   AspectRatioTarget,
   AudioMixSpec,
@@ -84,4 +86,36 @@ export interface ThumbnailGenerator extends MediaRendererIdentity {
 export interface AudiogramGenerator extends MediaRendererIdentity {
   /** Waveform/audiogram video or image from an audio asset. */
   generate(spec: AudiogramSpec): Promise<RenderResult>;
+}
+
+/**
+ * Visual design rendering (Phase 7A, ADR-0040). The plan is produced and
+ * validated by @spectra/design-studio; the renderer turns one page of it into
+ * real pixels. Assets are loaded through a caller-supplied, tenant-checked
+ * loader — a renderer never resolves storage keys or URLs itself.
+ */
+export interface DesignRenderAssets {
+  loadImage(assetId: string): Promise<Buffer>;
+  loadFont(assetId: string): Promise<Buffer>;
+}
+
+export interface DesignPageRender {
+  buffer: Buffer;
+  mimeType: 'image/png' | 'image/jpeg';
+  width: number;
+  height: number;
+  /** The JPEG quality actually used (it may be lowered to meet a byte limit). */
+  quality: number | null;
+  warnings: string[];
+  durationMs: number;
+}
+
+export interface DesignRenderer extends MediaRendererIdentity {
+  readonly engineVersion: string;
+  renderPage(
+    plan: RenderPlan,
+    pageIndex: number,
+    output: { format: 'png' | 'jpeg'; quality: number; maxWidth?: number | null },
+    assets: DesignRenderAssets,
+  ): Promise<DesignPageRender>;
 }

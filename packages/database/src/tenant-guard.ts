@@ -43,6 +43,10 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'AnalyticsSyncRun',
   'AnalyticsSnapshot',
   'AnalyticsMetricValue',
+  // Design studio (ADR-0040).
+  'DesignTemplate',
+  'Design',
+  'DesignRender',
 ]);
 
 const GUARDED_OPERATIONS: ReadonlySet<string> = new Set([

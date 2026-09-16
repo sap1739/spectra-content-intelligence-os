@@ -1,0 +1,24 @@
+{
+  "name": "@spectra/design-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Visual template system: built-in templates, layout validation, brand-token resolution, render plans for the sharp design renderer, and a raster PDF writer. Pure — no I/O.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run src",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@spectra/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "sharp": "^0.33.5",
+    "typescript": "^5.8.3",
+    "unpdf": "^1.8.1",
+    "vitest": "^3.2.0"
+  }
+}

@@ -16,6 +16,8 @@ import { Layers, Lock } from 'lucide-react';
 import * as React from 'react';
 
 import { PageHeader } from '@/components/page-header';
+import { useMediaAssets } from '@/lib/media';
+import { useUpdateBrandKit } from '@/lib/studio';
 import { usePermissions, useWorkspace } from '@/lib/auth';
 import {
   useArchiveBrand,
@@ -223,6 +225,198 @@ function BrandForm({
   );
 }
 
+const COLOR_ROLES = ['primary', 'secondary', 'accent', 'background', 'text'] as const;
+
+/**
+ * The brand kit (Phase 7A, ADR-0040): what Design Studio renders with. Every
+ * field is optional and nothing is invented — a colour left unset renders as
+ * Spectra's neutral default, and the design says so.
+ */
+function BrandKitEditor({ workspaceId, brand }: { workspaceId: string; brand: BrandRow }) {
+  const media = useMediaAssets(workspaceId);
+  const update = useUpdateBrandKit(workspaceId, brand.id);
+  const [palette, setPalette] = React.useState<Record<string, string>>(() => ({
+    ...(brand.palette ?? {}),
+  }));
+  const [logoAssetId, setLogoAssetId] = React.useState(brand.logoAssetId ?? '');
+  const [tagline, setTagline] = React.useState(brand.tagline ?? '');
+  const [visualStyle, setVisualStyle] = React.useState(brand.visualStyle ?? '');
+  const [headingFont, setHeadingFont] = React.useState(brand.typography?.heading?.family ?? '');
+  const [headingFontAssetId, setHeadingFontAssetId] = React.useState(
+    brand.typography?.heading?.fontAssetId ?? '',
+  );
+  const [offerings, setOfferings] = React.useState(
+    (brand.offerings ?? []).map((offering) => ({ ...offering })),
+  );
+  const images = (media.data ?? []).filter((asset) =>
+    ['image/png', 'image/jpeg', 'image/webp'].includes(asset.mimeType),
+  );
+  const fonts = (media.data ?? []).filter((asset) =>
+    ['font/ttf', 'font/otf'].includes(asset.mimeType),
+  );
+
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    await update.mutateAsync({
+      logoAssetId: logoAssetId || null,
+      palette: Object.fromEntries(
+        Object.entries(palette).filter(([, value]) => /^#[0-9a-fA-F]{6}$/.test(value)),
+      ),
+      typography: headingFont
+        ? { heading: { family: headingFont, fontAssetId: headingFontAssetId || null } }
+        : {},
+      tagline: tagline || null,
+      visualStyle: visualStyle || null,
+      offerings: offerings.filter((offering) => offering.name.trim()),
+    });
+  }
+
+  return (
+    <form className="mt-3 flex flex-col gap-3 border-t border-border pt-3 text-xs" onSubmit={save}>
+      <p className="font-medium">Brand kit — used by Design Studio</p>
+      <div className="flex flex-wrap gap-3">
+        {COLOR_ROLES.map((role) => (
+          <span key={role} className="flex items-center gap-1">
+            <Label htmlFor={`kit-${brand.id}-${role}`} className="text-[11px] capitalize">
+              {role}
+            </Label>
+            <input
+              id={`kit-${brand.id}-${role}`}
+              type="color"
+              className="size-7 rounded border border-input bg-background"
+              value={palette[role] ?? '#ffffff'}
+              onChange={(event) => setPalette({ ...palette, [role]: event.target.value })}
+            />
+            {palette[role] ? (
+              <button
+                type="button"
+                className="text-[11px] text-muted-foreground underline"
+                onClick={() => {
+                  const next = { ...palette };
+                  delete next[role];
+                  setPalette(next);
+                }}
+              >
+                unset
+              </button>
+            ) : null}
+          </span>
+        ))}
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <span className="flex flex-col gap-1">
+          <Label htmlFor={`kit-${brand.id}-logo`}>Logo</Label>
+          <select
+            id={`kit-${brand.id}-logo`}
+            className="rounded-md border border-input bg-background px-2 py-1.5"
+            value={logoAssetId}
+            onChange={(event) => setLogoAssetId(event.target.value)}
+          >
+            <option value="">No logo</option>
+            {images.map((asset) => (
+              <option key={asset.id} value={asset.id}>
+                {asset.mimeType} · {asset.id.slice(0, 8)}
+              </option>
+            ))}
+          </select>
+        </span>
+        <span className="flex flex-col gap-1">
+          <Label htmlFor={`kit-${brand.id}-tagline`}>Tagline</Label>
+          <Input
+            id={`kit-${brand.id}-tagline`}
+            value={tagline}
+            maxLength={200}
+            onChange={(event) => setTagline(event.target.value)}
+          />
+        </span>
+        <span className="flex flex-col gap-1">
+          <Label htmlFor={`kit-${brand.id}-font`}>Heading font family</Label>
+          <Input
+            id={`kit-${brand.id}-font`}
+            value={headingFont}
+            placeholder="e.g. Inter"
+            onChange={(event) => setHeadingFont(event.target.value)}
+          />
+        </span>
+        <span className="flex flex-col gap-1">
+          <Label htmlFor={`kit-${brand.id}-fontfile`}>Font file</Label>
+          <select
+            id={`kit-${brand.id}-fontfile`}
+            className="rounded-md border border-input bg-background px-2 py-1.5"
+            value={headingFontAssetId ?? ''}
+            onChange={(event) => setHeadingFontAssetId(event.target.value)}
+          >
+            <option value="">None uploaded</option>
+            {fonts.map((asset) => (
+              <option key={asset.id} value={asset.id}>
+                {asset.mimeType} · {asset.id.slice(0, 8)}
+              </option>
+            ))}
+          </select>
+        </span>
+      </div>
+      <span className="flex flex-col gap-1">
+        <Label htmlFor={`kit-${brand.id}-style`}>Visual style guidance</Label>
+        <textarea
+          id={`kit-${brand.id}-style`}
+          className="rounded-md border border-input bg-background px-2 py-1.5"
+          rows={2}
+          maxLength={2000}
+          value={visualStyle}
+          onChange={(event) => setVisualStyle(event.target.value)}
+        />
+      </span>
+      <div className="flex flex-col gap-2">
+        <span className="font-medium">Products / services</span>
+        {offerings.map((offering, index) => (
+          <span key={`${brand.id}-offering-${index}`} className="flex flex-wrap gap-2">
+            <Input
+              aria-label={`Offering ${index + 1} name`}
+              className="max-w-[180px]"
+              value={offering.name}
+              onChange={(event) => {
+                const next = [...offerings];
+                next[index] = { ...offering, name: event.target.value };
+                setOfferings(next);
+              }}
+            />
+            <Input
+              aria-label={`Offering ${index + 1} description`}
+              value={offering.description}
+              onChange={(event) => {
+                const next = [...offerings];
+                next[index] = { ...offering, description: event.target.value };
+                setOfferings(next);
+              }}
+            />
+          </span>
+        ))}
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="w-fit"
+          onClick={() => setOfferings([...offerings, { name: '', description: '' }])}
+        >
+          Add product
+        </Button>
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        A font family without an uploaded TTF/OTF renders only if the API host has it installed;
+        otherwise the host’s fallback font is used, and every export says so.
+      </p>
+      {update.isError ? (
+        <p role="alert" className="text-destructive">
+          {update.error.message}
+        </p>
+      ) : null}
+      <Button type="submit" size="sm" className="w-fit" disabled={update.isPending}>
+        {update.isPending ? 'Saving…' : 'Save brand kit'}
+      </Button>
+    </form>
+  );
+}
+
 function BrandDetail({ brand }: { brand: BrandRow }) {
   const tone = brand.voice?.tone ?? [];
   const doNots = brand.voice?.doNots ?? [];
@@ -397,6 +591,9 @@ export default function BrandsPage() {
                       {open ? (
                         <div id={`brand-detail-${brand.id}`}>
                           <BrandDetail brand={brand} />
+                          {canWrite ? (
+                            <BrandKitEditor workspaceId={workspaceId} brand={brand} />
+                          ) : null}
                         </div>
                       ) : null}
                     </li>

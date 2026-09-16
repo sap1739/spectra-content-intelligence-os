@@ -2,6 +2,7 @@
 
 import { Badge, Card, CardContent, CardHeader, CardTitle, EmptyState, Skeleton } from '@spectra/ui';
 import { FileCode, Info } from 'lucide-react';
+import Link from 'next/link';
 
 import { PageHeader } from '@/components/page-header';
 import { useCapabilities } from '@/lib/knowledge';
@@ -31,11 +32,17 @@ export default function TemplatesPage() {
           <div className="text-sm">
             <p className="font-medium">No user-defined templates exist yet</p>
             <p className="text-muted-foreground">
-              You cannot create, edit or save templates here, and none are stored per workspace.
-              Generation uses a single built-in prompt template, versioned so drafts stay
-              attributable and regressions are bisectable. Visual and video templates are not
-              implemented. Brand voice — the thing that actually varies content per brand today — is
-              configured on <span className="font-medium">Brands</span>.
+              This page is about the PROMPT template that shapes generated text: you cannot create,
+              edit or save prompt templates here, and none are stored per workspace. Generation uses
+              a single built-in template, versioned so drafts stay attributable and regressions are
+              bisectable. Visual templates do exist — in{' '}
+              <Link className="underline underline-offset-2" href="/studio">
+                Design Studio
+              </Link>{' '}
+              (Phase 7A), where flyers, posters, social images, carousels and thumbnails are really
+              rendered. Video templates are not implemented. Brand voice is configured on{' '}
+              <span className="font-medium">Brands</span>, and the brand kit used by designs lives
+              there too.
             </p>
           </div>
         </CardContent>

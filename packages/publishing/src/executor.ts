@@ -378,6 +378,14 @@ async function runPublication(
       await prisma.contentItem
         .update({ where: { id: entry.contentItemId }, data: { lifecycleState: 'PUBLISHED' } })
         .catch(() => undefined);
+      // Bookkeeping only: the post already went out, so a failure here must not
+      // turn a real PUBLISHED into a FAILED (same rule as the content item above).
+      await markDesignsPublished(
+        prisma,
+        tenant,
+        [entry.mediaAssetId, entry.thumbnailAssetId].filter((id): id is string => Boolean(id)),
+        now(),
+      ).catch(() => undefined);
     }
     // Counter-only: priced as COUNTER_ONLY, never as a fake zero-cost row.
     await deps.usage?.record(
@@ -493,4 +501,27 @@ export async function claimDuePublications(
     if (claimed.count === 1) ids.push(id);
   }
   return ids;
+}
+
+/**
+ * A design whose export was just published is PUBLISHED (ADR-0040). Only an
+ * APPROVED design moves — scheduling already refuses exports of designs that
+ * are not approved — and only within the entry's own tenant.
+ */
+export async function markDesignsPublished(
+  prisma: SpectraPrismaClient,
+  tenant: { organizationId: string; workspaceId: string },
+  mediaAssetIds: readonly string[],
+  at: Date,
+): Promise<number> {
+  if (mediaAssetIds.length === 0) return 0;
+  const { count } = await prisma.design.updateMany({
+    where: {
+      ...tenant,
+      status: 'APPROVED',
+      renders: { some: { mediaAssetId: { in: [...mediaAssetIds] } } },
+    },
+    data: { status: 'PUBLISHED', publishedAt: at },
+  });
+  return count;
 }

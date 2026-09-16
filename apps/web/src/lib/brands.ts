@@ -21,6 +21,16 @@ export interface BrandRow {
     preferredTerms?: string[];
   } | null;
   guidelines: Record<string, unknown>;
+  /** Brand kit (Phase 7A, ADR-0040). */
+  logoAssetId: string | null;
+  palette: Partial<Record<'primary' | 'secondary' | 'accent' | 'background' | 'text', string>>;
+  typography: {
+    heading?: { family: string; fontAssetId?: string | null } | null;
+    body?: { family: string; fontAssetId?: string | null } | null;
+  };
+  tagline: string | null;
+  visualStyle: string | null;
+  offerings: Array<{ name: string; description: string }>;
   languages: string[];
   status: 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
   createdAt: string;

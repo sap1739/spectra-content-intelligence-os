@@ -41,6 +41,10 @@ export const PERMISSIONS = [
   'campaign:write',
   'media:read',
   'media:write',
+  // Design studio (Phase 7A): templates, designs, previews and exports.
+  // Approving a design uses content:approve.
+  'design:read',
+  'design:write',
   'social:connect',
   'social:publish',
   'analytics:read',

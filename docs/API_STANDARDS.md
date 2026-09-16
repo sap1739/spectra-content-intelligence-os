@@ -229,3 +229,45 @@ Routes under `workspaces/:workspaceId/analytics`, each checked with `hasPermissi
   (`NOT_CONNECTED`, `VALIDATION`, `UNSUPPORTED`, …) — it is not an HTTP error.
 - `analytics:sync` is in ORG_OWNER, ORG_ADMIN, WORKSPACE_ADMIN, PUBLISHER and ANALYST; roles that can
   only read analytics (RESEARCHER, CONTENT_STRATEGIST, READ_ONLY) cannot start one.
+
+## 18. Design studio (Phase 7A, ADR-0040)
+
+Routes under `workspaces/:workspaceId/studio`, each checked with `hasPermission()`. Two new
+permissions, `design:read` and `design:write`; approval reuses `content:approve`.
+
+| Method & path                            | Permission        | Notes                                                                             |
+| ---------------------------------------- | ----------------- | --------------------------------------------------------------------------------- |
+| `GET capabilities`                       | `design:read`     | Engine + version, output formats, font situation, and that there is no AI imagery |
+| `GET formats`                            | `design:read`     | The eleven output sizes, each with its dpi, source note and any byte limit        |
+| `GET templates[?category,…]`             | `design:read`     | Built-ins and the workspace's own, together                                       |
+| `GET templates/:templateId`              | `design:read`     | One template with its layout                                                      |
+| `POST templates`                         | `design:write`    | Create, or copy a built-in; layout is validated before it is stored               |
+| `PATCH templates/:templateId`            | `design:write`    | A layout edit bumps `version`; existing designs keep their snapshot               |
+| `DELETE templates/:templateId`           | `design:write`    | Archives (soft delete)                                                            |
+| `GET designs[?status,…]`                 | `design:read`     | Newest first, with render counts                                                  |
+| `GET designs/:designId`                  | `design:read`     | Design, resolved brand, warnings, its renders                                     |
+| `POST designs`                           | `design:write`    | From a built-in key or a template id, for one brand and one format                |
+| `PATCH designs/:designId`                | `design:write`    | Editing the visuals of an APPROVED design returns it to DRAFT, with a note        |
+| `DELETE designs/:designId`               | `design:write`    | Archives (soft delete)                                                            |
+| `GET designs/:designId/preview`          | `design:read`     | A **real** PNG render of one page, scaled for the editor and never stored         |
+| `POST designs/:designId/exports`         | `design:write`    | `201`; renders and stores PNG/JPEG pages or a PDF — idempotent                    |
+| `GET renders/:renderId/url`              | `design:read`     | A 15-minute signed download URL                                                   |
+| `POST designs/:designId/submit`          | `design:write`    | DRAFT → IN_REVIEW; refused without at least one export                            |
+| `POST designs/:designId/approve`         | `content:approve` | IN_REVIEW → APPROVED                                                              |
+| `POST designs/:designId/request-changes` | `content:approve` | Back to DRAFT with a note                                                         |
+| `PUT ../brands/:id/kit`                  | `brand:write`     | Logo, palette, fonts, tagline, visual style, offerings                            |
+
+- **Preview is a render, not a mock.** `GET preview` returns `image/png` bytes produced by the same
+  engine as an export, with `cache-control: private, no-store`. Two custom response headers carry
+  what a body cannot: `x-design-page-count` and `x-design-warnings` (URI-encoded JSON). Both are in
+  the API's CORS `exposedHeaders` so the browser can actually read them.
+- **Exports are idempotent.** The same design, format and inputs return the existing renders rather
+  than piling up duplicates; the key is `renderKey` (see DATABASE_DESIGN §13).
+- **Budget before pixels.** An export takes a `MEDIA_RENDER` pre-flight for its page count and is
+  refused with the standard `403` budget problem before anything is drawn — no partial rows.
+- **Honest refusals.** A required field left empty, text over its limit, an unknown field or a
+  foreign media asset is a `422` listing **every** problem at once, not the first one.
+- **No existence leaks.** A foreign or missing template, design, render, brand or media asset is
+  the same `404` problem.
+- **Nothing is generated.** `GET capabilities` states plainly that Spectra does not create imagery:
+  it arranges assets the workspace uploaded. There is no image-generation endpoint to call.

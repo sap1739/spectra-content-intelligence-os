@@ -129,6 +129,9 @@ model Organization {
   analyticsSyncRuns     AnalyticsSyncRun[]
   analyticsSnapshots    AnalyticsSnapshot[]
   analyticsMetricValues AnalyticsMetricValue[]
+  designTemplates       DesignTemplate[]
+  designs               Design[]
+  designRenders         DesignRender[]
 
   @@map("organizations")
 }
@@ -249,6 +252,9 @@ model Workspace {
   analyticsSyncRuns     AnalyticsSyncRun[]
   analyticsSnapshots    AnalyticsSnapshot[]
   analyticsMetricValues AnalyticsMetricValue[]
+  designTemplates       DesignTemplate[]
+  designs               Design[]
+  designRenders         DesignRender[]
 
   @@unique([organizationId, slug])
   @@index([organizationId, status])
@@ -278,6 +284,17 @@ model Brand {
   guidelines     Json        @default("{}")
   languages      String[]    @default([])
   status         BrandStatus @default(DRAFT)
+  /// Brand kit (Phase 7A, ADR-0040). A PNG/JPEG/WebP media asset in this workspace.
+  logoAssetId    String?     @db.Uuid
+  /// { primary, secondary, accent, background, text } — #RRGGBB each, all optional.
+  palette        Json        @default("{}")
+  /// { heading, body }: { family, fontAssetId? }. No file = the render host's installed fonts.
+  typography     Json        @default("{}")
+  tagline        String?
+  /// Visual style guidance in words; tone lives in `voice`.
+  visualStyle    String?
+  /// [{ name, description }] — products/services templates can reference.
+  offerings      Json        @default("[]")
 
   createdAt DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt DateTime  @updatedAt @db.Timestamptz(6)
@@ -285,6 +302,8 @@ model Brand {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  logoAsset    MediaAsset?  @relation("BrandLogo", fields: [logoAssetId], references: [id], onDelete: SetNull)
+  designs      Design[]
 
   researchProjects ResearchProject[]
   campaigns        Campaign[]
@@ -1142,6 +1161,7 @@ model Campaign {
   contentItems       ContentItem[]
   brief              CampaignBrief?
   analyticsSnapshots AnalyticsSnapshot[]
+  designs            Design[]
 
   @@index([workspaceId, status])
   @@map("campaigns")
@@ -1189,6 +1209,7 @@ model ContentItem {
   drafts             ContentDraft[]
   scheduleEntries    ContentScheduleEntry[]
   analyticsSnapshots AnalyticsSnapshot[]
+  designs            Design[]
 
   @@index([workspaceId, lifecycleState])
   @@index([campaignId])
@@ -1465,6 +1486,8 @@ model MediaAsset {
   scheduleEntries     ContentScheduleEntry[] @relation("ScheduleEntryMedia")
   thumbnailForEntries ContentScheduleEntry[] @relation("ScheduleEntryThumbnail")
   socialUploads       SocialMediaUpload[]
+  brandLogos          Brand[]                @relation("BrandLogo")
+  designRenders       DesignRender[]
 
   @@index([workspaceId, createdAt])
   @@map("media_assets")
@@ -1719,6 +1742,159 @@ model SocialMediaUpload {
   @@unique([socialAccountId, mediaAssetId])
   @@index([organizationId, createdAt])
   @@map("social_media_uploads")
+}
+
+// ---------------------------------------------------------------------------
+// Design studio (Phase 7A, ADR-0040)
+// ---------------------------------------------------------------------------
+
+enum DesignTemplateCategory {
+  SOCIAL_POST
+  CAROUSEL
+  STORY
+  THUMBNAIL
+  FLYER
+  POSTER
+  BANNER
+  QUOTE
+}
+
+enum DesignTemplateStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum DesignStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  /// A post using one of its exports was published.
+  PUBLISHED
+  ARCHIVED
+}
+
+enum DesignOutputFormat {
+  PNG
+  JPEG
+  PDF
+}
+
+/// A workspace's own visual template. `layout` is layout DATA validated by
+/// @spectra/contracts (normalized boxes, brand colour roles, fields) — never
+/// markup or code. Editing bumps `version`; designs keep the snapshot they were
+/// made from. Built-in templates are code, not rows.
+model DesignTemplate {
+  id               String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String                 @db.Uuid
+  workspaceId      String                 @db.Uuid
+  name             String
+  description      String?
+  category         DesignTemplateCategory
+  status           DesignTemplateStatus   @default(ACTIVE)
+  version          Int                    @default(1)
+  layout           Json
+  /// Design format keys this template is meant for.
+  formats          String[]
+  defaultFormat    String
+  /// The built-in template it was copied from, if any.
+  sourceBuiltInKey String?
+  createdById      String?                @db.Uuid
+  updatedById      String?                @db.Uuid
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  designs      Design[]
+
+  @@index([workspaceId, status, category])
+  @@map("design_templates")
+}
+
+/// One filled-in template for one brand and one output size. `layout` is a
+/// snapshot of the template at creation, so later template edits never change
+/// an approved design. Editing an approved design returns it to DRAFT.
+model Design {
+  id                 String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String                 @db.Uuid
+  workspaceId        String                 @db.Uuid
+  name               String
+  templateId         String?                @db.Uuid
+  templateBuiltInKey String?
+  templateVersion    Int
+  category           DesignTemplateCategory
+  layout             Json
+  brandId            String?                @db.Uuid
+  formatKey          String
+  /// { fieldKey: text } as entered (tokens unresolved).
+  values             Json                   @default("{}")
+  /// { imageFieldKey: mediaAssetId }.
+  images             Json                   @default("{}")
+  status             DesignStatus           @default(DRAFT)
+  contentItemId      String?                @db.Uuid
+  campaignId         String?                @db.Uuid
+  reviewNote         String?
+  submittedAt        DateTime?              @db.Timestamptz(6)
+  approvedById       String?                @db.Uuid
+  approvedAt         DateTime?              @db.Timestamptz(6)
+  publishedAt        DateTime?              @db.Timestamptz(6)
+  createdById        String?                @db.Uuid
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  template     DesignTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  brand        Brand?          @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  contentItem  ContentItem?    @relation(fields: [contentItemId], references: [id], onDelete: SetNull)
+  campaign     Campaign?       @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  renders      DesignRender[]
+
+  @@index([workspaceId, status, updatedAt])
+  @@index([contentItemId])
+  @@index([campaignId])
+  @@map("designs")
+}
+
+/// One exported file of a design: a PNG/JPEG page or a PDF of all pages, stored
+/// as a media asset under the tenant's renders/ prefix. `renderHash` covers the
+/// plan, output settings and input asset versions, so exporting unchanged
+/// inputs again returns the same files instead of rendering duplicates.
+model DesignRender {
+  id             String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String             @db.Uuid
+  workspaceId    String             @db.Uuid
+  designId       String             @db.Uuid
+  mediaAssetId   String             @unique @db.Uuid
+  outputFormat   DesignOutputFormat
+  /// 0-based page for PNG/JPEG; NULL for a PDF holding every page.
+  pageIndex      Int?
+  pageCount      Int
+  formatKey      String
+  widthPx        Int
+  heightPx       Int
+  renderHash     String
+  /// renderHash + page (or "pdf"): the idempotency key.
+  renderKey      String             @unique
+  engine         String
+  engineVersion  String?
+  durationMs     Int
+  warnings       String[]           @default([])
+  createdById    String?            @db.Uuid
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  design       Design       @relation(fields: [designId], references: [id], onDelete: Cascade)
+  mediaAsset   MediaAsset   @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+
+  @@index([designId, createdAt])
+  @@map("design_renders")
 }
 
 // ---------------------------------------------------------------------------

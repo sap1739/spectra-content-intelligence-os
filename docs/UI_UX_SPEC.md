@@ -132,3 +132,43 @@ exists to make one distinction visible that a counts-only dashboard destroys.
   the missing permission is named under the list.
 - **Provider health sits beside the failures** because "publishing failed" and "publishing was
   never configured" are the two explanations an operator checks first.
+
+## 12. Design studio (Phase 7A, ADR-0040)
+
+`/studio` is a gallery plus an editor, and its whole job is to keep the difference between _what
+Spectra can make_ and _what a user might expect from a "creative" tool_ visible.
+
+- **The gallery leads with templates, not a blank canvas.** Built-in templates and the workspace's
+  own are shown together, each labelled with its category and the sizes it suits. A workspace with
+  no designs yet sees the templates, not an empty list — there is always a first move.
+- **"No AI image generation" is stated, not implied.** The studio says plainly that it arranges the
+  brand's own logo, colours and photos; it does not invent imagery. This is the one place a user
+  would reasonably assume otherwise, so it is answered before they ask.
+- **The preview is the renderer.** `/studio/[designId]` shows a real PNG produced by the same
+  engine as the export — not a CSS approximation that would drift from the file. Carousel pages are
+  paged through; the page count comes from the render, not from the form.
+- **Warnings are shown where the cause is.** A brand with no logo, an unset colour role, an empty
+  image slot, text that had to be shrunk or cut, a font family with no uploaded file — each render
+  returns named warnings and the editor lists them under the preview. A degraded render is never
+  presented as a clean one.
+- **The size picker explains itself.** Every output format names its pixel size, its dpi and where
+  the number comes from; the YouTube thumbnail names its 2 MB limit. Print sizes say they are 150
+  dpi, not print-shop resolution.
+- **Brand selection is explicit.** A design belongs to one brand; the editor shows the resolved
+  palette and logo so a user can see which kit is being applied before exporting.
+- **State is legible.** DRAFT → IN_REVIEW → APPROVED → PUBLISHED is shown on every design, and the
+  only actions offered are the ones the current state allows. Submitting without an export is
+  refused by the API (reviewers approve files, not intentions) and the reason is shown in an alert
+  rather than swallowed. Editing an approved or in-review design warns, before saving, that the
+  change returns it to draft.
+- **Exports are reusable, and say so.** Each export links to its media asset, so the calendar and
+  the publishing adapters can use it; the calendar's refusal to schedule an unapproved design names
+  the design and its state rather than failing anonymously.
+- **Permissions are named.** Without `design:read` the page says which permission is missing;
+  without `design:write` the create/export controls are absent and the reason is stated, and
+  approval controls follow `content:approve` the same way.
+
+### Accessibility
+
+The editor's fields are ordinary labelled form controls (§9) — the preview is an `<img>` with alt
+text describing the design and page, and warnings are text, not colour alone.

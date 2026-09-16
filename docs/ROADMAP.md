@@ -353,7 +353,35 @@ weakest link in the differentiator: research and evidence quality.
   measured-engagement component that never lowers a research score when analytics are missing.
   Tested against local stand-ins; **none run against the real platforms** (ADR-0039,
   `docs/ANALYTICS_LIVE_VERIFICATION.md`).
-- Next: run the live-verification checklists against real apps (LinkedIn, Meta, YouTube, the 6G
+
+## Phase 7 — Visual creation
+
+- ✅ **Increment A — visual template and design studio.** Flyers, posters, social images,
+  carousels and YouTube thumbnails are **genuinely rendered** by this codebase: sharp/libvips
+  composites, librsvg for Spectra's own rectangles, Pango for real text layout with word wrapping
+  and uploaded brand fonts. No image-generation API is wired, and the studio says so where a user
+  would ask — it arranges the assets a workspace already has. Templates are layout **data**
+  (normalized boxes, brand colour roles, TEXT/IMAGE fields, layers), never markup or code; six
+  built-ins ship as code and a workspace can copy and edit any of them. Eleven output sizes
+  (platform presets plus A4/A3/Letter at 150 dpi), each naming where its number comes from, with
+  YouTube's 2 MB thumbnail limit met by stepping JPEG quality down and saying so. PDF export is a
+  small dependency-free writer embedding each page JPEG — raster, and described as raster
+  everywhere. The brand kit lives on the brand (logo, palette, typography, tagline, visual style,
+  offerings) and its assets must be in the same workspace, checked on save and again at render.
+  Exports are ordinary tenant-rooted media assets, so the calendar, the publishing adapters and the
+  media library can use them immediately; they are idempotent by `renderHash`, budget-checked
+  (`MEDIA_RENDER`) before any pixels are drawn, and every render reports what it had to do
+  differently as named warnings. Designs move DRAFT → IN_REVIEW → APPROVED → PUBLISHED, and the
+  state is load-bearing: the calendar refuses to schedule an export whose design is not approved,
+  and a successful publish marks the design published. Proven by decoding the stored bytes in the
+  integration suite — dimensions, format, PDF page count, the brand colour at a pixel (ADR-0040).
+- Next: a drag-and-drop canvas editor (layout positions currently come from templates); moving
+  rendering to the worker if page counts grow; vector PDF for commercial print; video and
+  audiogram rendering, still honestly unavailable (ADR-0018).
+
+## Cross-phase next steps
+
+- Run the live-verification checklists against real apps (LinkedIn, Meta, YouTube, the 6G
   four, and analytics); video for the platforms that support it but are not implemented (LinkedIn Videos
   API, Facebook video, Instagram Reels, X and Threads video, TikTok photo posts); a background
   refresh sweep ahead of token expiry; a metrics endpoint on the worker; anchor-aware citation

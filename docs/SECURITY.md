@@ -411,3 +411,32 @@ A bulk re-seal job for long-idle rows is not built yet; today rotation advances 
 - **Permissions.** Reading is `analytics:read`; starting a sync (which spends platform quota, and
   could spend money on a paid provider) is the separate `analytics:sync`, and goes through the
   `ANALYTICS_SYNC` budget pre-flight before any provider is called.
+
+## 20. Design studio **[P2]** (Phase 7A, ADR-0040)
+
+- **No user markup reaches a renderer.** Templates are layout **data** (normalized boxes, colour
+  roles, fields), validated by `templateLayoutSchema` + `validateTemplateLayout` before storage. The
+  only SVG libvips parses is the rectangles Spectra generates itself, and every user string is
+  escaped before Pango sees it. There is no HTML-to-image path here, so there is no browser to
+  sandbox and no URL to fetch: the renderer reads bytes from tenant storage and nothing else.
+- **Tenant isolation.** `DesignTemplate`, `Design` and `DesignRender` are tenant-guarded; every
+  export is written under `org/<id>/ws/<id>/renders/…` and every read filters by organization and
+  workspace. A foreign or missing template, design, render, brand or media asset returns the same
+  `404`. A logo, font or image asset from another workspace is refused at kit-save time **and**
+  again at render time — the render never trusts an id it was handed.
+- **Upload policy unchanged.** Logos and images must be PNG/JPEG/WebP and fonts TTF/OTF, checked by
+  the existing storage validation (MIME and size). **SVG is refused as a logo**: it is markup, and
+  accepting it would reintroduce the parser this design avoids. Exports are validated on the way
+  back in, like any other file.
+- **Downloads are signed and short-lived.** An export is served by a 15-minute signed URL; the
+  preview endpoint streams bytes with `cache-control: private, no-store` and is never cached.
+- **Resource bounds.** A layout is capped at 40 layers per page, text fields carry length limits,
+  and output sizes come from a fixed catalog — a request cannot ask for an arbitrary canvas. Every
+  export takes a `MEDIA_RENDER` budget pre-flight for its page count before any pixels are drawn,
+  so rendering work can be capped per workspace.
+- **Permissions.** Reading is `design:read`, creating/editing/exporting is `design:write`, and
+  approving reuses `content:approve` — the same permission that approves content, so approval
+  authority is not quietly duplicated. The calendar refuses to schedule an export whose design is
+  not approved, and a successful publish moves the design to PUBLISHED within that tenant only.
+- **Nothing is generated.** No image-generation provider is wired, and the API's capability response
+  says so. Brand `visualStyle` is guidance shown to an operator, never a prompt sent anywhere.

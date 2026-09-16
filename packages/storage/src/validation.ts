@@ -33,6 +33,9 @@ export const UPLOAD_POLICIES: Record<StorageDomain, UploadPolicy> = {
       'image/webp',
       'image/avif',
       'image/svg+xml',
+      // Brand font files for design rendering (Phase 7A).
+      'font/ttf',
+      'font/otf',
       'video/mp4',
       'video/webm',
       'audio/mpeg',
@@ -42,7 +45,15 @@ export const UPLOAD_POLICIES: Record<StorageDomain, UploadPolicy> = {
     maxSizeBytes: 500 * MB,
   },
   renders: {
-    allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'audio/mpeg'],
+    // application/pdf: design exports (Phase 7A).
+    allowedMimeTypes: [
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'application/pdf',
+      'video/mp4',
+      'audio/mpeg',
+    ],
     maxSizeBytes: 1024 * MB,
   },
   exports: {

@@ -1,4 +1,4 @@
-export { claimDuePublications, executePublication } from './executor';
+export { claimDuePublications, executePublication, markDesignsPublished } from './executor';
 export type {
   ExecutePublicationInput,
   LoadMedia,

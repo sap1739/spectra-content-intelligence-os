@@ -59,7 +59,8 @@ packages/
   ai-voyage/      Voyage AI adapter for the EmbeddingProvider port — real semantic retrieval (env-gated; ADR-0023)
   content-pipeline/ Evidence-grounded drafting: prompt isolation + cited draft generation (ADR-0017)
   media-core/     Rendering ports (Sharp/SVG/HTML-to-image/FFmpeg/Remotion/subtitles/audio)
-  media-sharp/    Real sharp ImageRenderer adapter (resize/crop/rotate/overlay/format; ADR-0018)
+  media-sharp/    Real sharp ImageRenderer + DesignRenderer adapters (libvips, librsvg, Pango; ADR-0018, ADR-0040)
+  design-studio/  Visual template layout model, deterministic render planner, raster PDF writer (ADR-0040)
   social-core/    SocialPublisher/PostPublisher ports + declared capability matrix + variant validation (ADR-0019)
   social-oauth/   Provider-neutral OAuth broker: state, PKCE, token exchange/refresh/revocation, sealed bundles (ADR-0034)
   social-linkedin/ Real LinkedIn adapter: discovery, Images API uploads, Posts API — text + one image (ADR-0035)
@@ -79,7 +80,7 @@ infrastructure/
   docker/         PostgreSQL (pgvector), Redis, MinIO via Docker Compose
   scripts/        bootstrap.sh, verify.sh
 docs/             Product, architecture, security and strategy documentation
-docs/adr/         39 Architecture Decision Records
+docs/adr/         40 Architecture Decision Records
 ```
 
 ## Quick start

@@ -346,7 +346,54 @@ never deletes or re-attributes another tenant's history, and every read filters 
 and is excluded from new syncs. The only cross-tenant reads are the dispatcher's raw id scans
 (`claimDueAnalyticsSyncs`), which return ids only; every write after them is tenant-scoped.
 
-## 13. Future entities
+## 13. Phase 7A design studio (ADR-0040)
+
+Migration `20260915224349_phase7a_design_studio`. Three tables — `DesignTemplate`, `Design`,
+`DesignRender` — all in `TENANT_SCOPED_MODELS`, plus six new columns on `Brand` (the brand kit).
+Rendering is metered under the existing `UsageKind.MEDIA_RENDER` (counter-only), so no new usage
+kind was needed.
+
+- **`brands` (brand kit columns)** — `logoAssetId` (→ `MediaAsset`, `SET NULL`, named relation
+  `BrandLogo`), `palette` (Json: `primary`/`secondary`/`accent`/`background`/`text` hex roles),
+  `typography` (Json: heading/body family + optional uploaded font `MediaAsset` ids), `tagline`,
+  `visualStyle` (tone/style guidance for the operator, never a generation prompt) and `offerings`
+  (Json array of products/services, each name + description). The logo and font assets are checked
+  to be in the **same workspace** when the kit is saved and again at render time; an SVG is refused
+  as a logo (markup, not pixels).
+- **`design_templates`** — a workspace's own template: `name`, `description`, `category`
+  (`DesignTemplateCategory`: SOCIAL_POST, CAROUSEL, STORY, THUMBNAIL, FLYER, POSTER, BANNER,
+  QUOTE), `status` (`DesignTemplateStatus`: ACTIVE/ARCHIVED), `version` (bumped on every layout
+  edit), `layout` (Json — layout **data** validated by `templateLayoutSchema` + `validateTemplateLayout`,
+  never markup or code), `formats` (design-format keys it suits) + `defaultFormat`,
+  `sourceBuiltInKey` (the built-in it was copied from). The six built-in templates are code, not
+  rows. Index `(workspaceId, status, category)` for the gallery.
+- **`designs`** — one filled-in template for one brand and one output size: `templateId` (nullable,
+  `SET NULL`) **plus** `templateBuiltInKey` and `templateVersion`, `category`, `layout` (a
+  **snapshot** of the template layout at creation — a later template edit never changes an approved
+  design), `brandId` (`SET NULL`), `formatKey`, `values` (Json `{fieldKey: text}`, tokens
+  unresolved), `images` (Json `{imageFieldKey: mediaAssetId}`), `status` (`DesignStatus`: DRAFT,
+  IN_REVIEW, APPROVED, PUBLISHED, ARCHIVED), review/approval fields (`reviewNote`, `submittedAt`,
+  `approvedById`, `approvedAt`, `publishedAt`), and optional `contentItemId`/`campaignId` links
+  (both `SET NULL`). Indexes: `(workspaceId, status, updatedAt)` for the list, plus
+  `(contentItemId)` and `(campaignId)` for the attachment views.
+- **`design_renders`** — one exported file: `designId` (cascade), `mediaAssetId` (**unique**,
+  cascade — every export is an ordinary `MediaAsset` under the tenant's `renders/` prefix),
+  `outputFormat` (`DesignOutputFormat`: PNG/JPEG/PDF), `pageIndex` (0-based for an image; NULL for
+  a PDF holding every page), `pageCount`, `formatKey`, `widthPx`/`heightPx`, `engine` +
+  `engineVersion`, `durationMs` and `warnings[]` (what the render had to do differently).
+  Idempotency lives in two columns: `renderHash` (the deterministic render plan + output settings +
+  the version of every input asset) and `renderKey` = `renderHash` + page (or `"pdf"`), which is
+  **unique** — a re-export of unchanged inputs returns the existing rows, and a concurrent export
+  keeps one row and drops the loser's bytes.
+
+**Deletion and lifecycle.** Organization and workspace deletion cascade. Deleting a template,
+brand, content item or campaign leaves designs intact (`SET NULL`) — a design keeps its layout
+snapshot and stays renderable. Deleting a design removes its renders; deleting the underlying
+media asset removes the render row with it. Two integrations make `DesignStatus` load-bearing:
+the calendar refuses to schedule an export whose design is not APPROVED/PUBLISHED, and a
+successful publish moves `APPROVED → PUBLISHED` (`markDesignsPublished`, scoped to that tenant).
+
+## 14. Future entities
 
 Remaining contract-only entities (angles, publications, workspace budgets, knowledge
 documents) are documented in [DOMAIN_MODEL.md](DOMAIN_MODEL.md) §6 and materialize in later

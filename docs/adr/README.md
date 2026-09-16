@@ -41,6 +41,7 @@
 | [0037](0037-youtube-resumable-video-publishing.md)              | YouTube: resumable video publishing, with video upload into the pipeline                       | Accepted             |
 | [0038](0038-remaining-platform-adapters.md)                     | TikTok, X, Threads, Pinterest: adapters where the APIs allow; email a placeholder              | Accepted             |
 | [0039](0039-external-analytics-provider-architecture.md)        | External analytics: provider-neutral ingestion where unavailable is never zero                 | Accepted             |
+| [0040](0040-visual-template-and-design-studio.md)               | Visual templates and a design studio that really renders (no image generation)                 | Accepted             |
 
 New significant decisions require a new ADR (`NNNN-kebab-title.md`) using the
 Context / Decision / Rationale / Consequences structure.
