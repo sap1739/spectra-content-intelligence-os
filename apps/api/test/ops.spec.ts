@@ -134,7 +134,11 @@ describe('API integration: operations', () => {
     );
 
     try {
-      const deadline = Date.now() + 20_000;
+      // Generous, because this waits on a real BullMQ worker competing with
+      // every other integration suite for the machine: 20s was enough when the
+      // suite was smaller, and became the gate's most frequent flake as other
+      // suites (sharp, ffmpeg video, ffmpeg audio) started doing real work.
+      const deadline = Date.now() + 45_000;
       for (;;) {
         const job = await queue.getJob(jobId);
         const state = await job?.getState();

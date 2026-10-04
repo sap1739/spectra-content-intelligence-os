@@ -7,7 +7,13 @@ import {
   designRow,
   designTemplates,
   studioCapabilities,
+  audioCapabilities,
+  audioRenderRow,
+  episodeDetail,
+  episodeRow,
+  grantedConsent,
   videoCapabilities,
+  voiceRow,
   videoFormats,
   videoProjectDetail,
   videoProjectRow,
@@ -549,6 +555,190 @@ test.describe('video rendering', () => {
 
     await expect(page.getByRole('button', { name: 'Render video' })).toHaveCount(0);
     await expect(page.getByText('video:write').first()).toBeVisible();
+  });
+});
+
+test.describe('audio and podcasts', () => {
+  const audioRoutes = (overrides: Record<string, unknown> = {}) => ({
+    '/audio/capabilities': audioCapabilities(),
+    '/audio/voices': { voices: [voiceRow()] },
+    '/audio/episodes/ep1': episodeDetail(),
+    '/audio/episodes': { episodes: [episodeRow()] },
+    ...overrides,
+  });
+
+  test('says audio is mixed, not generated, and names every missing provider', async ({ page }) => {
+    await stubApi(page, { routes: audioRoutes() });
+    await gotoAuthenticated(page, '/audio');
+
+    await expect(page.getByText(/Real mixing, no generated audio/)).toBeVisible();
+    await expect(
+      page.getByText(/No speech, music or sound-effect generator is wired/),
+    ).toBeVisible();
+    await expect(page.getByTestId('audio-engine')).toContainText('libmp3lame');
+    // All four synthesis kinds are listed as unimplemented, each with a reason.
+    const providers = page.getByTestId('audio-providers');
+    await expect(providers.getByText(/NOT IMPLEMENTED/).first()).toBeVisible();
+    await expect(providers.getByText(/must be uploaded as audio/)).toBeVisible();
+    await expect(providers.getByText(/never from listening to the audio/)).toBeVisible();
+  });
+
+  test('a cloned voice without consent is shown as unusable, with the reason', async ({ page }) => {
+    await stubApi(page, { routes: audioRoutes() });
+    await gotoAuthenticated(page, '/audio');
+
+    // Exact: the blocking message also contains the words "no consent record".
+    await expect(page.getByText('NO CONSENT', { exact: true })).toBeVisible();
+    await expect(page.getByText(/imitates a real person and has no consent record/)).toBeVisible();
+    await expect(page.getByText(/Cloned from Ada Lovelace/)).toBeVisible();
+  });
+
+  test('a stock voice is marked as needing no consent at all', async ({ page }) => {
+    await stubApi(page, {
+      routes: audioRoutes({
+        '/audio/voices': {
+          voices: [
+            voiceRow({
+              id: 'v2',
+              name: 'Narrator',
+              kind: 'STOCK',
+              subjectName: null,
+              requiresConsent: false,
+              usable: true,
+              blockReason: null,
+              message: null,
+            }),
+          ],
+        },
+      }),
+    });
+    await gotoAuthenticated(page, '/audio');
+
+    await expect(page.getByText('CONSENT NOT NEEDED', { exact: true })).toBeVisible();
+    await expect(page.getByText(/Stock voice — imitates nobody/)).toBeVisible();
+  });
+
+  test('an episode blocked by consent cannot be rendered, and says which voice', async ({
+    page,
+  }) => {
+    await stubApi(page, {
+      routes: audioRoutes({
+        '/audio/episodes/ep1': episodeDetail({
+          renders: [],
+          voices: [
+            {
+              id: 'v1',
+              name: 'Ada (cloned)',
+              kind: 'CLONED',
+              usable: false,
+              reason: 'CONSENT_REVOKED',
+              message: 'The person whose voice this is has revoked their consent.',
+              requiresConsent: true,
+            },
+          ],
+        }),
+      }),
+    });
+    await gotoAuthenticated(page, '/audio/ep1');
+
+    const blockers = page.getByTestId('consent-blockers');
+    await expect(blockers).toContainText('Ada (cloned)');
+    await expect(blockers).toContainText('revoked their consent');
+    await expect(page.getByRole('button', { name: 'Render mix' })).toBeDisabled();
+  });
+
+  test('host notes are shown as production direction, never as spoken words', async ({ page }) => {
+    await stubApi(page, { routes: audioRoutes() });
+    await gotoAuthenticated(page, '/audio/ep1');
+
+    await expect(page.getByText(/Host note \(not spoken\): Keep this tight\./)).toBeVisible();
+  });
+
+  test('a finished mix reports what was actually encoded, including measured loudness', async ({
+    page,
+  }) => {
+    await stubApi(page, { routes: audioRoutes() });
+    await gotoAuthenticated(page, '/audio/ep1');
+
+    await expect(page.getByText('SUCCEEDED')).toBeVisible();
+    await expect(page.getByText(/6s · 86 KB · measured -16.2 LUFS/)).toBeVisible();
+    await expect(page.getByRole('button', { name: /^MP3$/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Waveform/ })).toBeVisible();
+  });
+
+  test('a failed mix says why, in words, and offers nothing to download', async ({ page }) => {
+    await stubApi(page, {
+      routes: audioRoutes({
+        '/audio/episodes/ep1': episodeDetail({
+          renders: [
+            audioRenderRow({
+              status: 'FAILED',
+              progressPercent: 0,
+              failureReason: 'TTS_NOT_CONFIGURED',
+              mediaAssetId: null,
+              waveformAssetId: null,
+              durationMs: null,
+              sizeBytes: null,
+              integratedLufs: null,
+            }),
+          ],
+        }),
+      }),
+    });
+    await gotoAuthenticated(page, '/audio/ep1');
+
+    await expect(page.getByText('FAILED')).toBeVisible();
+    await expect(page.getByText(/no speech-synthesis provider is configured/)).toBeVisible();
+    await expect(page.getByRole('button', { name: /^MP3$/ })).toHaveCount(0);
+  });
+
+  test('a script-derived transcript says the words came from the script', async ({ page }) => {
+    await stubApi(page, {
+      routes: audioRoutes({
+        '/audio/episodes/ep1': episodeDetail({
+          transcripts: [{ id: 't1', source: 'SCRIPT_DERIVED', language: 'en', cues: [{}, {}] }],
+        }),
+      }),
+    });
+    await gotoAuthenticated(page, '/audio/ep1');
+
+    await expect(page.getByText(/Nothing listened to the audio/)).toBeVisible();
+  });
+
+  test('consent history shows what was agreed, and can be revoked', async ({ page }) => {
+    await stubApi(page, {
+      routes: audioRoutes({
+        '/audio/voices': {
+          voices: [
+            voiceRow({
+              consents: [grantedConsent()],
+              usable: true,
+              blockReason: null,
+              message: null,
+            }),
+          ],
+        },
+      }),
+    });
+    await gotoAuthenticated(page, '/audio/voices/v1');
+
+    await expect(page.getByTestId('consent-status')).toContainText('Consent is on record');
+    await expect(page.getByText(/Covers podcast · expires/)).toBeVisible();
+    await expect(page.getByText(/ref MSA-2026-114/)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Revoke consent' })).toBeVisible();
+  });
+
+  test('without voice:consent the consent form is gone and the permission is named', async ({
+    page,
+  }) => {
+    await stubApi(page, {
+      permissions: ALL_PERMISSIONS.filter((permission) => permission !== 'voice:consent'),
+      routes: audioRoutes(),
+    });
+    await gotoAuthenticated(page, '/audio/voices/v1');
+
+    await expect(page.getByRole('button', { name: 'Record consent' })).toHaveCount(0);
+    await expect(page.getByText('voice:consent').first()).toBeVisible();
   });
 });
 

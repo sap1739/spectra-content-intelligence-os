@@ -41,8 +41,11 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'audit:read',
     'design:read',
     'video:read',
+    'audio:read',
     'design:write',
     'video:write',
+    'audio:write',
+    'voice:consent',
   ],
   RESEARCHER: [
     'vertical:read',
@@ -70,6 +73,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'analytics:read',
     'design:read',
     'video:read',
+    'audio:read',
   ],
   CREATOR: [
     'brand:read',
@@ -85,8 +89,10 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'media:write',
     'design:read',
     'video:read',
+    'audio:read',
     'design:write',
     'video:write',
+    'audio:write',
   ],
   DESIGNER: [
     'brand:read',
@@ -96,8 +102,10 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'media:write',
     'design:read',
     'video:read',
+    'audio:read',
     'design:write',
     'video:write',
+    'audio:write',
   ],
   EDITOR: [
     'brand:read',
@@ -109,6 +117,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'media:read',
     'design:read',
     'video:read',
+    'audio:read',
   ],
   APPROVER: [
     'brand:read',
@@ -119,6 +128,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'campaign:read',
     'design:read',
     'video:read',
+    'audio:read',
   ],
   PUBLISHER: [
     'content:read',
@@ -129,6 +139,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'analytics:sync',
     'design:read',
     'video:read',
+    'audio:read',
   ],
   ANALYST: [
     'content:read',
@@ -138,7 +149,14 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'analytics:read',
     'analytics:sync',
   ],
-  CLIENT_REVIEWER: ['content:read', 'content:review', 'campaign:read', 'design:read', 'video:read'],
+  CLIENT_REVIEWER: [
+    'content:read',
+    'content:review',
+    'campaign:read',
+    'design:read',
+    'video:read',
+    'audio:read',
+  ],
   READ_ONLY: [
     'brand:read',
     'vertical:read',
@@ -151,6 +169,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'analytics:read',
     'design:read',
     'video:read',
+    'audio:read',
   ],
 };
 

@@ -308,3 +308,41 @@ permissions, `video:read` and `video:write`.
 - **No existence leaks.** A foreign or missing project, render or media asset is the same `404`.
 - **Nothing is generated.** `GET capabilities` returns `generatesVideo: false` with a sentence
   saying Spectra composes video from the workspace's own assets. There is no generation endpoint.
+
+## 20. Audio and podcasts (Phase 7C, ADR-0042)
+
+Routes under `workspaces/:workspaceId/audio`. Two permissions for the studio — `audio:read` and
+`audio:write` — plus **`voice:consent`** for consent, which is deliberately separate.
+
+| Method & path                                    | Permission      | Notes                                                                       |
+| ------------------------------------------------ | --------------- | --------------------------------------------------------------------------- |
+| `GET capabilities`                               | `audio:read`    | Engine features **and** all four synthesis kinds with their status + reason |
+| `GET voices`                                     | `audio:read`    | Each with a **live** consent verdict, not just the stored status            |
+| `GET voices/:voiceId`                            | `audio:read`    | One voice and its full consent history                                      |
+| `POST voices`                                    | `audio:write`   | `201`; a `CLONED` voice must name the person it imitates                    |
+| `POST voices/:voiceId/consent`                   | `voice:consent` | `201`; records a time-boxed, scoped grant. Audit-logged                     |
+| `POST voices/:voiceId/consent/:consentId/revoke` | `voice:consent` | Immediate; stops renders already queued. Audit-logged                       |
+| `GET episodes`                                   | `audio:read`    | Newest first, with render counts                                            |
+| `GET episodes/:episodeId`                        | `audio:read`    | Episode, renders, transcripts, plan warnings, **per-voice consent state**   |
+| `POST episodes`                                  | `audio:write`   | `201`; the script is planned before it is stored                            |
+| `PATCH episodes/:episodeId`                      | `audio:write`   | Re-planned on every edit; finished renders keep their own snapshot          |
+| `DELETE episodes/:episodeId`                     | `audio:write`   | Archives (soft delete)                                                      |
+| `POST episodes/:episodeId/renders`               | `audio:write`   | `202 { created, render }` — queues a worker job                             |
+| `GET renders/:renderId`                          | `audio:read`    | Status, progress, and `failureText` when it did not succeed                 |
+| `POST renders/:renderId/cancel`                  | `audio:write`   | Removes a queued job; flags a running one                                   |
+| `GET renders/:renderId/url[?file=waveform]`      | `audio:read`    | A 15-minute signed URL for the mix or its waveform                          |
+
+- **Consent refusals are specific.** Queuing a render whose cloned voice lacks granted, unexpired,
+  in-scope consent is a `422` **naming the voice and the reason** — and leaves no row. The same check
+  runs again in the worker, so a revocation after queueing fails the render with
+  `VOICE_CONSENT_MISSING` rather than letting it through.
+- **Unavailable synthesis is a `422`, not a queued failure.** A script with spoken segments is
+  refused up front, quoting which provider is missing and suggesting uploaded audio instead.
+- **202, not 200.** Mixing runs in the worker; the response is a `QUEUED` row with no asset, and the
+  client polls. Only `SUCCEEDED` has a file, and `GET …/url` on anything else is a `422` naming the
+  state.
+- **Idempotent.** The same script, settings and input assets return the existing render rather than
+  mixing the same audio twice; a `FAILED` one does not block a fresh attempt.
+- **No existence leaks.** A foreign or missing voice, episode, render or asset is the same `404`.
+- **Nothing is generated.** `GET capabilities` returns `generatesAudio: false` with a sentence, and
+  lists all four synthesis kinds as `NOT_IMPLEMENTED`. There is no generation endpoint.

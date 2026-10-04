@@ -43,6 +43,9 @@ export const ALL_PERMISSIONS = [
   'design:write',
   'video:read',
   'video:write',
+  'audio:read',
+  'audio:write',
+  'voice:consent',
   'social:connect',
   'social:publish',
   'analytics:read',
@@ -930,6 +933,195 @@ export function videoProjectDetail(overrides: Record<string, unknown> = {}) {
     renders: [videoRenderRow()],
     plan: { totalDurationMs: 6000, scenes: 2, warnings: [] },
     problems: [],
+    ...overrides,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Audio, voiceover and podcasts (Phase 7C)
+// ---------------------------------------------------------------------------
+
+export function audioCapabilities(overrides: Record<string, unknown> = {}) {
+  return {
+    engine: {
+      available: true,
+      reason: 'ffmpeg 6.1 at /usr/bin/ffmpeg, writing audio with libmp3lame.',
+      engineVersion: '6.1',
+      audioCodec: 'libmp3lame',
+      features: {
+        mixing: true,
+        normalization: true,
+        waveform: true,
+        audiogram: true,
+        burnedCaptions: true,
+      },
+      missing: [],
+    },
+    providers: [
+      {
+        kind: 'TEXT_TO_SPEECH',
+        status: 'NOT_IMPLEMENTED',
+        providerId: null,
+        reason:
+          'No speech-synthesis provider is implemented. Spoken segments must be uploaded as audio until one is added and configured.',
+        requiredEnv: [],
+      },
+      {
+        kind: 'SPEECH_TO_TEXT',
+        status: 'NOT_IMPLEMENTED',
+        providerId: null,
+        reason:
+          'No speech-recognition provider is implemented. Transcripts are derived from the script, never from listening to the audio.',
+        requiredEnv: [],
+      },
+      {
+        kind: 'AUDIO_GENERATION',
+        status: 'NOT_IMPLEMENTED',
+        providerId: null,
+        reason:
+          'No audio-generation provider is implemented. Sound effects and beds must be uploaded.',
+        requiredEnv: [],
+      },
+      {
+        kind: 'MUSIC_GENERATION',
+        status: 'NOT_IMPLEMENTED',
+        providerId: null,
+        reason:
+          'No music-generation provider is implemented. Music beds must be uploaded, and must be licensed for the use.',
+        requiredEnv: [],
+      },
+    ],
+    generatesAudio: false,
+    generationNote:
+      'Spectra mixes, normalizes and visualises audio this workspace already has. No speech, music or sound-effect generator is wired, and no audio is sent anywhere.',
+    consentPolicy:
+      'A voice that imitates a real person cannot be used without a granted, unexpired consent record covering the intended use.',
+    failureReasons: {
+      ENGINE_NOT_CONFIGURED: 'No audio engine is configured in this deployment.',
+      ENGINE_MISSING_CAPABILITY:
+        'The installed ffmpeg build is missing a filter this render needs.',
+      TTS_NOT_CONFIGURED:
+        'This script asks for spoken segments, but no speech-synthesis provider is configured.',
+      VOICE_CONSENT_MISSING:
+        'A segment uses a cloned voice without granted, unexpired consent. Nothing was synthesised.',
+      INPUT_UNAVAILABLE: 'An audio asset this script references could not be read.',
+      INPUT_UNSUPPORTED: 'An asset this script references is not audio the engine can decode.',
+      INVALID_SCRIPT: 'The script could not be turned into a render plan.',
+      ENGINE_ERROR: 'ffmpeg ran and reported an error.',
+      TIMEOUT: 'The render took longer than its time limit and was stopped.',
+      CANCELLED: 'The render was cancelled.',
+      STORAGE_ERROR: 'The rendered audio could not be stored.',
+      BUDGET_REFUSED: 'The workspace budget refused this render before it started.',
+      WORKER_LOST: 'The worker stopped before the render finished.',
+    },
+    ...overrides,
+  };
+}
+
+export function voiceRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'v1',
+    name: 'Ada (cloned)',
+    kind: 'CLONED',
+    language: 'en',
+    description: null,
+    subjectName: 'Ada Lovelace',
+    consents: [],
+    requiresConsent: true,
+    usable: false,
+    blockReason: 'CONSENT_MISSING',
+    message:
+      'This voice imitates a real person and has no consent record. Record written consent before using it.',
+    ...overrides,
+  };
+}
+
+export function grantedConsent(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'c1',
+    subjectName: 'Ada Lovelace',
+    method: 'SIGNED_RELEASE',
+    scopes: ['PODCAST'],
+    status: 'GRANTED',
+    grantedAt: '2026-10-01T09:00:00.000Z',
+    expiresAt: '2027-10-01T09:00:00.000Z',
+    revokedAt: null,
+    revokedReason: null,
+    reference: 'MSA-2026-114',
+    ...overrides,
+  };
+}
+
+const podcastScript = {
+  schemaVersion: 1,
+  normalize: true,
+  targetLufs: -16,
+  segments: [
+    {
+      id: 'intro',
+      kind: 'INTRO',
+      title: 'Cold open',
+      source: { kind: 'UPLOADED', mediaAssetId: 'ma-intro' },
+      gainDb: 0,
+      hostNotes: 'Keep this tight.',
+    },
+    {
+      id: 'host',
+      kind: 'HOST',
+      title: 'Main segment',
+      source: { kind: 'SILENCE', durationMs: 2000 },
+      gainDb: -2,
+    },
+  ],
+};
+
+export function episodeRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'ep1',
+    title: 'The long view',
+    summary: null,
+    showNotes: 'Links and credits.',
+    status: 'DRAFT',
+    script: podcastScript,
+    consentScope: 'PODCAST',
+    audioAssetId: null,
+    durationMs: null,
+    integratedLufs: null,
+    createdAt: '2026-10-01T09:00:00.000Z',
+    updatedAt: '2026-10-01T09:00:00.000Z',
+    _count: { renders: 1 },
+    ...overrides,
+  };
+}
+
+export function audioRenderRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'ar1',
+    episodeId: 'ep1',
+    kind: 'EPISODE_MIX',
+    status: 'SUCCEEDED',
+    progressPercent: 100,
+    failureReason: null,
+    failureDetail: null,
+    durationMs: 5500,
+    sizeBytes: 88_000,
+    integratedLufs: -16.2,
+    warnings: [],
+    mediaAssetId: 'ma1',
+    waveformAssetId: 'wf1',
+    createdAt: '2026-10-01T09:05:00.000Z',
+    ...overrides,
+  };
+}
+
+export function episodeDetail(overrides: Record<string, unknown> = {}) {
+  return {
+    episode: episodeRow(),
+    renders: [audioRenderRow()],
+    transcripts: [],
+    plan: { segments: 2, warnings: [] },
+    problems: [],
+    voices: [],
     ...overrides,
   };
 }

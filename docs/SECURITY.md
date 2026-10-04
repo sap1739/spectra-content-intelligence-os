@@ -478,3 +478,42 @@ Beyond those:
 - **Permissions.** Reading is `video:read`; creating, rendering and cancelling is `video:write`.
 - **Nothing is generated, and nothing is sent anywhere.** No generative-video provider is wired, and
   no prompt, script or asset leaves the deployment — the whole pipeline is local.
+
+## 22. Audio, voices and consent **[P1]** (Phase 7C, ADR-0042)
+
+Audio introduces a category of harm the earlier media phases did not: a cloned voice is a **person's
+likeness**, and a clip that should never have existed cannot be recalled once published. The
+controls are correspondingly strict.
+
+- **No voice is used without consent, and the gate cannot be bypassed.** A `CLONED` voice is
+  unusable unless a consent record is `GRANTED`, unexpired, not revoked, and scoped to the use.
+  Absence of information is never read as permission: a missing record blocks. The clock and the
+  revocation timestamp override the stored status, so a stale row cannot become permission. The gate
+  runs three times — in the editor, when a render is queued, and **again in the worker against the
+  database**, so a revocation stops a render that was already queued. Full policy:
+  `VOICE_CONSENT_POLICY.md`.
+- **Consent is a separate permission.** Recording or revoking it needs `voice:consent`, not
+  `audio:write`: someone who assembles episodes must not be able to assert that a person agreed to
+  be cloned. Every grant and revocation is audit-logged with the actor, the subject, the scopes and
+  the expiry. Consent is always time-boxed — an open-ended grant is not offered.
+- **A cloned voice must name its subject**, at the schema level. A voice whose subject is unknown
+  cannot be created, so it cannot be used.
+- **Nothing is synthesised, and nothing leaves the deployment.** No speech, audio or music provider
+  is implemented; a script needing one is refused with `TTS_NOT_CONFIGURED` before a job exists. No
+  script text, no audio and no prompt is sent anywhere.
+- **Host notes never reach the audio.** They are production direction: never spoken, never written
+  into the file, never published. An integration test reads the finished MP3's bytes to confirm it.
+- **Transcripts cannot overclaim.** `source` is `SCRIPT_DERIVED` at best — the words come from the
+  script and the timings from the measured mix. Nothing listened to the audio, and an uploaded clip
+  produces no cues rather than invented ones.
+- **Same process containment as video.** ffmpeg is spawned with an argument array (never a shell
+  string); no user text enters a filtergraph; inputs are read from object storage by the job, under
+  the tenant scope, and handed over as local files, so the engine fetches nothing; every encode has
+  a timeout and an abort signal that kill the process; engine output is bounded to 500 characters.
+- **Tenant isolation.** `VoiceProfile`, `VoiceConsentRecord`, `PodcastEpisode`, `Transcript` and
+  `AudioRender` are tenant-guarded. Every referenced asset is re-read under the tenant scope at
+  render time rather than trusted from stored JSON. Outputs are written under
+  `org/<id>/ws/<id>/renders/…` and the download path re-checks the key before signing. A foreign or
+  missing voice, episode, render or asset is the same `404`.
+- **Resource bounds.** 100 segments per script, 20 000 characters per spoken segment, 30s per
+  silence, and a `MEDIA_RENDER` budget pre-flight before a job is queued.

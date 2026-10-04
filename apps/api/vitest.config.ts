@@ -17,8 +17,11 @@ export default defineConfig({
     minWorkers: 1,
     setupFiles: ['test/setup-env.ts'],
     environment: 'node',
-    hookTimeout: 30000,
-    testTimeout: 30000,
+    // Generous ceilings, not expectations: these suites boot a real Nest app
+    // and several wait on real work (sharp, ffmpeg, a BullMQ worker) while
+    // sharing one machine. A timeout here should mean "stuck", not "busy".
+    hookTimeout: 60000,
+    testTimeout: 90000,
   },
   plugins: [
     // NestJS dependency injection relies on emitDecoratorMetadata, which

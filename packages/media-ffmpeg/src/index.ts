@@ -1,4 +1,7 @@
-export { FfmpegVideoRenderer, lastMeaningfulLine } from './ffmpeg-video-renderer';
+export { FfmpegVideoRenderer } from './ffmpeg-video-renderer';
+export { FfmpegAudioRenderer } from './ffmpeg-audio-renderer';
+export type { AudioEngineCapability, AudioMixOutput } from './ffmpeg-audio-renderer';
+export { lastMeaningfulLine, runFfmpeg } from './spawn';
 export type { FfmpegRendererOptions } from './ffmpeg-video-renderer';
 export { VideoRenderError } from './errors';
 export { probeEngine, runTool } from './binaries';

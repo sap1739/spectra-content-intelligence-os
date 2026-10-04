@@ -47,6 +47,11 @@ export const PERMISSIONS = [
   'design:write',
   'video:read',
   'video:write',
+  'audio:read',
+  'audio:write',
+  // Recording and revoking a person's consent to their voice being used is a
+  // legal act, so it is its own permission rather than part of audio:write.
+  'voice:consent',
   'social:connect',
   'social:publish',
   'analytics:read',

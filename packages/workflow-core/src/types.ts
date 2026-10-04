@@ -22,6 +22,7 @@ export const JOB_NAMES = {
   analyticsSyncExecute: 'analytics.sync.execute',
   analyticsSyncDispatch: 'analytics.sync.dispatch',
   videoRenderExecute: 'video.render.execute',
+  audioRenderExecute: 'audio.render.execute',
 } as const;
 
 export interface RetryPolicy {

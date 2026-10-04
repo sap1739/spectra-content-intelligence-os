@@ -29,8 +29,13 @@ import {
   publicMediaLinkProblem,
 } from '@spectra/publishing';
 import { executeReembed, executeResearchRun } from '@spectra/research-pipeline';
-import { FfmpegVideoRenderer, resolveVideoEngineOptions } from '@spectra/media-ffmpeg';
+import {
+  FfmpegAudioRenderer,
+  FfmpegVideoRenderer,
+  resolveVideoEngineOptions,
+} from '@spectra/media-ffmpeg';
 import { executeVideoRender } from '@spectra/video-pipeline';
+import { executeAudioRender } from '@spectra/audio-pipeline';
 import type { KeyRing } from '@spectra/security';
 import { linkedInApiOptionsFromEnv } from '@spectra/social-linkedin';
 import { metaGraphOptionsFromEnv } from '@spectra/social-meta';
@@ -551,6 +556,51 @@ async function main(): Promise<void> {
       concurrency: 2,
       timeoutMs: env.VIDEO_RENDER_TIMEOUT_MS + 60_000,
     },
+  );
+
+  // One audio render: an episode mix, its loudness normalization and waveform.
+  // Shares the video engine's process handling, so a timeout or a cancellation
+  // reaches ffmpeg itself (ADR-0042).
+  const audioRenderer = new FfmpegAudioRenderer(
+    resolveVideoEngineOptions({
+      ffmpegPath: env.FFMPEG_PATH ?? null,
+      ffprobePath: env.FFPROBE_PATH ?? null,
+      timeoutMs: env.VIDEO_RENDER_TIMEOUT_MS,
+    }),
+  );
+  const audioCapability = await audioRenderer.capabilities();
+  logger.info(
+    {
+      available: audioCapability.available,
+      audioCodec: audioCapability.audioCodec,
+      normalization: audioCapability.features.normalization,
+    },
+    audioCapability.reason,
+  );
+
+  runtime.register<{ renderId: string }, unknown>(
+    JOB_NAMES.audioRenderExecute,
+    instrument('audio.render.execute', async (envelope, context) => {
+      const jobLogger = withCorrelation(logger, context.correlationId);
+      return executeAudioRender(
+        {
+          prisma,
+          storage,
+          renderer: audioRenderer,
+          usage,
+          logger: jobLogger,
+          // No speech-synthesis adapter is registered: a script that needs one
+          // fails with TTS_NOT_CONFIGURED rather than inventing audio.
+        },
+        envelope.payload.renderId,
+        {
+          signal: context.signal,
+          attempt: context.attempt,
+          reportProgress: (percent) => context.reportProgress({ percent }),
+        },
+      );
+    }),
+    { concurrency: 2, timeoutMs: env.VIDEO_RENDER_TIMEOUT_MS + 60_000 },
   );
 
   // Due analytics runs: retries whose backoff elapsed, and — only when

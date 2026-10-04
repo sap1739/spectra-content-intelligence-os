@@ -134,6 +134,11 @@ model Organization {
   designRenders         DesignRender[]
   videoProjects         VideoProject[]
   videoRenders          VideoRender[]
+  voiceProfiles         VoiceProfile[]
+  voiceConsentRecords   VoiceConsentRecord[]
+  podcastEpisodes       PodcastEpisode[]
+  transcripts           Transcript[]
+  audioRenders          AudioRender[]
 
   @@map("organizations")
 }
@@ -259,6 +264,11 @@ model Workspace {
   designRenders         DesignRender[]
   videoProjects         VideoProject[]
   videoRenders          VideoRender[]
+  voiceProfiles         VoiceProfile[]
+  voiceConsentRecords   VoiceConsentRecord[]
+  podcastEpisodes       PodcastEpisode[]
+  transcripts           Transcript[]
+  audioRenders          AudioRender[]
 
   @@unique([organizationId, slug])
   @@index([organizationId, status])
@@ -1168,6 +1178,7 @@ model Campaign {
   analyticsSnapshots AnalyticsSnapshot[]
   designs            Design[]
   videoProjects      VideoProject[]
+  podcastEpisodes    PodcastEpisode[]
 
   @@index([workspaceId, status])
   @@map("campaigns")
@@ -1217,6 +1228,7 @@ model ContentItem {
   analyticsSnapshots AnalyticsSnapshot[]
   designs            Design[]
   videoProjects      VideoProject[]
+  podcastEpisodes    PodcastEpisode[]
 
   @@index([workspaceId, lifecycleState])
   @@index([campaignId])
@@ -1488,16 +1500,20 @@ model MediaAsset {
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
 
-  organization        Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  workspace           Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  scheduleEntries     ContentScheduleEntry[] @relation("ScheduleEntryMedia")
-  thumbnailForEntries ContentScheduleEntry[] @relation("ScheduleEntryThumbnail")
-  socialUploads       SocialMediaUpload[]
-  brandLogos          Brand[]                @relation("BrandLogo")
-  designRenders       DesignRender[]
-  videoRenders        VideoRender[]          @relation("VideoRenderOutput")
-  videoCaptions       VideoRender[]          @relation("VideoRenderCaptions")
-  videoPosters        VideoRender[]          @relation("VideoRenderPoster")
+  organization         Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace            Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  scheduleEntries      ContentScheduleEntry[] @relation("ScheduleEntryMedia")
+  thumbnailForEntries  ContentScheduleEntry[] @relation("ScheduleEntryThumbnail")
+  socialUploads        SocialMediaUpload[]
+  brandLogos           Brand[]                @relation("BrandLogo")
+  designRenders        DesignRender[]
+  videoRenders         VideoRender[]          @relation("VideoRenderOutput")
+  videoCaptions        VideoRender[]          @relation("VideoRenderCaptions")
+  videoPosters         VideoRender[]          @relation("VideoRenderPoster")
+  audioRenderOutputs   AudioRender[]          @relation("AudioRenderOutput")
+  audioRenderWaveforms AudioRender[]          @relation("AudioRenderWaveform")
+  podcastEpisodeAudio  PodcastEpisode[]       @relation("EpisodeAudio")
+  voiceConsentEvidence VoiceConsentRecord[]   @relation("ConsentEvidence")
 
   @@index([workspaceId, createdAt])
   @@map("media_assets")
@@ -2045,6 +2061,266 @@ model VideoRender {
   @@index([projectId, createdAt])
   @@index([workspaceId, status, createdAt])
   @@map("video_renders")
+}
+
+// ---------------------------------------------------------------------------
+// Audio, voiceover and podcasts (Phase 7C, ADR-0042)
+// ---------------------------------------------------------------------------
+
+/// STOCK — licensed by a provider, imitates nobody. CLONED — built from a real
+/// person's recordings; unusable without granted, unexpired consent.
+/// CUSTOM_SYNTHETIC — commissioned, tied to no person.
+enum VoiceKind {
+  STOCK
+  CLONED
+  CUSTOM_SYNTHETIC
+}
+
+enum VoiceConsentStatus {
+  PENDING
+  GRANTED
+  REVOKED
+  EXPIRED
+}
+
+enum VoiceConsentScope {
+  INTERNAL_ONLY
+  ORGANIC_SOCIAL
+  PODCAST
+  MARKETING
+  PAID_ADVERTISING
+}
+
+enum PodcastEpisodeStatus {
+  DRAFT
+  READY_TO_RENDER
+  RENDERING
+  READY
+  PUBLISHED
+  ARCHIVED
+}
+
+enum AudioRenderKind {
+  EPISODE_MIX
+  WAVEFORM
+  AUDIOGRAM
+}
+
+enum AudioRenderStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  TIMED_OUT
+}
+
+enum AudioFailureReason {
+  ENGINE_NOT_CONFIGURED
+  ENGINE_MISSING_CAPABILITY
+  TTS_NOT_CONFIGURED
+  VOICE_CONSENT_MISSING
+  INPUT_UNAVAILABLE
+  INPUT_UNSUPPORTED
+  INVALID_SCRIPT
+  ENGINE_ERROR
+  TIMEOUT
+  CANCELLED
+  STORAGE_ERROR
+  BUDGET_REFUSED
+  WORKER_LOST
+}
+
+enum TranscriptSource {
+  AUTHORED
+  SCRIPT_DERIVED
+  MACHINE_TRANSCRIBED
+}
+
+/// A voice a workspace can speak with. A CLONED voice names the person it
+/// imitates and is refused at render time without granted consent.
+model VoiceProfile {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @db.Uuid
+  workspaceId     String    @db.Uuid
+  name            String
+  kind            VoiceKind
+  language        String    @default("en")
+  description     String?
+  /// The adapter that would speak it, once one exists.
+  providerId      String?
+  providerVoiceId String?
+  /// Set for CLONED voices only: the person being imitated.
+  subjectName     String?
+  createdById     String?   @db.Uuid
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  consents     VoiceConsentRecord[]
+
+  @@index([workspaceId, kind])
+  @@map("voice_profiles")
+}
+
+/// Evidence that a person agreed to their voice being used, for what, and until
+/// when. Consent is time-boxed and revocable; every change is audit-logged.
+model VoiceConsentRecord {
+  id               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String              @db.Uuid
+  workspaceId      String              @db.Uuid
+  voiceProfileId   String              @db.Uuid
+  subjectName      String
+  subjectEmail     String?
+  /// How the agreement was obtained.
+  method           String
+  /// A stored release form or recorded statement.
+  evidenceAssetId  String?             @db.Uuid
+  /// A contract reference, so consent can be audited outside Spectra.
+  reference        String?
+  scopes           VoiceConsentScope[]
+  status           VoiceConsentStatus  @default(PENDING)
+  grantedAt        DateTime?           @db.Timestamptz(6)
+  /// Always set on a grant: an open-ended consent is not offered.
+  expiresAt        DateTime?           @db.Timestamptz(6)
+  revokedAt        DateTime?           @db.Timestamptz(6)
+  revokedReason    String?
+  obtainedByUserId String?             @db.Uuid
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace     Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  voiceProfile  VoiceProfile @relation(fields: [voiceProfileId], references: [id], onDelete: Cascade)
+  evidenceAsset MediaAsset?  @relation("ConsentEvidence", fields: [evidenceAssetId], references: [id], onDelete: SetNull)
+
+  @@index([voiceProfileId, status])
+  @@index([workspaceId, status])
+  @@map("voice_consent_records")
+}
+
+/// A podcast episode: its script (composition data), its notes, and the mix
+/// once one exists. `audioAssetId` is null until a render actually succeeds.
+model PodcastEpisode {
+  id             String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String               @db.Uuid
+  workspaceId    String               @db.Uuid
+  title          String
+  summary        String?
+  /// Published alongside the audio. Host notes live in the script and are not.
+  showNotes      String?
+  seasonNumber   Int?
+  episodeNumber  Int?
+  status         PodcastEpisodeStatus @default(DRAFT)
+  script         Json
+  /// What this episode is for — checked against each voice's consent scopes.
+  consentScope   VoiceConsentScope    @default(PODCAST)
+  audioAssetId   String?              @db.Uuid
+  durationMs     Int?
+  /// Measured integrated loudness of the finished mix, in LUFS.
+  integratedLufs Float?
+  contentItemId  String?              @db.Uuid
+  campaignId     String?              @db.Uuid
+  createdById    String?              @db.Uuid
+  updatedById    String?              @db.Uuid
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  audioAsset   MediaAsset?   @relation("EpisodeAudio", fields: [audioAssetId], references: [id], onDelete: SetNull)
+  contentItem  ContentItem?  @relation(fields: [contentItemId], references: [id], onDelete: SetNull)
+  campaign     Campaign?     @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  renders      AudioRender[]
+  transcripts  Transcript[]
+
+  @@index([workspaceId, status, updatedAt])
+  @@index([contentItemId])
+  @@map("podcast_episodes")
+}
+
+/// Words with timings. `source` says where they came from — SCRIPT_DERIVED
+/// means the script supplied the words and the render supplied the timings;
+/// nothing listened to the audio.
+model Transcript {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String           @db.Uuid
+  workspaceId    String           @db.Uuid
+  episodeId      String?          @db.Uuid
+  audioAssetId   String?          @db.Uuid
+  source         TranscriptSource
+  language       String           @default("en")
+  cues           Json
+  /// Set only for MACHINE_TRANSCRIBED: which model produced it.
+  modelRef       String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  episode      PodcastEpisode? @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@index([episodeId])
+  @@map("transcripts")
+}
+
+/// One audio render job and its outcome — the row is the state machine, and
+/// only SUCCEEDED ever has an asset.
+model AudioRender {
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String              @db.Uuid
+  workspaceId       String              @db.Uuid
+  episodeId         String              @db.Uuid
+  kind              AudioRenderKind     @default(EPISODE_MIX)
+  status            AudioRenderStatus   @default(QUEUED)
+  /// A snapshot of the script as submitted: later edits never change what a
+  /// finished render was made from.
+  script            Json
+  /// Audiogram settings, when `kind` is AUDIOGRAM.
+  audiogram         Json?
+  renderHash        String
+  renderKey         String              @unique
+  progressPercent   Int                 @default(0)
+  attempt           Int                 @default(0)
+  maxAttempts       Int                 @default(3)
+  queueJobId        String?
+  cancelRequestedAt DateTime?           @db.Timestamptz(6)
+  startedAt         DateTime?           @db.Timestamptz(6)
+  finishedAt        DateTime?           @db.Timestamptz(6)
+  failureReason     AudioFailureReason?
+  /// Bounded, scrubbed engine output — never a whole log.
+  failureDetail     String?
+  engine            String?
+  engineVersion     String?
+  audioCodec        String?
+  durationMs        Int?
+  sizeBytes         Int?
+  integratedLufs    Float?
+  warnings          String[]            @default([])
+  mediaAssetId      String?             @unique @db.Uuid
+  waveformAssetId   String?             @db.Uuid
+  createdById       String?             @db.Uuid
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  episode       PodcastEpisode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  mediaAsset    MediaAsset?    @relation("AudioRenderOutput", fields: [mediaAssetId], references: [id], onDelete: SetNull)
+  waveformAsset MediaAsset?    @relation("AudioRenderWaveform", fields: [waveformAssetId], references: [id], onDelete: SetNull)
+
+  @@index([episodeId, createdAt])
+  @@index([workspaceId, status, createdAt])
+  @@map("audio_renders")
 }
 
 // ---------------------------------------------------------------------------

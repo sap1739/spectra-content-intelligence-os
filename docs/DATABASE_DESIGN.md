@@ -433,7 +433,56 @@ including that it once succeeded — survives. Every render output is an ordinar
 the tenant's `renders/` prefix, so the calendar, the publishing adapters and the media library use
 them with no new plumbing.
 
-## 15. Future entities
+## 15. Phase 7C audio and podcasts (ADR-0042)
+
+Migration `20261004211824_phase7c_audio_podcast`. Five tables — `VoiceProfile`, `VoiceConsentRecord`,
+`PodcastEpisode`, `Transcript`, `AudioRender` — all in `TENANT_SCOPED_MODELS`, plus eight enums.
+Rendering is metered under the existing `UsageKind.MEDIA_RENDER`.
+
+- **`voice_profiles`** — a voice a workspace can speak with: `kind` (`VoiceKind`: STOCK, CLONED,
+  CUSTOM_SYNTHETIC), `language`, optional `providerId`/`providerVoiceId` for an adapter that does
+  not yet exist, and `subjectName` — **set for CLONED voices only, and required by the schema**,
+  because a cloned voice always belongs to someone.
+- **`voice_consent_records`** — evidence that a person agreed: `subjectName`, optional
+  `subjectEmail`, `method`, an optional `evidenceAssetId` (a stored release form, `SET NULL`), a
+  `reference` so the agreement is auditable outside Spectra, `scopes` (`VoiceConsentScope[]`),
+  `status` (`VoiceConsentStatus`: PENDING/GRANTED/REVOKED/EXPIRED), `grantedAt`, **`expiresAt`
+  (always set on a grant — consent is time-boxed)**, `revokedAt` + `revokedReason`, and
+  `obtainedByUserId`. Indexed `(voiceProfileId, status)` and `(workspaceId, status)`.
+
+  The stored `status` is **not** the authority: `effectiveConsentStatus` treats a grant past its
+  expiry as EXPIRED and a `revokedAt` as REVOKED whatever the column says, so a row nobody updated
+  cannot become permission.
+
+- **`podcast_episodes`** — `title`, `summary`, `showNotes` (published; host notes live in the script
+  and are not), `seasonNumber`/`episodeNumber`, `status` (`PodcastEpisodeStatus`), `script` (Json —
+  composition data validated by `podcastScriptSchema`), **`consentScope`** (what this episode is
+  for, checked against each voice's scopes), plus the measured results of the mix: `audioAssetId`
+  (`SET NULL`, null until a render actually succeeds), `durationMs` and `integratedLufs`. Optional
+  `contentItemId`/`campaignId` links. Indexed `(workspaceId, status, updatedAt)` and
+  `(contentItemId)`.
+- **`transcripts`** — `source` (`TranscriptSource`: AUTHORED, SCRIPT_DERIVED, MACHINE_TRANSCRIBED),
+  `language`, `cues` (Json), and `modelRef` set only for MACHINE_TRANSCRIBED. With no
+  speech-recognition provider, only the first two are producible — the column exists so a transcript
+  can never silently overclaim where its words came from.
+- **`audio_renders`** — one render job and its outcome; the row is the state machine. `kind`
+  (`AudioRenderKind`), `status` (`AudioRenderStatus`), a **snapshot** of the `script` as submitted,
+  optional `audiogram` settings, `renderHash` + **unique** `renderKey` for idempotency, live job
+  state (`progressPercent`, `attempt`/`maxAttempts`, `queueJobId`, `cancelRequestedAt`, timings),
+  and what was produced (`engine`, `audioCodec`, `durationMs`, `sizeBytes`, `integratedLufs`,
+  `warnings[]`) read back from the file rather than copied from the request. `mediaAssetId` is
+  **unique, nullable and set only on SUCCEEDED**; `failureReason` (`AudioFailureReason`, 13 values)
+  is set on every other terminal state, so "failed" and "has audio" cannot coexist.
+  `waveformAssetId` holds the picture. Indexed `(episodeId, createdAt)` and
+  `(workspaceId, status, createdAt)`.
+
+**Deletion and lifecycle.** Organization and workspace deletion cascade. Deleting a voice cascades
+to its consent records — the history belongs to the voice. Deleting an episode removes its renders
+and transcripts. Deleting an output media asset nulls the reference rather than the row, so a
+render's history survives. Every output is an ordinary `MediaAsset` under the tenant's `renders/`
+prefix.
+
+## 16. Future entities
 
 Remaining contract-only entities (angles, publications, workspace budgets, knowledge
 documents) are documented in [DOMAIN_MODEL.md](DOMAIN_MODEL.md) §6 and materialize in later

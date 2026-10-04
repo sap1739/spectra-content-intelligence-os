@@ -50,6 +50,12 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // Video rendering (ADR-0041).
   'VideoProject',
   'VideoRender',
+  // Audio, voiceover and podcasts (ADR-0042).
+  'VoiceProfile',
+  'VoiceConsentRecord',
+  'PodcastEpisode',
+  'Transcript',
+  'AudioRender',
 ]);
 
 const GUARDED_OPERATIONS: ReadonlySet<string> = new Set([

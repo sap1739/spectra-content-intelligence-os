@@ -1,7 +1,7 @@
 # SpectraContent Intelligence OS — Project Status
 
 **Snapshot date:** 2026-10-04 · **Branch:** `main`
-**Status:** Phases 1–5 complete · Phase 6 complete (6A–6H shipped) · Phase 7 in progress (7A–7B shipped)
+**Status:** Phases 1–5 complete · Phase 6 complete (6A–6H shipped) · Phase 7 in progress (7A–7C shipped)
 
 > This document is a factual, audited snapshot intended as context for planning further work.
 > Every number below was measured from the repository, not estimated.
@@ -131,6 +131,8 @@ design-studio/    Template layout model, render planner, raster PDF writer      
 video-studio/     Storyboard model, render planner, SRT/VTT, FFmpeg arg builder [Phase 7B]
 media-ffmpeg/     FFmpeg VideoRenderer: capability probing, progress, cancel   [Phase 7B]
 video-pipeline/   Executes one render job: inputs, encode, storage, outcome     [Phase 7B]
+audio-core/       Voice consent gate, provider capability, mix planning, FFmpeg args [Phase 7C]
+audio-pipeline/   Executes one audio render: consent, mix, waveform, transcript  [Phase 7C]
 social-core/      SocialPublisher + PostPublisher + account-discovery ports, capability matrix
 social-oauth/     Provider-neutral OAuth broker: state, PKCE, tokens, sealed bundles [Phase 6C]
 social-linkedin/  Real LinkedIn adapter: discovery, Images API, Posts API (text + 1 image) [Phase 6D]
@@ -424,6 +426,29 @@ standards, health/readiness endpoints, OpenAPI at `/docs`.
   render is skipped on retry, never re-encoded or re-billed. Outputs are ordinary tenant-rooted
   media assets. The integration suite proves it by **decoding the stored bytes** — `ftyp` box, h264,
   1080×1080, duration within a frame of the plan (ADR-0041).
+- **7C:** **Audio, voiceover and podcasts — real mixing, no generated voices, and consent that
+  bites.** Everything local is genuinely done by ffmpeg: segment mixing with per-segment gain,
+  generated silence, a music bed with fades mixed under the speech and cut to it, **EBU R128
+  loudness normalization** whose result is **measured back** with `ebur128` rather than assumed,
+  waveform pictures, and **audiograms** — completing the foundation 7B left as a port. Everything
+  needing a vendor is honestly absent: text-to-speech, speech-to-text, audio generation and music
+  generation have **no adapter**, and `resolveAudioCapabilities` distinguishes `NOT_IMPLEMENTED`
+  (no adapter), `NOT_CONFIGURED` (one exists, no credentials — the reason names the env vars) and
+  `DISABLED` (switched off by policy). A script with spoken segments is refused **before a job is
+  queued** with `TTS_NOT_CONFIGURED`; no silence is substituted and no tone is passed off as a
+  voice. **Consent is the centre of the phase.** A `CLONED` voice is unusable without a `GRANTED`,
+  unexpired, in-scope record; the clock and a `revokedAt` override the stored status so a stale row
+  cannot become permission; consent is always time-boxed; and creating a cloned voice **requires
+  naming the person** at the schema level. The gate runs three times — in the editor, at queue time,
+  and **again in the worker against the database** — so a revocation after queueing stops the
+  render. Recording or revoking consent needs the separate `voice:consent` permission and is
+  audit-logged with actor, subject, scopes and expiry. Transcripts carry a `source` and are
+  `SCRIPT_DERIVED` at best: the words come from the script, the timings from the measured mix, and
+  nothing listened to the audio. Host notes are production direction and never reach the file —
+  proved by reading the finished MP3's bytes. The render job follows 7B exactly, literally sharing
+  its process handling (`runFfmpeg`). Proven by decoding stored bytes: MPEG frames, duration
+  matching the script within a frame, a real PNG waveform, and a measured LUFS figure (ADR-0042,
+  `docs/VOICE_CONSENT_POLICY.md`).
 
 ---
 
@@ -441,6 +466,9 @@ standards, health/readiness endpoints, OpenAPI at `/docs`.
 | Video rendering (MP4, captions, poster) via ffmpeg as a subprocess                         | **Real, working when the host has ffmpeg** — bytes decoded in the suite   | `FFMPEG_PATH`/`PATH` + a font file; **no binary is vendored**, and capability is probed and reported per feature (ADR-0041)               |
 | Generative video (text-to-video)                                                           | **Not built, and not planned here** (ADR-0041)                            | the engine composes the workspace's own assets; no provider to configure                                                                  |
 | Speech-to-text for captions                                                                | **Not built**                                                             | captions are authored in the storyboard; nothing is transcribed                                                                           |
+| Audio mixing, EBU R128 normalization, waveforms, audiograms (ffmpeg)                       | **Real, working when the host has ffmpeg** — bytes decoded in the suite   | `FFMPEG_PATH`/`PATH`; loudness is measured back with `ebur128`, not assumed (ADR-0042)                                                    |
+| Text-to-speech / voice cloning                                                             | **Not implemented** (ADR-0042) — reported with a reason                   | no adapter exists; a script needing one is refused before a job is queued. Consent gate is already in place for when one is added         |
+| Audio and music generation                                                                 | **Not implemented** (ADR-0042) — reported with a reason                   | beds and effects must be uploaded, and must be licensed by the operator                                                                   |
 | PostgreSQL / Redis / MinIO                                                                 | **Real, working**                                                         | docker-compose                                                                                                                            |
 | RSS/Atom ingestion                                                                         | **Real, working** (first-party parser)                                    | none                                                                                                                                      |
 | OAuth connect: LinkedIn, Facebook Pages, Instagram, Threads, YouTube, TikTok, X, Pinterest | **Real flow, when configured** (6C) — not yet run against a live platform | `SOCIAL_OAUTH_<PLATFORM>_CLIENT_ID/SECRET` + redirect base + `SOCIAL_TOKEN_ENCRYPTION_KEY`                                                |
@@ -527,47 +555,50 @@ platforms.
 
 ## 7. Quality gate (current, verified)
 
-| Check                | Result                                                 |
-| -------------------- | ------------------------------------------------------ |
-| `pnpm build`         | 46/46 tasks pass                                       |
-| `pnpm typecheck`     | 87/87 tasks pass                                       |
-| `pnpm lint`          | pass                                                   |
-| `pnpm format`        | clean                                                  |
-| Unit tests           | **968 passing** across 41 packages/apps (incl. web 48) |
-| API integration      | **246 tests**, 24 files — see the flake note below     |
-| Pipeline integration | **95 passing** (11 files, `research-pipeline`)         |
-| Metering integration | **74 passing** (7 files)                               |
-| E2E (Playwright)     | **49 tests** (stubbed-API UI journeys)                 |
-| Prisma               | schema valid · 31 migrations · database up to date     |
+| Check                | Result                                                  |
+| -------------------- | ------------------------------------------------------- |
+| `pnpm build`         | 48/48 tasks pass                                        |
+| `pnpm typecheck`     | 91/91 tasks pass                                        |
+| `pnpm lint`          | pass                                                    |
+| `pnpm format`        | clean                                                   |
+| Unit tests           | **1013 passing** across 43 packages/apps (incl. web 48) |
+| API integration      | **266 tests**, 25 files — see the flake note below      |
+| Pipeline integration | **95 passing** (11 files, `research-pipeline`)          |
+| Metering integration | **74 passing** (7 files)                                |
+| E2E (Playwright)     | **59 tests** (stubbed-API UI journeys)                  |
+| Prisma               | schema valid · 32 migrations · database up to date      |
 
-Known flake 1 (pre-existing, not introduced by 6B–7B): `budget-hardening.spec.ts` "concurrent
+Known flake 1 (pre-existing, not introduced by 6B–7C): `budget-hardening.spec.ts` "concurrent
 research-run starts cannot all pass the last allowance" intermittently admits more than one run. It
-did not appear during the 7B gate. It is not fixed — the investigation is tracked separately.
+did not appear during the 7B or 7C gates. It is not fixed — the investigation is tracked separately.
 
-Known flake 2 (first recorded in the 7A gate; **root-caused and partly fixed during 7B**). The
-symptom was a cluster of failures across unrelated API spec files — foreign-key violations and
-`findFirstOrThrow` misses for a spec's _own_ organization. Two distinct causes were found:
+Known flake 2 (first recorded in the 7A gate; root-caused in 7B, narrowed further in 7C). The
+symptom is a cluster of failures across unrelated API spec files. Three causes have been found and
+addressed:
 
 1. **A stale Redis backlog.** The shared dev queue had accumulated 93 waiting and ~1300 failed jobs
-   across many phases. `ops.spec.ts` runs a real BullMQ worker and polls 20s for its own job, handing
-   foreign jobs back; with that backlog it never reached its own job, and the failure cascaded.
-   Draining `bull:spectra-system*` returned a clean `main` to **227/227**. Operationally: drain the
-   dev queue before a gate run, and do not leave test jobs behind.
+   across many phases. `ops.spec.ts` runs a real BullMQ worker and polls for its own job, handing
+   foreign jobs back; with that backlog it never reached its own, and the failure cascaded. Draining
+   `bull:spectra-system*` returned a clean `main` to 227/227. **Operationally: drain the dev queue
+   before a gate run, and leave no test jobs behind.**
 2. **Unbounded vitest parallelism.** The suites share one Postgres, Redis and MinIO and several do
-   real work (sharp, ffmpeg, a BullMQ worker). With every file in parallel on a loaded machine,
-   registration hooks partially fail and the resulting ids surface later as FK violations in other
-   specs. `apps/api/vitest.config.ts` now caps `maxWorkers: 3`, which took a representative run from
-   19–24 failures to 0–6 and costs no wall-clock worth having (~12s either way).
+   real work (sharp, ffmpeg video, ffmpeg audio, a BullMQ worker). `apps/api/vitest.config.ts` caps
+   `maxWorkers: 3`, which took a representative run from 19–24 failures to 0–6 at no wall-clock cost
+   worth having.
+3. **Timeouts tuned for a smaller suite** (7C). `ops.spec.ts` polled 20s for its seeded job and the
+   suite-wide `testTimeout` was 30s — both comfortable when the suite was smaller, and the gate's
+   most frequent failure once three media pipelines started doing real work. The poll is now 45s and
+   the ceilings 60s/90s: a timeout should mean "stuck", not "busy".
 
-Phase 7B also fixed a test-side contributor of its own: `video-rendering.spec.ts` stubs
-`QueueService.enqueue` for all but one dedicated test, so it never leaves jobs in the shared queue
-for `ops.spec` to trip over.
+Each media phase also fixed a contributor of its own: `video-rendering.spec.ts` and
+`audio-podcast.spec.ts` both stub `QueueService.enqueue` for all but one dedicated test, so neither
+leaves jobs in the shared queue for `ops.spec` to trip over.
 
-What remains: on a **loaded** machine the API suite is still intermittent — across five runs during
-the 7B gate it produced 246/246 twice and 4–6 failures otherwise, always in `ops.spec.ts` (its 20s
-job-state poll) or in a tenant-isolation test whose setup lost a race. **No failure has ever
-occurred in `video-rendering.spec.ts`.** The durable fix is per-suite database and queue isolation,
-which remains tracked.
+What remains: on a **loaded** machine the API suite is still intermittent. The 7C gate produced
+**266/266** on one run and 5 failures on another (four in `ops.spec.ts`, one in
+`analytics-sync.spec.ts`), on a host carrying a load average near 8 from unrelated work. **No
+failure has ever occurred in `video-rendering.spec.ts` or `audio-podcast.spec.ts`.** The durable fix
+is per-suite database and queue isolation, which remains tracked.
 
 -------------------- | ------------------------------------------------------ |
 | `pnpm build` | 40/40 tasks pass |

@@ -1,0 +1,28 @@
+{
+  "name": "@spectra/audio-pipeline",
+  "version": "0.1.0",
+  "description": "Executes one audio render job: consent gate, tenant-scoped inputs, mix, waveform, storage, transcript, and one honest outcome.",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run src",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@spectra/audio-core": "workspace:*",
+    "@spectra/contracts": "workspace:*",
+    "@spectra/database": "workspace:*",
+    "@spectra/logging": "workspace:*",
+    "@spectra/media-ffmpeg": "workspace:*",
+    "@spectra/metering": "workspace:*",
+    "@spectra/storage": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.0"
+  }
+}

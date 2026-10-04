@@ -394,10 +394,29 @@ weakest link in the differentiator: research and evidence quality.
   with operator-facing text. Outputs are ordinary tenant-rooted media assets, so the calendar and the
   publishing adapters use them with no new plumbing. Proven by decoding the stored bytes in the
   integration suite — `ftyp`, h264, dimensions, duration within a frame of the plan (ADR-0041).
+- ✅ **Increment C — audio, voiceover and podcasts.** Everything local is real: segment mixing with
+  per-segment gain, generated silence, a music bed with fades mixed under the speech and cut to it,
+  **EBU R128 loudness normalization** whose result is **measured back** with `ebur128` rather than
+  assumed, waveform pictures (`showwavespic`) and **audiograms** (`showwaves` over a background with
+  optional cover art and burned-in captions) — which completes the audiogram foundation 7B left as a
+  port and hands the result to the video side as an ordinary MP4. Everything requiring a vendor is
+  honestly absent: text-to-speech, speech-to-text, audio generation and music generation have **no
+  adapter**, each reporting `NOT_IMPLEMENTED` with a sentence, and a script with spoken segments is
+  refused before a job is queued rather than quietly losing them. The phase's centre of gravity is
+  **consent**: a voice that imitates a real person is unusable without a `GRANTED`, unexpired,
+  in-scope record; the clock and a revocation timestamp override the stored status, so a stale row
+  cannot become permission; a cloned voice must name its subject at the schema level; and the gate
+  runs three times — in the editor, at queue time, and **again in the worker against the database**,
+  so a revocation stops a render already queued. Recording consent needs its own `voice:consent`
+  permission, separate from `audio:write`, and every grant and revocation is audit-logged.
+  Transcripts are `SCRIPT_DERIVED` at best and say so; host notes never reach the audio, proved by
+  reading the finished MP3's bytes. Rendering follows the 7B job model exactly, sharing its process
+  handling (ADR-0042, `docs/VOICE_CONSENT_POLICY.md`).
 - Next: a drag-and-drop canvas editor (layout positions currently come from templates); vector PDF
-  for commercial print; audiogram waveforms (`showwaves`) — an audio bed mixes today but waveform
-  visualisation is still a port; speech-to-text so captions can be transcribed rather than only
-  authored; moving design rendering to the worker if page counts grow.
+  for commercial print; a speech-synthesis adapter behind the existing consent gate, once credentials
+  exist and it can be tested safely; speech-to-text so transcripts can cover uploaded audio rather
+  than only scripted segments; two-pass loudness normalization; moving design rendering to the worker
+  if page counts grow.
 
 ## Cross-phase next steps
 

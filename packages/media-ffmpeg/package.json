@@ -12,6 +12,7 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
+    "@spectra/audio-core": "workspace:*",
     "@spectra/contracts": "workspace:*",
     "@spectra/media-core": "workspace:*",
     "@spectra/video-studio": "workspace:*"

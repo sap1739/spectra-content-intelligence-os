@@ -202,3 +202,33 @@ AI-generated video, and rendering depends on a binary the deployment may not hav
   than silently appearing to do nothing.
 - **Permissions are named.** Without `video:write` the create and render controls are absent and the
   missing permission is stated.
+
+## 14. Audio (Phase 7C, ADR-0042)
+
+`/audio` has to answer two questions before anything else: does this generate voices (no), and may
+this voice be used (often, not yet).
+
+- **"Real mixing, no generated audio" is the first card**, followed by the engine it found and
+  **all four synthesis kinds listed with their status and reason**. The missing capabilities are
+  shown, not hidden — an operator should not have to discover them by failing a render.
+- **Consent state is visible wherever a voice is.** Each voice carries a badge — `GRANTED`,
+  `PENDING`, `REVOKED`, `EXPIRED`, `NO CONSENT`, or `CONSENT NOT NEEDED` for a voice that imitates
+  nobody — and a blocked voice states the reason in words.
+- **A cloned voice asks whose voice it is, inline.** Choosing "Cloned" reveals a required name field
+  and says plainly that it cannot be used until consent is recorded.
+- **An episode blocked by consent cannot be rendered.** The block is listed by voice with its
+  reason, and the render button is disabled — a user is never invited to try something that will be
+  refused.
+- **Host notes are labelled as not spoken.** They render in a muted block prefixed "Host note (not
+  spoken)", so production direction is never mistaken for script.
+- **A finished mix reports what was encoded** — duration, size and the **measured** LUFS, not the
+  target — and offers the MP3 and the waveform separately. A failed mix states the reason in words
+  and offers nothing to download.
+- **A transcript says where its words came from.** A `SCRIPT_DERIVED` transcript carries the
+  sentence "the words come from the script and the timings from the mix. Nothing listened to the
+  audio."
+- **Consent is its own page** with the full history, including revocations and their reasons, and a
+  form that forces a scope and an expiry date. Without `voice:consent` the form is absent and the
+  permission is named.
+- **Progress is the encoder's.** A running mix shows a real percentage in an `aria`-labelled
+  progressbar; a queued one says it is waiting for a worker.

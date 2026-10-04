@@ -7,10 +7,13 @@ design.ts) defines the job specs they exchange. Two engines are implemented and 
 - `SharpDesignRenderer` — the design studio's page renderer (ADR-0040, §6 below).
 - `FfmpegVideoRenderer` — the video pipeline (ADR-0041, §7 below), **when the deployment has
   ffmpeg**: no binary is vendored, so capability is detected at runtime and reported honestly.
+- `FfmpegAudioRenderer` — the audio pipeline (ADR-0042, §8 below): episode mixing, EBU R128
+  loudness normalization, waveform pictures and audiograms.
 
-The remaining ports in §1 are still **ports only**: standalone audio mixing, subtitle burn-in as its
-own job, audiogram waveforms, HTML-to-image and Remotion compositions are honestly unavailable and
-report themselves as such.
+The remaining ports in §1 are still **ports only**: subtitle burn-in as its own job, HTML-to-image
+and Remotion compositions are honestly unavailable and report themselves as such. The four AI audio
+ports (speech synthesis, speech recognition, audio and music generation) have **no adapter at all**
+and report `NOT_IMPLEMENTED` with a reason (ADR-0042).
 
 ## 1. Ports → planned engines
 
@@ -136,3 +139,55 @@ foundation only — an audio bed mixes under a video, but waveform visualisation
 Captions are authored, not transcribed: there is no STT provider. Fonts are the weak point, exactly
 as in the design studio — without an uploaded or configured font file, text overlays are reported
 unavailable rather than silently dropped.
+
+## 8. Audio and podcasts (Phase 7C, ADR-0042)
+
+The fourth pipeline, and the one where what is _absent_ matters as much as what works.
+
+| Stage      | Where                                 | What it does                                                                  |
+| ---------- | ------------------------------------- | ----------------------------------------------------------------------------- |
+| Script     | `@spectra/contracts` (`audio.ts`)     | Segments, sources (uploaded / spoken / silence), gains, host notes, music bed |
+| Consent    | `@spectra/audio-core` (`consent.ts`)  | The single gate deciding whether a voice may be used                          |
+| Capability | `audio-core` (`providers.ts`)         | Which synthesis kinds exist, which are configured, and why not                |
+| Plan       | `audio-core` (`plan.ts`)              | Pure: ordering, measured timings, transcript cues, render hash                |
+| Command    | `audio-core` (`ffmpeg-audio-args.ts`) | Plan → an **argument array**; mixing, normalization, waveform, audiogram      |
+| Encode     | `@spectra/media-ffmpeg`               | Shares `runFfmpeg` with video: progress, timeout, cancel, probe, loudness     |
+| Job        | `@spectra/audio-pipeline` + worker    | Consent re-check, inputs, mix, waveform, storage, transcript, one outcome     |
+
+### What is real
+
+Segment mixing with per-segment gain, generated silence, a music bed with fades mixed under the
+speech and cut to it, **EBU R128 loudness normalization** with the result **measured back** via
+`ebur128` rather than assumed, waveform PNGs (`showwavespic`), and **audiograms** (`showwaves` over
+a background, optional cover art, optional burned-in captions) — which completes the audiogram
+foundation ADR-0041 left as a port and hands the result to the video side as an ordinary MP4.
+
+### What is honestly absent
+
+Text-to-speech, speech-to-text, audio generation and music generation have **no adapter**. Each
+reports `NOT_IMPLEMENTED` with a sentence an operator can act on, and the studio page lists all four
+rather than hiding them. A script with spoken segments is refused before a job is queued, with the
+advice to upload audio instead. Nothing is substituted.
+
+Transcripts are therefore `SCRIPT_DERIVED` at best: the words come from the script, the timings from
+the measured segments, and **nothing listened to the audio**. An uploaded clip yields no cues,
+because Spectra does not know what is in it.
+
+### Rules
+
+- **No voice without consent** — see `VOICE_CONSENT_POLICY.md`. The gate runs in the editor, at
+  queue time, and again in the worker against the database, so a revocation stops a queued render.
+- **Host notes never reach the audio** — production direction only; an integration test reads the
+  finished MP3's bytes to prove it.
+- **No user text in a filtergraph**, as in video: only numbers, validated colours and paths Spectra
+  generated.
+- **One terminal state, always with a reason**, and only `SUCCEEDED` has an asset. A failed render
+  also returns its episode to `READY_TO_RENDER`.
+- **Metered and idempotent** — `MEDIA_RENDER` pre-flight before the job exists; `renderHash` covers
+  the script, output settings and every input asset's identity.
+
+### Limits
+
+Normalization is single-pass (the measured LUFS is reported, so the difference is visible). Music
+licensing is not checked, and the plan says so in a warning. Mixing is CPU-bound and shares the
+video pipeline's two-renders-per-worker cap.
