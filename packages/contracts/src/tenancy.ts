@@ -45,6 +45,8 @@ export const PERMISSIONS = [
   // Approving a design uses content:approve.
   'design:read',
   'design:write',
+  'video:read',
+  'video:write',
   'social:connect',
   'social:publish',
   'analytics:read',

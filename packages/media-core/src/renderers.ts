@@ -1,4 +1,5 @@
 import type { RenderPlan } from '@spectra/design-studio';
+import type { VideoRenderPlan } from '@spectra/video-studio';
 
 import type {
   AspectRatioTarget,
@@ -118,4 +119,83 @@ export interface DesignRenderer extends MediaRendererIdentity {
     output: { format: 'png' | 'jpeg'; quality: number; maxWidth?: number | null },
     assets: DesignRenderAssets,
   ): Promise<DesignPageRender>;
+}
+
+/**
+ * Video rendering (Phase 7B, ADR-0041). The plan is produced and validated by
+ * @spectra/video-studio; the renderer turns it into a real MP4. Inputs arrive
+ * as local files the caller already fetched and tenant-checked — a renderer
+ * never resolves a storage key, and never fetches a URL.
+ */
+export interface VideoEngineCapability {
+  /** False when no engine binary is configured or reachable. */
+  available: boolean;
+  /** Why it is unavailable, or what the engine is when it is. */
+  reason: string;
+  engine: string;
+  engineVersion: string | null;
+  /** The H.264 encoder the adapter would use, when it found one. */
+  videoCodec: string | null;
+  /** Capabilities a storyboard can need, each either present or explained. */
+  features: {
+    textOverlays: boolean;
+    burnedCaptions: boolean;
+    crossfades: boolean;
+    audioBed: boolean;
+    thumbnails: boolean;
+  };
+  /** Named reasons for every feature that is false. */
+  missing: string[];
+}
+
+export interface VideoRenderInputs {
+  /** Local file for each image asset the plan referenced, by asset id. */
+  imageFiles: Record<string, string>;
+  /** Local file for the audio bed, when the plan has one. */
+  audioFile?: string;
+  /** A directory the renderer may write scratch files into. */
+  workDir: string;
+  /** Where the finished MP4 must be written. */
+  outputPath: string;
+}
+
+export interface VideoRenderProgress {
+  percent: number;
+  /** Encoded position in the output timeline. */
+  renderedMs: number;
+  note?: string;
+}
+
+export interface VideoRenderOptions {
+  crf: number;
+  /** Observed cooperatively: an abort stops the engine and cleans up. */
+  signal?: AbortSignal;
+  onProgress?: (progress: VideoRenderProgress) => void;
+}
+
+export interface VideoRenderOutput {
+  outputPath: string;
+  sizeBytes: number;
+  durationMs: number;
+  width: number;
+  height: number;
+  videoCodec: string;
+  audioCodec: string | null;
+  /** The caption sidecar, when one was asked for. */
+  captionPath?: string;
+  thumbnailPath?: string;
+  durationRenderMs: number;
+  warnings: string[];
+}
+
+export interface VideoRenderer extends MediaRendererIdentity {
+  capabilities(): Promise<VideoEngineCapability>;
+  /** Encodes one plan. Rejects with a typed error; never returns a partial file. */
+  render(
+    plan: VideoRenderPlan,
+    inputs: VideoRenderInputs,
+    options: VideoRenderOptions,
+  ): Promise<VideoRenderOutput>;
+  /** A still frame from a rendered video, for a poster image. */
+  extractThumbnail(videoPath: string, atMs: number, outputPath: string): Promise<void>;
 }

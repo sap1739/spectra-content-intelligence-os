@@ -27,6 +27,14 @@ export class QueueService implements OnModuleDestroy {
     return this.queue.unschedule(schedulerId);
   }
 
+  /**
+   * Removes a job that has not started. A job already running is unaffected —
+   * cancelling that is the handler's business, via its abort signal.
+   */
+  cancel(jobId: string): Promise<boolean> {
+    return this.queue.cancel(jobId);
+  }
+
   async onModuleDestroy(): Promise<void> {
     await this.queue.close();
     this.connection.disconnect();

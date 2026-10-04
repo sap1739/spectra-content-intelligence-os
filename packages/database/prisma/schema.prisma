@@ -132,6 +132,8 @@ model Organization {
   designTemplates       DesignTemplate[]
   designs               Design[]
   designRenders         DesignRender[]
+  videoProjects         VideoProject[]
+  videoRenders          VideoRender[]
 
   @@map("organizations")
 }
@@ -255,6 +257,8 @@ model Workspace {
   designTemplates       DesignTemplate[]
   designs               Design[]
   designRenders         DesignRender[]
+  videoProjects         VideoProject[]
+  videoRenders          VideoRender[]
 
   @@unique([organizationId, slug])
   @@index([organizationId, status])
@@ -308,6 +312,7 @@ model Brand {
   researchProjects ResearchProject[]
   campaigns        Campaign[]
   contentItems     ContentItem[]
+  videoProjects    VideoProject[]
 
   @@unique([workspaceId, slug])
   @@index([organizationId])
@@ -1162,6 +1167,7 @@ model Campaign {
   brief              CampaignBrief?
   analyticsSnapshots AnalyticsSnapshot[]
   designs            Design[]
+  videoProjects      VideoProject[]
 
   @@index([workspaceId, status])
   @@map("campaigns")
@@ -1210,6 +1216,7 @@ model ContentItem {
   scheduleEntries    ContentScheduleEntry[]
   analyticsSnapshots AnalyticsSnapshot[]
   designs            Design[]
+  videoProjects      VideoProject[]
 
   @@index([workspaceId, lifecycleState])
   @@index([campaignId])
@@ -1488,6 +1495,9 @@ model MediaAsset {
   socialUploads       SocialMediaUpload[]
   brandLogos          Brand[]                @relation("BrandLogo")
   designRenders       DesignRender[]
+  videoRenders        VideoRender[]          @relation("VideoRenderOutput")
+  videoCaptions       VideoRender[]          @relation("VideoRenderCaptions")
+  videoPosters        VideoRender[]          @relation("VideoRenderPoster")
 
   @@index([workspaceId, createdAt])
   @@map("media_assets")
@@ -1895,6 +1905,146 @@ model DesignRender {
 
   @@index([designId, createdAt])
   @@map("design_renders")
+}
+
+// ---------------------------------------------------------------------------
+// Video rendering (Phase 7B, ADR-0041)
+// ---------------------------------------------------------------------------
+
+enum VideoProjectKind {
+  SLIDESHOW
+  VERTICAL_SHORT
+  SQUARE_SOCIAL
+  LANDSCAPE
+  CAPTIONED
+  AUDIOGRAM
+}
+
+enum VideoProjectStatus {
+  DRAFT
+  READY
+  ARCHIVED
+}
+
+/// A render's life. Only SUCCEEDED ever has an asset.
+enum VideoRenderStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  TIMED_OUT
+}
+
+/// Why a render produced no file. Every non-SUCCEEDED render carries one.
+enum VideoFailureReason {
+  ENGINE_NOT_CONFIGURED
+  ENGINE_MISSING_CAPABILITY
+  INPUT_UNAVAILABLE
+  INPUT_UNSUPPORTED
+  INVALID_STORYBOARD
+  ENGINE_ERROR
+  TIMEOUT
+  CANCELLED
+  STORAGE_ERROR
+  BUDGET_REFUSED
+  WORKER_LOST
+}
+
+/// A storyboard: composition DATA (scenes, durations, text, caption cues)
+/// validated by @spectra/contracts — never a filtergraph or a shell string.
+model VideoProject {
+  id             String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String             @db.Uuid
+  workspaceId    String             @db.Uuid
+  name           String
+  description    String?
+  kind           VideoProjectKind
+  status         VideoProjectStatus @default(DRAFT)
+  /// Default output size; a render may override it for that render only.
+  formatKey      String
+  storyboard     Json
+  brandId        String?            @db.Uuid
+  contentItemId  String?            @db.Uuid
+  campaignId     String?            @db.Uuid
+  createdById    String?            @db.Uuid
+  updatedById    String?            @db.Uuid
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  brand        Brand?        @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  contentItem  ContentItem?  @relation(fields: [contentItemId], references: [id], onDelete: SetNull)
+  campaign     Campaign?     @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  renders      VideoRender[]
+
+  @@index([workspaceId, status, updatedAt])
+  @@index([contentItemId])
+  @@index([campaignId])
+  @@map("video_projects")
+}
+
+/// One render job and its outcome. The row is the job's state machine: it is
+/// written QUEUED by the API, moved to RUNNING by the worker, and reaches
+/// exactly one terminal state. `mediaAssetId` is set only on SUCCEEDED.
+model VideoRender {
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String              @db.Uuid
+  workspaceId       String              @db.Uuid
+  projectId         String              @db.Uuid
+  status            VideoRenderStatus   @default(QUEUED)
+  formatKey         String
+  /// A snapshot of the storyboard as submitted: a later edit never changes
+  /// what a finished render was made from.
+  storyboard        Json
+  crf               Int
+  captions          String
+  thumbnail         Boolean             @default(true)
+  /// Plan + output settings + input asset versions: the idempotency key.
+  renderHash        String
+  renderKey         String              @unique
+  /// 0-100, written by the worker as the encoder reports progress.
+  progressPercent   Int                 @default(0)
+  plannedDurationMs Int
+  attempt           Int                 @default(0)
+  maxAttempts       Int                 @default(3)
+  queueJobId        String?
+  /// Set when a person asked for cancellation; the worker observes it.
+  cancelRequestedAt DateTime?           @db.Timestamptz(6)
+  startedAt         DateTime?           @db.Timestamptz(6)
+  finishedAt        DateTime?           @db.Timestamptz(6)
+  failureReason     VideoFailureReason?
+  /// Bounded, scrubbed engine output — never a whole log.
+  failureDetail     String?
+  engine            String?
+  engineVersion     String?
+  videoCodec        String?
+  durationMs        Int?
+  widthPx           Int?
+  heightPx          Int?
+  sizeBytes         Int?
+  warnings          String[]            @default([])
+  mediaAssetId      String?             @unique @db.Uuid
+  captionAssetId    String?             @db.Uuid
+  thumbnailAssetId  String?             @db.Uuid
+  createdById       String?             @db.Uuid
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace      Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project        VideoProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  mediaAsset     MediaAsset?  @relation("VideoRenderOutput", fields: [mediaAssetId], references: [id], onDelete: SetNull)
+  captionAsset   MediaAsset?  @relation("VideoRenderCaptions", fields: [captionAssetId], references: [id], onDelete: SetNull)
+  thumbnailAsset MediaAsset?  @relation("VideoRenderPoster", fields: [thumbnailAssetId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, createdAt])
+  @@index([workspaceId, status, createdAt])
+  @@map("video_renders")
 }
 
 // ---------------------------------------------------------------------------

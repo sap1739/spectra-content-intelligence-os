@@ -7,6 +7,11 @@ import {
   designRow,
   designTemplates,
   studioCapabilities,
+  videoCapabilities,
+  videoFormats,
+  videoProjectDetail,
+  videoProjectRow,
+  videoRenderRow,
   analyticsAvailability,
   analyticsOverview,
   analyticsSummary,
@@ -392,6 +397,158 @@ test.describe('design studio', () => {
 
     await expect(page.getByRole('button', { name: /Export PNG/ })).toHaveCount(0);
     await expect(page.getByText('design:write').first()).toBeVisible();
+  });
+});
+
+test.describe('video rendering', () => {
+  const videoRoutes = (overrides: Record<string, unknown> = {}) => ({
+    '/video/capabilities': videoCapabilities(),
+    '/video/formats': videoFormats(),
+    '/video/projects/vp1': videoProjectDetail(),
+    '/video/projects': { projects: [videoProjectRow()] },
+    ...overrides,
+  });
+
+  test('the page says video is composed, not generated, and names the engine', async ({ page }) => {
+    await stubApi(page, { routes: videoRoutes() });
+    await gotoAuthenticated(page, '/video');
+
+    await expect(page.getByText(/Real rendering, no generated video/)).toBeVisible();
+    await expect(page.getByText(/no generative-video provider wired/)).toBeVisible();
+    await expect(page.getByTestId('video-engine')).toContainText('ffmpeg');
+    await expect(page.getByRole('link', { name: 'Roast launch' })).toBeVisible();
+  });
+
+  test('an unconfigured engine is stated plainly, not hidden behind a disabled button', async ({
+    page,
+  }) => {
+    await stubApi(page, {
+      routes: videoRoutes({
+        '/video/capabilities': videoCapabilities({
+          available: false,
+          reason:
+            'No usable ffmpeg at "ffmpeg": spawn ffmpeg ENOENT. Set FFMPEG_PATH, or install ffmpeg on the worker host.',
+          engineVersion: null,
+          videoCodec: null,
+          missing: ['No ffmpeg binary is configured or reachable.'],
+        }),
+      }),
+    });
+    await gotoAuthenticated(page, '/video');
+
+    await expect(page.getByTestId('video-engine-unavailable')).toContainText('FFMPEG_PATH');
+    await expect(page.getByText('No ffmpeg binary is configured or reachable.')).toBeVisible();
+  });
+
+  test('a script becomes one scene per line before anything is created', async ({ page }) => {
+    await stubApi(page, { routes: videoRoutes() });
+    await gotoAuthenticated(page, '/video');
+
+    await page.getByLabel('Script').fill('First line\nSecond line\n\nThird line');
+
+    await expect(page.getByText(/3 scenes, 9s before any transitions/)).toBeVisible();
+  });
+
+  test('a finished render shows the real file it produced, and offers its sidecars', async ({
+    page,
+  }) => {
+    await stubApi(page, { routes: videoRoutes() });
+    await gotoAuthenticated(page, '/video/vp1');
+
+    await expect(page.getByRole('heading', { name: 'Roast launch' })).toBeVisible();
+    await expect(page.getByText('SUCCEEDED')).toBeVisible();
+    // The numbers describe the file that exists, not the request that made it.
+    await expect(page.getByText(/1080×1080 · h264 · 6s · 471 KB/)).toBeVisible();
+    await expect(page.getByRole('button', { name: /^MP4$/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Captions/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Poster/ })).toBeVisible();
+  });
+
+  test('a running render shows real progress and can be cancelled', async ({ page }) => {
+    await stubApi(page, {
+      routes: videoRoutes({
+        '/video/projects/vp1': videoProjectDetail({
+          renders: [
+            videoRenderRow({
+              status: 'RUNNING',
+              progressPercent: 42,
+              finishedAt: null,
+              mediaAssetId: null,
+              captionAssetId: null,
+              thumbnailAssetId: null,
+              durationMs: null,
+              sizeBytes: null,
+            }),
+          ],
+        }),
+      }),
+    });
+    await gotoAuthenticated(page, '/video/vp1');
+
+    const bar = page.getByRole('progressbar', { name: 'Render progress' });
+    await expect(bar).toHaveAttribute('aria-valuenow', '42');
+    await expect(page.getByText(/Encoding — 42%/)).toBeVisible();
+    await expect(page.getByRole('button', { name: /Cancel/ })).toBeVisible();
+  });
+
+  test('a failed render says why, in words, and offers nothing to download', async ({ page }) => {
+    await stubApi(page, {
+      routes: videoRoutes({
+        '/video/projects/vp1': videoProjectDetail({
+          renders: [
+            videoRenderRow({
+              status: 'FAILED',
+              progressPercent: 0,
+              failureReason: 'INPUT_UNAVAILABLE',
+              failureDetail: null,
+              mediaAssetId: null,
+              captionAssetId: null,
+              thumbnailAssetId: null,
+              durationMs: null,
+              sizeBytes: null,
+            }),
+          ],
+        }),
+      }),
+    });
+    await gotoAuthenticated(page, '/video/vp1');
+
+    await expect(page.getByText('FAILED')).toBeVisible();
+    await expect(
+      page.getByText('A media asset this storyboard references could not be read.'),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: /^MP4$/ })).toHaveCount(0);
+  });
+
+  test('an unrenderable storyboard is refused in the editor, before a render is offered', async ({
+    page,
+  }) => {
+    await stubApi(page, {
+      routes: videoRoutes({
+        '/video/projects/vp1': videoProjectDetail({
+          plan: null,
+          problems: ['Scene "scene-1" is 3000ms, which is not longer than the 3000ms transition.'],
+          renders: [],
+        }),
+      }),
+    });
+    await gotoAuthenticated(page, '/video/vp1');
+
+    await expect(page.getByText(/This storyboard cannot be rendered yet/)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Render video' })).toBeDisabled();
+  });
+
+  test('without video:write the controls are gone and the permission is named', async ({
+    page,
+  }) => {
+    await stubApi(page, {
+      permissions: ALL_PERMISSIONS.filter((permission) => permission !== 'video:write'),
+      routes: videoRoutes(),
+    });
+    await gotoAuthenticated(page, '/video/vp1');
+
+    await expect(page.getByRole('button', { name: 'Render video' })).toHaveCount(0);
+    await expect(page.getByText('video:write').first()).toBeVisible();
   });
 });
 

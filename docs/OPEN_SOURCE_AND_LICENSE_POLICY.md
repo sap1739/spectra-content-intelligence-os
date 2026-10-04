@@ -30,6 +30,8 @@
 | next-themes, clsx, tailwind-merge, class-variance-authority                                                    | MIT                   |
 | lucide-react                                                                                                   | ISC                   |
 | typescript, tsx, vitest, @playwright/test, turbo, eslint, prettier, typescript-eslint, unplugin-swc, @swc/core | MIT/Apache-2.0 family |
+| sharp (libvips)                                                                                                | Apache-2.0            |
+| @ffmpeg-installer/ffmpeg, @ffprobe-installer/ffprobe (**dev/test only**, see §3)                               | LGPL-2.1 (metadata)   |
 
 Infrastructure images: postgres/pgvector (PostgreSQL License), redis:7 (BSD-3/RSAL — local
 dev only; production uses a managed service), minio (AGPL-3.0 — **used as an unmodified
@@ -41,8 +43,15 @@ compatible managed storage).
 - **Remotion**: source-available with a company license requirement above a team-size
   threshold — commercial license review REQUIRED before Phase 3 adoption; the
   `CompositionRenderer` port keeps us swappable.
-- **ffmpeg**: LGPL/GPL build flags matter; use LGPL builds or system packages, invoked as a
-  subprocess (no linking concerns).
+- **ffmpeg**: **adopted in Phase 7B as the video engine** (ADR-0041), on exactly the terms this
+  entry set: invoked as a subprocess, and **no binary is vendored or shipped**. The worker resolves
+  one from `FFMPEG_PATH` or `PATH`, so the build — and its licence — belongs to the deployment.
+  Production should install an LGPL build or a system package.
+  One discrepancy, recorded rather than hidden: the test suites use `@ffmpeg-installer/ffmpeg` and
+  `@ffprobe-installer/ffprobe` so they can encode real video. Their npm metadata says LGPL-2.1, but
+  the macOS binary the former carries reports `--enable-gpl --enable-nonfree`. They are
+  **devDependencies only**, never bundled into any app, and nothing in `apps/*` depends on them at
+  runtime. Review before any change that would ship them.
 - Social platform SDKs: verify per-platform developer terms at Phase 4.
 
 ## 4. This repository

@@ -271,3 +271,40 @@ permissions, `design:read` and `design:write`; approval reuses `content:approve`
   the same `404` problem.
 - **Nothing is generated.** `GET capabilities` states plainly that Spectra does not create imagery:
   it arranges assets the workspace uploaded. There is no image-generation endpoint to call.
+
+## 19. Video rendering (Phase 7B, ADR-0041)
+
+Routes under `workspaces/:workspaceId/video`, each checked with `hasPermission()`. Two new
+permissions, `video:read` and `video:write`.
+
+| Method & path                       | Permission    | Notes                                                                            |
+| ----------------------------------- | ------------- | -------------------------------------------------------------------------------- |
+| `GET capabilities`                  | `video:read`  | Engine, version, chosen H.264 encoder, per-feature availability **with reasons** |
+| `GET formats`                       | `video:read`  | Five output sizes with fps, note and duration ceiling                            |
+| `GET projects[?status]`             | `video:read`  | Storyboards, newest first, with render counts                                    |
+| `GET projects/:projectId`           | `video:read`  | Project, its renders, the planned duration, and warnings a render would emit     |
+| `POST projects`                     | `video:write` | `201`; the storyboard is **planned before it is stored**                         |
+| `PATCH projects/:projectId`         | `video:write` | Re-planned on every edit; finished renders keep their own snapshot               |
+| `DELETE projects/:projectId`        | `video:write` | Archives (soft delete)                                                           |
+| `POST projects/:projectId/renders`  | `video:write` | `202 { created, render }` — queues a worker job                                  |
+| `GET renders/:renderId`             | `video:read`  | Status, progress, and `failureText` when it did not succeed                      |
+| `POST renders/:renderId/cancel`     | `video:write` | Removes a queued job; flags a running one so the worker stops the encoder        |
+| `GET renders/:renderId/url[?file=]` | `video:read`  | A 15-minute signed URL for `video` (default), `captions` or `poster`             |
+
+- **202, not 200.** Rendering takes seconds to minutes, so `POST renders` returns a `QUEUED` row
+  with no asset and the client polls `GET renders/:renderId`. The response never implies a file that
+  does not exist yet.
+- **Everything checkable is checked before the job exists.** The storyboard must plan; the installed
+  engine must have what it asks for (a build without `libass` refuses burned-in captions **here**,
+  with the reason, rather than losing them mid-encode); every referenced asset must be in this
+  workspace; and the `MEDIA_RENDER` budget pre-flight must pass. A refused render leaves no row.
+- **Failure is never anonymous.** A non-`SUCCEEDED` render carries one of eleven
+  `VideoFailureReason`s plus a `failureText` sentence, and `mediaAssetId` is always `null`. Only
+  `SUCCEEDED` has a file, and `GET …/url` on anything else is a `422` naming the state.
+- **Idempotent.** The same storyboard, format and settings return the existing render rather than
+  encoding the same seconds twice; a `FAILED` or `TIMED_OUT` one does not block a fresh attempt.
+- **Honest refusals.** An over-long storyboard, a transition longer than the scenes it joins, or an
+  unknown format is a `422` listing **every** problem at once.
+- **No existence leaks.** A foreign or missing project, render or media asset is the same `404`.
+- **Nothing is generated.** `GET capabilities` returns `generatesVideo: false` with a sentence
+  saying Spectra composes video from the workspace's own assets. There is no generation endpoint.

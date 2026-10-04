@@ -12,6 +12,7 @@ export {
   tiktokEnvSchema,
   socialPlatformsEnvSchema,
   analyticsEnvSchema,
+  videoEnvSchema,
   logLevelSchema,
   nodeEnvSchema,
   redisEnvSchema,

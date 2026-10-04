@@ -21,6 +21,7 @@ export const JOB_NAMES = {
   budgetReservationSweep: 'budget.reservation.sweep',
   analyticsSyncExecute: 'analytics.sync.execute',
   analyticsSyncDispatch: 'analytics.sync.dispatch',
+  videoRenderExecute: 'video.render.execute',
 } as const;
 
 export interface RetryPolicy {

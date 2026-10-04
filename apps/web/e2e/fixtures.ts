@@ -41,6 +41,8 @@ export const ALL_PERMISSIONS = [
   'media:write',
   'design:read',
   'design:write',
+  'video:read',
+  'video:write',
   'social:connect',
   'social:publish',
   'analytics:read',
@@ -767,3 +769,167 @@ export const PREVIEW_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   'base64',
 );
+
+// ---------------------------------------------------------------------------
+// Video rendering (Phase 7B)
+// ---------------------------------------------------------------------------
+
+export function videoCapabilities(overrides: Record<string, unknown> = {}) {
+  return {
+    available: true,
+    reason: 'ffmpeg 6.1 at /usr/bin/ffmpeg, encoding H.264 with libx264.',
+    engine: 'ffmpeg',
+    engineVersion: '6.1',
+    videoCodec: 'libx264',
+    features: {
+      textOverlays: true,
+      burnedCaptions: true,
+      crossfades: true,
+      audioBed: true,
+      thumbnails: true,
+    },
+    missing: [],
+    generatesVideo: false,
+    generationNote:
+      'Spectra composes video from the images, text and audio in this workspace. There is no generative-video provider wired, and no prompt is sent anywhere.',
+    maxAttempts: 3,
+    timeoutMs: 900000,
+    failureReasons: {
+      ENGINE_NOT_CONFIGURED:
+        'No video engine is configured in this deployment. Set FFMPEG_PATH, or install ffmpeg on the worker host.',
+      ENGINE_MISSING_CAPABILITY:
+        'The installed ffmpeg build is missing an encoder or filter this render needs.',
+      INPUT_UNAVAILABLE: 'A media asset this storyboard references could not be read.',
+      INPUT_UNSUPPORTED:
+        'A media asset this storyboard references is not a type the engine decodes.',
+      INVALID_STORYBOARD: 'The storyboard could not be turned into a render plan.',
+      ENGINE_ERROR: 'ffmpeg ran and reported an error.',
+      TIMEOUT: 'The render took longer than its time limit and was stopped.',
+      CANCELLED: 'The render was cancelled.',
+      STORAGE_ERROR: 'The rendered file could not be stored.',
+      BUDGET_REFUSED: 'The workspace budget refused this render before it started.',
+      WORKER_LOST: 'The worker stopped before the render finished.',
+    },
+    ...overrides,
+  };
+}
+
+export function videoFormats() {
+  return {
+    formats: [
+      {
+        key: 'SQUARE_1080x1080',
+        label: 'Square 1:1 (1080×1080)',
+        width: 1080,
+        height: 1080,
+        fps: 30,
+        platform: null,
+        note: 'Square feed video for Instagram, Facebook and LinkedIn.',
+        maxDurationSeconds: 300,
+      },
+      {
+        key: 'VERTICAL_1080x1920',
+        label: 'Vertical 9:16 (1080×1920)',
+        width: 1080,
+        height: 1920,
+        fps: 30,
+        platform: null,
+        note: 'Full-screen vertical: Reels, Shorts, TikTok, Stories.',
+        maxDurationSeconds: 180,
+      },
+    ],
+  };
+}
+
+const videoStoryboard = {
+  schemaVersion: 1,
+  transitionMs: 0,
+  burnCaptions: false,
+  scenes: [
+    {
+      id: 'scene-1',
+      durationMs: 3000,
+      background: { kind: 'COLOR', color: '#0F766E' },
+      heading: {
+        text: 'Our new roast lands Friday',
+        position: 'CENTER',
+        color: '#FFFFFF',
+        sizeRatio: 0.06,
+        background: 'BAND',
+      },
+      caption: 'Our new roast lands Friday',
+    },
+    {
+      id: 'scene-2',
+      durationMs: 3000,
+      background: { kind: 'COLOR', color: '#1E293B' },
+      heading: {
+        text: 'Pre-order from Thursday',
+        position: 'CENTER',
+        color: '#FFFFFF',
+        sizeRatio: 0.06,
+        background: 'BAND',
+      },
+      caption: 'Pre-order from Thursday',
+    },
+  ],
+};
+
+export function videoProjectRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'vp1',
+    name: 'Roast launch',
+    description: null,
+    kind: 'SLIDESHOW',
+    status: 'DRAFT',
+    formatKey: 'SQUARE_1080x1080',
+    storyboard: videoStoryboard,
+    brandId: null,
+    contentItemId: null,
+    campaignId: null,
+    createdAt: '2026-10-01T09:00:00.000Z',
+    updatedAt: '2026-10-01T09:00:00.000Z',
+    _count: { renders: 1 },
+    ...overrides,
+  };
+}
+
+export function videoRenderRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'vr1',
+    projectId: 'vp1',
+    status: 'SUCCEEDED',
+    formatKey: 'SQUARE_1080x1080',
+    progressPercent: 100,
+    plannedDurationMs: 6000,
+    attempt: 1,
+    maxAttempts: 3,
+    startedAt: '2026-10-01T09:01:00.000Z',
+    finishedAt: '2026-10-01T09:01:20.000Z',
+    failureReason: null,
+    failureDetail: null,
+    engine: 'ffmpeg',
+    engineVersion: '6.1',
+    videoCodec: 'h264',
+    durationMs: 6000,
+    widthPx: 1080,
+    heightPx: 1080,
+    sizeBytes: 482_000,
+    warnings: [],
+    mediaAssetId: 'ma1',
+    captionAssetId: 'ca1',
+    thumbnailAssetId: 'th1',
+    createdAt: '2026-10-01T09:00:30.000Z',
+    ...overrides,
+  };
+}
+
+export function videoProjectDetail(overrides: Record<string, unknown> = {}) {
+  return {
+    project: videoProjectRow(),
+    renders: [videoRenderRow()],
+    plan: { totalDurationMs: 6000, scenes: 2, warnings: [] },
+    problems: [],
+    ...overrides,
+  };
+}

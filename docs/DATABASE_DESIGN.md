@@ -393,7 +393,47 @@ media asset removes the render row with it. Two integrations make `DesignStatus`
 the calendar refuses to schedule an export whose design is not APPROVED/PUBLISHED, and a
 successful publish moves `APPROVED → PUBLISHED` (`markDesignsPublished`, scoped to that tenant).
 
-## 14. Future entities
+## 14. Phase 7B video rendering (ADR-0041)
+
+Migration `20261004165959_phase7b_video_rendering`. Two tables — `VideoProject` and `VideoRender` —
+both in `TENANT_SCOPED_MODELS`, plus four enums. Rendering is metered under the existing
+`UsageKind.MEDIA_RENDER`, so no new usage kind was needed.
+
+- **`video_projects`** — a storyboard: `name`, `description`, `kind` (`VideoProjectKind`: SLIDESHOW,
+  VERTICAL_SHORT, SQUARE_SOCIAL, LANDSCAPE, CAPTIONED, AUDIOGRAM), `status` (`VideoProjectStatus`:
+  DRAFT/READY/ARCHIVED), `formatKey` (the default output size), and `storyboard` (Json — composition
+  **data** validated by `storyboardSchema`: scenes with durations, colour or image backgrounds, text
+  overlays and caption lines; never a filtergraph or a shell string). Optional `brandId`,
+  `contentItemId` and `campaignId` links, all `SET NULL`. Indexes: `(workspaceId, status, updatedAt)`
+  for the list, plus `(contentItemId)` and `(campaignId)` for the attachment views.
+- **`video_renders`** — one render job **and** its outcome: the row is the job's state machine. The
+  API writes it `QUEUED`, the worker moves it to `RUNNING`, and it reaches exactly one terminal
+  state (`VideoRenderStatus`: SUCCEEDED, FAILED, CANCELLED, TIMED_OUT). It carries a **snapshot** of
+  the `storyboard` as submitted, so a later edit never changes what a finished render was made from;
+  the output settings (`formatKey`, `crf`, `captions`, `thumbnail`); live job state
+  (`progressPercent`, `attempt`/`maxAttempts`, `queueJobId`, `cancelRequestedAt`, `startedAt`,
+  `finishedAt`); and what was actually produced (`engine`, `engineVersion`, `videoCodec`,
+  `durationMs`, `widthPx`, `heightPx`, `sizeBytes`, `warnings[]`), read back from the file with
+  ffprobe rather than copied from the request.
+
+  Two columns enforce the phase's central rule. `mediaAssetId` is **unique and nullable**, and set
+  only on SUCCEEDED; `failureReason` (`VideoFailureReason`, 11 values) is set on every other terminal
+  state. A render therefore cannot be both "failed" and "has a video", and a failure with no reason
+  is not representable. `captionAssetId` and `thumbnailAssetId` hold the sidecars, each `SET NULL`.
+  Idempotency lives in `renderHash` (plan + output settings + the identity of every input asset) and
+  `renderKey` (**unique**), so unchanged inputs reuse the existing render.
+
+  Indexes: `(projectId, createdAt)` for a project's history, `(workspaceId, status, createdAt)` for
+  the queue view.
+
+**Deletion and lifecycle.** Organization and workspace deletion cascade. Deleting a brand, content
+item or campaign leaves projects intact (`SET NULL`). Deleting a project removes its renders;
+deleting an output media asset nulls the reference rather than the row, so the render's history —
+including that it once succeeded — survives. Every render output is an ordinary `MediaAsset` under
+the tenant's `renders/` prefix, so the calendar, the publishing adapters and the media library use
+them with no new plumbing.
+
+## 15. Future entities
 
 Remaining contract-only entities (angles, publications, workspace budgets, knowledge
 documents) are documented in [DOMAIN_MODEL.md](DOMAIN_MODEL.md) §6 and materialize in later

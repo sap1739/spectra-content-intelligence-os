@@ -167,3 +167,56 @@ enablement, CDN strategy for media delivery.
 - **Migration:** `20260914043605_phase6h_external_analytics` adds three tables and two `CHECK`
   constraints; it is additive and safe to deploy before the worker.
 - Run `docs/ANALYTICS_LIVE_VERIFICATION.md` before presenting platform numbers to customers.
+
+## 9. Video rendering dependencies (Phase 7B, ADR-0041)
+
+Video rendering is the first feature with a **binary dependency outside the Node runtime**, and
+Spectra deliberately does not vendor it: no ffmpeg ships in any image, so the build — and its
+licence — is the deployment's choice (OPEN_SOURCE_AND_LICENSE_POLICY.md §3).
+
+### What the worker image needs
+
+```dockerfile
+# Debian/Ubuntu base
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core \
+ && rm -rf /var/lib/apt/lists/*
+
+# Alpine base
+RUN apk add --no-cache ffmpeg font-dejavu
+```
+
+Then point the worker at them (or rely on `PATH`):
+
+| Variable                    | Default           | Why                                                                       |
+| --------------------------- | ----------------- | ------------------------------------------------------------------------- |
+| `FFMPEG_PATH`               | first on `PATH`   | The encoder. Absent → rendering is reported unavailable, not attempted.   |
+| `FFPROBE_PATH`              | first on `PATH`   | Reads back what was actually encoded, so stored metadata describes bytes. |
+| `VIDEO_FONT_FILE`           | a known base font | `drawtext` needs a font **file**; without one, text overlays are off.     |
+| `VIDEO_RENDER_TIMEOUT_MS`   | `900000` (15 min) | Wall-clock ceiling; the encoder is killed, not abandoned.                 |
+| `VIDEO_RENDER_MAX_ATTEMPTS` | `3`               | Retries for transient failures.                                           |
+
+### The build matters, and is checked at runtime
+
+`GET /v1/workspaces/:id/video/capabilities` reports the engine version, the H.264 encoder it chose
+(`libx264` → `h264_videotoolbox` → `libopenh264`) and whether text overlays, burned-in captions,
+crossfades and an audio bed are available — each `false` with a named reason. **Check this endpoint
+after deploying a new worker image**: a build missing `libass` silently losing burned-in captions is
+exactly the failure this prevents, because such a storyboard is refused up front instead.
+
+The worker also logs its capability line once at startup, so a misconfigured image is visible in the
+first lines of its log rather than in a user's failed render.
+
+### Capacity
+
+Encoding is CPU-bound and capped at **two concurrent renders per worker**. A 1080p minute costs
+roughly a CPU-minute on a modern core, so plan workers by expected render-seconds, not by request
+rate, and give the worker real CPU limits rather than burstable ones. Renders write scratch files to
+the system temp directory and clean up in a `finally`, but the container still needs temp space for
+the largest expected output plus its inputs.
+
+### What is not needed
+
+No GPU, no Chromium, no font server, and no network access from the encoder — inputs are read from
+object storage by the job and handed to ffmpeg as local files, so the engine itself never fetches a
+URL.

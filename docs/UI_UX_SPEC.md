@@ -172,3 +172,33 @@ Spectra can make_ and _what a user might expect from a "creative" tool_ visible.
 
 The editor's fields are ordinary labelled form controls (§9) — the preview is an `<img>` with alt
 text describing the design and page, and warnings are text, not colour alone.
+
+## 13. Video (Phase 7B, ADR-0041)
+
+`/video` has two honesty problems the design studio did not: a user will assume "video" means
+AI-generated video, and rendering depends on a binary the deployment may not have installed.
+
+- **"Real rendering, no generated video" is stated first.** The page says plainly that Spectra
+  composes video from the images, text and audio in this workspace and that no generative-video
+  provider is wired. This is the first card, not a footnote.
+- **A missing engine is a sentence, not a disabled button.** When no ffmpeg is configured the page
+  says so, names the setting that fixes it (`FFMPEG_PATH`), and lists every capability the build is
+  missing. The render control is replaced by that explanation rather than greyed out with no reason.
+- **A script becomes scenes before anything is created.** Typing a script shows how many scenes and
+  how many seconds it will become, so the transformation is visible up front rather than discovered
+  after saving.
+- **Progress is the encoder's, not a spinner.** A running render shows a real percentage reported by
+  ffmpeg, in an `aria`-labelled progressbar, and the page polls only while a render is queued or
+  running. A queued render says it is waiting for a worker — not that it is encoding.
+- **A failed render says why, in words, and offers nothing to download.** The eleven failure reasons
+  each render as an operator-facing sentence, with the bounded engine note beneath. Download buttons
+  exist only for a render that actually produced a file.
+- **Finished renders describe the file that exists** — dimensions, codec, duration and size read
+  back from the encoded bytes — and offer the MP4, the caption sidecar and the poster frame
+  separately. Playback attaches the caption track when there is one.
+- **An unrenderable storyboard is refused in the editor.** The problems are listed and the render
+  button is disabled, so a user is never invited to queue something that cannot work.
+- **Reuse is explained.** Re-rendering identical inputs says the existing file was reused rather
+  than silently appearing to do nothing.
+- **Permissions are named.** Without `video:write` the create and render controls are absent and the
+  missing permission is stated.

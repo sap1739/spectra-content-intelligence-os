@@ -13,3 +13,17 @@ process.env['STORAGE_ACCESS_KEY'] ??= 'spectra-local';
 process.env['STORAGE_SECRET_KEY'] ??= 'spectra_local_dev';
 process.env['STORAGE_BUCKET'] ??= 'spectra-dev';
 process.env['STORAGE_FORCE_PATH_STYLE'] ??= 'true';
+
+// Video rendering (Phase 7B). No ffmpeg binary is vendored by the product, so
+// the tests point at the dev-only installer package — exactly as a deployment
+// points at its own build. Without this, the suite would only ever be able to
+// assert that the engine is unavailable.
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- CJS-only installer packages
+  process.env['FFMPEG_PATH'] ??= (require('@ffmpeg-installer/ffmpeg') as { path: string }).path;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- CJS-only installer packages
+  process.env['FFPROBE_PATH'] ??= (require('@ffprobe-installer/ffprobe') as { path: string }).path;
+} catch {
+  // Left unset: the API then reports the engine as unavailable, which is the
+  // honest state and what the capability tests assert against.
+}

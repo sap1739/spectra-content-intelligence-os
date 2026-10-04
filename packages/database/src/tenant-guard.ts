@@ -47,6 +47,9 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'DesignTemplate',
   'Design',
   'DesignRender',
+  // Video rendering (ADR-0041).
+  'VideoProject',
+  'VideoRender',
 ]);
 
 const GUARDED_OPERATIONS: ReadonlySet<string> = new Set([

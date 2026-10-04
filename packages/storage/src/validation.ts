@@ -46,6 +46,7 @@ export const UPLOAD_POLICIES: Record<StorageDomain, UploadPolicy> = {
   },
   renders: {
     // application/pdf: design exports (Phase 7A).
+    // text/vtt + application/x-subrip: caption sidecars for a video render (7B).
     allowedMimeTypes: [
       'image/jpeg',
       'image/png',
@@ -53,6 +54,8 @@ export const UPLOAD_POLICIES: Record<StorageDomain, UploadPolicy> = {
       'application/pdf',
       'video/mp4',
       'audio/mpeg',
+      'text/vtt',
+      'application/x-subrip',
     ],
     maxSizeBytes: 1024 * MB,
   },

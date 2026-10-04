@@ -29,6 +29,8 @@ import {
   publicMediaLinkProblem,
 } from '@spectra/publishing';
 import { executeReembed, executeResearchRun } from '@spectra/research-pipeline';
+import { FfmpegVideoRenderer, resolveVideoEngineOptions } from '@spectra/media-ffmpeg';
+import { executeVideoRender } from '@spectra/video-pipeline';
 import type { KeyRing } from '@spectra/security';
 import { linkedInApiOptionsFromEnv } from '@spectra/social-linkedin';
 import { metaGraphOptionsFromEnv } from '@spectra/social-meta';
@@ -500,6 +502,55 @@ async function main(): Promise<void> {
       return outcome;
     }),
     { concurrency: 2, timeoutMs: 10 * 60_000 },
+  );
+
+  // One video render. The encoder is a subprocess, so the job's own abort
+  // signal is what stops it: a timeout or a cancellation reaches ffmpeg itself
+  // rather than leaving it running after the job gives up (ADR-0041).
+  const videoRenderer = new FfmpegVideoRenderer(
+    resolveVideoEngineOptions({
+      ffmpegPath: env.FFMPEG_PATH ?? null,
+      ffprobePath: env.FFPROBE_PATH ?? null,
+      fontFile: env.VIDEO_FONT_FILE ?? null,
+      timeoutMs: env.VIDEO_RENDER_TIMEOUT_MS,
+    }),
+  );
+  const videoCapability = await videoRenderer.capabilities();
+  logger.info(
+    {
+      available: videoCapability.available,
+      engineVersion: videoCapability.engineVersion,
+      videoCodec: videoCapability.videoCodec,
+    },
+    videoCapability.reason,
+  );
+
+  runtime.register<{ renderId: string }, unknown>(
+    JOB_NAMES.videoRenderExecute,
+    instrument('video.render.execute', async (envelope, context) => {
+      const jobLogger = withCorrelation(logger, context.correlationId);
+      return executeVideoRender(
+        {
+          prisma,
+          storage,
+          renderer: videoRenderer,
+          usage,
+          logger: jobLogger,
+        },
+        envelope.payload.renderId,
+        {
+          signal: context.signal,
+          attempt: context.attempt,
+          reportProgress: (percent) => context.reportProgress({ percent }),
+        },
+      );
+    }),
+    {
+      // Encoding is CPU-bound: more than a couple at once makes every render
+      // slower without finishing any sooner.
+      concurrency: 2,
+      timeoutMs: env.VIDEO_RENDER_TIMEOUT_MS + 60_000,
+    },
   );
 
   // Due analytics runs: retries whose backoff elapsed, and — only when

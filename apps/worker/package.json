@@ -21,6 +21,7 @@
     "@spectra/database": "workspace:*",
     "@spectra/document-extract": "workspace:*",
     "@spectra/logging": "workspace:*",
+    "@spectra/media-ffmpeg": "workspace:*",
     "@spectra/metering": "workspace:*",
     "@spectra/observability": "workspace:*",
     "@spectra/publishing": "workspace:*",
@@ -39,6 +40,7 @@
     "@spectra/social-youtube": "workspace:*",
     "@spectra/storage": "workspace:*",
     "@spectra/telemetry": "workspace:*",
+    "@spectra/video-pipeline": "workspace:*",
     "@spectra/workflow-core": "workspace:*",
     "ioredis": "5.10.1"
   },

@@ -1,0 +1,26 @@
+{
+  "name": "@spectra/media-ffmpeg",
+  "version": "0.1.0",
+  "description": "FFmpeg VideoRenderer adapter: capability detection, progress reporting, cancellation and probing. Invokes ffmpeg as a subprocess; no binary is vendored.",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run src",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@spectra/contracts": "workspace:*",
+    "@spectra/media-core": "workspace:*",
+    "@spectra/video-studio": "workspace:*"
+  },
+  "devDependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@ffprobe-installer/ffprobe": "^2.1.2",
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.0"
+  }
+}

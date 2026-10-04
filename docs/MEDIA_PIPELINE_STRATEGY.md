@@ -5,9 +5,12 @@ design.ts) defines the job specs they exchange. Two engines are implemented and 
 
 - `SharpImageRenderer` — image ops, resize, aspect-ratio variants, thumbnails (ADR-0018).
 - `SharpDesignRenderer` — the design studio's page renderer (ADR-0040, §6 below).
+- `FfmpegVideoRenderer` — the video pipeline (ADR-0041, §7 below), **when the deployment has
+  ffmpeg**: no binary is vendored, so capability is detected at runtime and reported honestly.
 
-Every other port in §1 remains a **port only**: video, audio, subtitles, audiograms,
-HTML-to-image and compositions are honestly unavailable and report themselves as such.
+The remaining ports in §1 are still **ports only**: standalone audio mixing, subtitle burn-in as its
+own job, audiogram waveforms, HTML-to-image and Remotion compositions are honestly unavailable and
+report themselves as such.
 
 ## 1. Ports → planned engines
 
@@ -86,3 +89,50 @@ which is one queue job away if page counts grow.
 Fonts are the known weak point: with no uploaded TTF/OTF, what renders depends on the API
 host's installed fonts. That is reported in the capability response, the UI and the export
 warnings instead of being hidden.
+
+## 7. Video rendering (Phase 7B, ADR-0041)
+
+Video is the third pipeline, and the first one that cannot run inside a request: an encode takes
+seconds to minutes, so it is a worker job with progress, cancellation and a timeout.
+
+| Stage    | Where                               | What it does                                                                    |
+| -------- | ----------------------------------- | ------------------------------------------------------------------------------- |
+| Story    | `@spectra/contracts` (`video.ts`)   | A storyboard: scenes, durations, colour/image backgrounds, text, caption lines  |
+| Plan     | `@spectra/video-studio` (`plan.ts`) | Pure + deterministic: absolute timing, frame-scaled text, cues, assets to fetch |
+| Command  | `video-studio` (`ffmpeg-args.ts`)   | Plan → an **argument array**; no shell string, no user text in the filtergraph  |
+| Captions | `video-studio` (`captions.ts`)      | SRT and WebVTT cues, the only place caption timing is formatted                 |
+| Encode   | `@spectra/media-ffmpeg`             | Spawns ffmpeg, parses `-progress`, kills on abort or timeout, probes the result |
+| Job      | `@spectra/video-pipeline` + worker  | Fetches inputs, drives the encode, stores outputs, writes one terminal state    |
+
+### What it renders
+
+Slideshows from images and text, vertical shorts (9:16), square and 4:5 feed video, landscape
+YouTube-style video at 1080p or 720p, captioned video (sidecar or burned in), crossfades between
+scenes, intro/outro cards, an audio bed with gain and fade-out, and a poster frame extracted from
+the finished file. Image scenes can hold still or use a slow push (`zoompan`).
+
+### Rules this pipeline keeps
+
+- **No generated video.** There is no generative-video provider wired; the engine arranges assets
+  the workspace already has, and the capability response says so.
+- **No binary is vendored.** `FFMPEG_PATH`, else `PATH`. The build belongs to the deployment, so
+  every capability — H.264 encoder, `drawtext`, `subtitles`, `xfade`, AAC — is **detected** and each
+  missing one is named. A storyboard needing a missing capability is refused before it is queued.
+- **No user text in the filtergraph.** Scene text goes to files referenced with `textfile=`,
+  captions to an SRT referenced by `subtitles=filename=`. Only numbers, validated hex and
+  Spectra-generated paths are interpolated.
+- **Inputs are probed first.** ffmpeg handed a corrupt looped image waits forever, so a bad asset is
+  caught in a second as `INPUT_UNSUPPORTED` rather than burning the whole timeout.
+- **One terminal state, always with a reason.** Only `SUCCEEDED` has an asset; `FAILED`,
+  `CANCELLED` and `TIMED_OUT` each carry one of eleven `VideoFailureReason`s with operator-facing
+  text. A retry of a finished render is skipped, never re-encoded or re-billed.
+- **Idempotent and metered.** `renderHash` covers the plan, output settings and every input asset's
+  identity; a `MEDIA_RENDER` budget pre-flight runs before a job exists.
+
+### Limits
+
+Rendering is CPU-bound and capped at two concurrent jobs per worker. Audiogram support is
+foundation only — an audio bed mixes under a video, but waveform visualisation is not implemented.
+Captions are authored, not transcribed: there is no STT provider. Fonts are the weak point, exactly
+as in the design studio — without an uploaded or configured font file, text overlays are reported
+unavailable rather than silently dropped.

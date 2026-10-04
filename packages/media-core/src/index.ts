@@ -12,5 +12,11 @@ export type {
   SubtitleRenderer,
   SvgRenderer,
   ThumbnailGenerator,
+  VideoEngineCapability,
   VideoProcessor,
+  VideoRenderInputs,
+  VideoRenderOptions,
+  VideoRenderOutput,
+  VideoRenderProgress,
+  VideoRenderer,
 } from './renderers';

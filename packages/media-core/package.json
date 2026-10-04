@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "@spectra/contracts": "workspace:*",
-    "@spectra/design-studio": "workspace:*"
+    "@spectra/design-studio": "workspace:*",
+    "@spectra/video-studio": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",

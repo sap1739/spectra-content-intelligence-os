@@ -375,9 +375,29 @@ weakest link in the differentiator: research and evidence quality.
   state is load-bearing: the calendar refuses to schedule an export whose design is not approved,
   and a successful publish marks the design published. Proven by decoding the stored bytes in the
   integration suite — dimensions, format, PDF page count, the brand colour at a pixel (ADR-0040).
-- Next: a drag-and-drop canvas editor (layout positions currently come from templates); moving
-  rendering to the worker if page counts grow; vector PDF for commercial print; video and
-  audiogram rendering, still honestly unavailable (ADR-0018).
+- ✅ **Increment B — video rendering pipeline.** Deterministic local video, before any paid
+  generative-video API. FFmpeg is the engine, **invoked as a subprocess and never vendored** (the
+  licence policy's own terms): the worker resolves one from `FFMPEG_PATH` or `PATH`, and because the
+  build varies by host, every capability — the H.264 encoder, `drawtext`, `subtitles`, `xfade`, AAC
+  — is detected at runtime and each missing one is named. A storyboard needing something the build
+  lacks is refused before a job is queued, not lost mid-encode. Storyboards are composition **data**
+  (scenes, durations, colour or image backgrounds, text overlays, caption lines); `buildVideoRenderPlan`
+  turns one into a deterministic plan and `buildFfmpegArgs` into an argument **array** — no shell
+  string, and no user text in the filtergraph (text and captions go to files referenced by
+  `textfile=` and `subtitles=filename=`). Renders cover slideshows, vertical shorts, square and 4:5
+  feed video, 1080p/720p landscape, crossfades, intro/outro cards, an audio bed with gain and
+  fade-out, SRT/WebVTT sidecars or burned-in captions, and a poster frame. Rendering is a **worker
+  job**: real progress from `-progress`, a wall-clock timeout and a cancellation that _kill_ the
+  encoder rather than abandoning it, retries, and a `MEDIA_RENDER` budget pre-flight before the job
+  exists. The `VideoRender` row is the state machine — `QUEUED → RUNNING →` exactly one terminal
+  state, where **only SUCCEEDED has an asset** and every other carries one of eleven failure reasons
+  with operator-facing text. Outputs are ordinary tenant-rooted media assets, so the calendar and the
+  publishing adapters use them with no new plumbing. Proven by decoding the stored bytes in the
+  integration suite — `ftyp`, h264, dimensions, duration within a frame of the plan (ADR-0041).
+- Next: a drag-and-drop canvas editor (layout positions currently come from templates); vector PDF
+  for commercial print; audiogram waveforms (`showwaves`) — an audio bed mixes today but waveform
+  visualisation is still a port; speech-to-text so captions can be transcribed rather than only
+  authored; moving design rendering to the worker if page counts grow.
 
 ## Cross-phase next steps
 

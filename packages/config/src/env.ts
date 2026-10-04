@@ -519,6 +519,36 @@ function refineSocialPlatforms(
  * every platform call spends a quota, so an operator turns it on deliberately.
  * Manual syncs work either way.
  */
+/**
+ * Video rendering (Phase 7B, ADR-0041).
+ *
+ * **No ffmpeg binary is vendored**, so every value here points at something the
+ * deployment installed. All are optional: with nothing set, the renderer looks
+ * on PATH and, finding nothing, reports itself unavailable with a reason rather
+ * than failing a render halfway.
+ */
+export const videoEnvSchema = z.object({
+  /** Absolute path to ffmpeg. Defaults to whatever is on PATH. */
+  FFMPEG_PATH: z.string().min(1).optional(),
+  /** Absolute path to ffprobe, used to read back what was actually encoded. */
+  FFPROBE_PATH: z.string().min(1).optional(),
+  /**
+   * A TTF/OTF file for text overlays. drawtext needs a file: builds without
+   * fontconfig cannot resolve a family name. With none, text overlays are
+   * reported unavailable instead of silently dropped.
+   */
+  VIDEO_FONT_FILE: z.string().min(1).optional(),
+  /** Wall-clock ceiling for one encode, after which it is stopped. */
+  VIDEO_RENDER_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .min(10_000)
+    .max(60 * 60_000)
+    .default(15 * 60_000),
+  /** Attempts per render job, including retries with backoff. */
+  VIDEO_RENDER_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
+});
+
 export const analyticsEnvSchema = z.object({
   ANALYTICS_SCHEDULED_SYNC_ENABLED: z
     .string()
@@ -593,6 +623,8 @@ export const apiEnvSchema = z
   .merge(socialPlatformsEnvSchema)
   // External analytics (Phase 6H).
   .merge(analyticsEnvSchema)
+  // Video rendering (Phase 7B): the API reports engine capability honestly.
+  .merge(videoEnvSchema)
   .superRefine((env, ctx) => {
     refineSocialKeyRing(env, ctx);
     refineSocialOAuth(env, ctx);
@@ -634,6 +666,9 @@ export const workerEnvSchema = z
   .merge(socialPlatformsEnvSchema)
   // External analytics (Phase 6H): the worker runs syncs and scheduled syncs.
   .merge(analyticsEnvSchema)
+  // Video rendering (Phase 7B): the worker encodes; the API only reports what
+  // the engine can do, so both read the same settings.
+  .merge(videoEnvSchema)
   .superRefine((env, ctx) => {
     refineSocialKeyRing(env, ctx);
     refineSocialOAuth(env, ctx);

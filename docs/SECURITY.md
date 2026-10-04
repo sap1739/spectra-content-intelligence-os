@@ -440,3 +440,41 @@ A bulk re-seal job for long-idle rows is not built yet; today rotation advances 
   not approved, and a successful publish moves the design to PUBLISHED within that tenant only.
 - **Nothing is generated.** No image-generation provider is wired, and the API's capability response
   says so. Brand `visualStyle` is guidance shown to an operator, never a prompt sent anywhere.
+
+## 21. Video rendering **[P1]** (Phase 7B, ADR-0041)
+
+Video rendering runs an **external binary on user-influenced input**, which is a sharper threat
+model than anything before it in this codebase. Four properties contain it.
+
+- **No user string ever reaches a shell.** ffmpeg is spawned with an argument **array** — never a
+  shell string, never `shell: true`. There is no interpolation point for an injected command.
+- **No user text ever reaches the filtergraph.** Scene text is written to files and referenced with
+  `textfile=`; captions go to an SRT referenced by `subtitles=filename=`. The generated filtergraph
+  contains only numbers, schema-validated hex colours, and paths Spectra itself created — and a
+  unit test asserts that a storyboard whose text is `evil':drawtext=fontfile=/etc/passwd:…` produces
+  a graph containing neither `/etc/passwd` nor the payload. Paths are escaped by one function.
+- **The engine never fetches anything.** Inputs are read from object storage **by the job**, under
+  the tenant scope, and handed to ffmpeg as local files in a per-render temp directory that is
+  removed in a `finally`. ffmpeg is given no URL and needs no network access, so there is no SSRF
+  surface in the encoder.
+- **A render cannot run forever.** Every encode has a wall-clock timeout and an abort signal that
+  **kills the process** (SIGKILL), rather than abandoning it. Inputs are probed before the encode
+  because ffmpeg handed a corrupt looped image waits indefinitely — a denial-of-service shape that
+  would otherwise consume a worker slot for the full timeout.
+
+Beyond those:
+
+- **Tenant isolation.** `VideoProject` and `VideoRender` are tenant-guarded; every asset a storyboard
+  references is re-read under the tenant scope at render time rather than trusted from the stored
+  JSON, so a foreign id fails as unavailable and is never fetched. Outputs are written under
+  `org/<id>/ws/<id>/renders/…`, and the download path re-checks the key against the tenant prefix
+  before signing. A foreign or missing project, render or asset is the same `404`.
+- **Resource bounds.** A storyboard is capped at 60 scenes, a scene at 60s, text at 280 characters,
+  and output sizes come from a fixed catalog — a request cannot ask for an arbitrary canvas or an
+  unbounded duration. Each format carries its own duration ceiling, and a `MEDIA_RENDER` budget
+  pre-flight runs before a job is queued. Concurrency is capped at two renders per worker.
+- **Bounded failure detail.** Engine output is reduced to its last meaningful line and truncated to
+  500 characters, so a failure note never becomes a log dump or carries a path-rich stack.
+- **Permissions.** Reading is `video:read`; creating, rendering and cancelling is `video:write`.
+- **Nothing is generated, and nothing is sent anywhere.** No generative-video provider is wired, and
+  no prompt, script or asset leaves the deployment — the whole pipeline is local.

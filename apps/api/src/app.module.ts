@@ -18,6 +18,7 @@ import { ResearchRunsModule } from './research-runs/research-runs.module';
 import { SocialModule } from './social/social.module';
 import { StrategyModule } from './strategy/strategy.module';
 import { StudioModule } from './studio/studio.module';
+import { VideoModule } from './video/video.module';
 import { TenancyModule } from './tenancy/tenancy.module';
 import { VerticalsModule } from './verticals/verticals.module';
 
@@ -36,6 +37,7 @@ import { VerticalsModule } from './verticals/verticals.module';
     StrategyModule,
     MediaModule,
     StudioModule,
+    VideoModule,
     SocialModule,
     AnalyticsModule,
     UsageModule,

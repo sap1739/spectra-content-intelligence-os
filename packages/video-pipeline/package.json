@@ -1,0 +1,29 @@
+{
+  "name": "@spectra/video-pipeline",
+  "version": "0.1.0",
+  "description": "Executes one video render job: fetches inputs, drives the renderer, stores outputs as media assets, and records an honest terminal state.",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run src",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@spectra/contracts": "workspace:*",
+    "@spectra/database": "workspace:*",
+    "@spectra/logging": "workspace:*",
+    "@spectra/media-core": "workspace:*",
+    "@spectra/media-ffmpeg": "workspace:*",
+    "@spectra/metering": "workspace:*",
+    "@spectra/storage": "workspace:*",
+    "@spectra/video-studio": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.0"
+  }
+}

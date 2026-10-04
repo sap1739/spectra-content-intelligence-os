@@ -1,7 +1,7 @@
 # SpectraContent Intelligence OS — Project Status
 
-**Snapshot date:** 2026-09-16 · **Branch:** `main`
-**Status:** Phases 1–5 complete · Phase 6 complete (6A–6H shipped) · Phase 7 in progress (7A shipped)
+**Snapshot date:** 2026-10-04 · **Branch:** `main`
+**Status:** Phases 1–5 complete · Phase 6 complete (6A–6H shipped) · Phase 7 in progress (7A–7B shipped)
 
 > This document is a factual, audited snapshot intended as context for planning further work.
 > Every number below was measured from the repository, not estimated.
@@ -128,6 +128,9 @@ document-extract/ PDF/DOCX/TXT extraction with citation anchors           [Phase
 media-core/       Rendering ports (image/video/audio/subtitles/design)
 media-sharp/      Real sharp ImageRenderer + DesignRenderer adapters            [Phase 3/7A]
 design-studio/    Template layout model, render planner, raster PDF writer      [Phase 7A]
+video-studio/     Storyboard model, render planner, SRT/VTT, FFmpeg arg builder [Phase 7B]
+media-ffmpeg/     FFmpeg VideoRenderer: capability probing, progress, cancel   [Phase 7B]
+video-pipeline/   Executes one render job: inputs, encode, storage, outcome     [Phase 7B]
 social-core/      SocialPublisher + PostPublisher + account-discovery ports, capability matrix
 social-oauth/     Provider-neutral OAuth broker: state, PKCE, tokens, sealed bundles [Phase 6C]
 social-linkedin/  Real LinkedIn adapter: discovery, Images API, Posts API (text + 1 image) [Phase 6D]
@@ -397,6 +400,30 @@ standards, health/readiness endpoints, OpenAPI at `/docs`.
   approved, and a successful publish marks the design published within that tenant only. The
   integration suite proves the rendering by **decoding the stored bytes** — dimensions, format, PDF
   page count, the brand's primary colour at a pixel, the thumbnail under 2 MB (ADR-0040).
+- **7B:** **Video rendering — deterministic, local, and honest about the engine it depends on.**
+  FFmpeg is the video engine, invoked as a subprocess and **never vendored**: the worker resolves one
+  from `FFMPEG_PATH` or `PATH`, exactly as the licence policy required. Because the build varies by
+  host, nothing is assumed — `capabilities()` probes `-version`, `-encoders` and `-filters` and
+  reports the H.264 encoder it will use (`libx264` → `h264_videotoolbox` → `libopenh264`) plus
+  whether text overlays, burned-in captions, crossfades and an audio bed are possible, each `false`
+  carrying a named reason. A storyboard needing a missing capability is **refused before a job is
+  queued**. Storyboards are composition data in `@spectra/contracts/video.ts`; `buildVideoRenderPlan`
+  (pure, deterministic) resolves absolute scene timing, frame-scaled text and caption cues, and
+  `buildFfmpegArgs` turns that into an argument **array** — never a shell string, and with no user
+  text in the filtergraph (scene text and captions are written to files and referenced by
+  `textfile=` / `subtitles=filename=`, which a unit test pins with an injection payload). Rendering
+  covers slideshows, vertical shorts, square and 4:5 feed video, 1080p/720p landscape, crossfades,
+  intro/outro cards, an audio bed with gain and fade-out, SRT/WebVTT sidecars or burned-in captions,
+  Ken-Burns image motion, and a poster frame. It runs as a **worker job**: real progress parsed from
+  `-progress`, a wall-clock timeout and a cancellation that **kill** the encoder rather than
+  abandoning it, retries, and a `MEDIA_RENDER` budget pre-flight before the job exists. Inputs are
+  probed first, because ffmpeg handed a corrupt looped image waits forever — so a bad asset fails in
+  a second as `INPUT_UNSUPPORTED` instead of burning the timeout. The `VideoRender` row is the state
+  machine: `QUEUED → RUNNING →` exactly one terminal state, where **only SUCCEEDED has an asset** and
+  every other carries one of eleven `VideoFailureReason`s with operator-facing text; a finished
+  render is skipped on retry, never re-encoded or re-billed. Outputs are ordinary tenant-rooted
+  media assets. The integration suite proves it by **decoding the stored bytes** — `ftyp` box, h264,
+  1080×1080, duration within a frame of the plan (ADR-0041).
 
 ---
 
@@ -411,6 +438,9 @@ standards, health/readiness endpoints, OpenAPI at `/docs`.
 | sharp (image rendering)                                                                    | **Real, working**                                                         | none (local)                                                                                                                              |
 | Design studio rendering (PNG/JPEG pages, raster PDF) via sharp/libvips + Pango             | **Real, working** — bytes decoded and asserted in the integration suite   | none (local); uploaded TTF/OTF for guaranteed fonts, else the API host's installed fonts                                                  |
 | AI image generation                                                                        | **Not built, and not planned here** (ADR-0040)                            | the studio renders the workspace's own assets; no provider to configure                                                                   |
+| Video rendering (MP4, captions, poster) via ffmpeg as a subprocess                         | **Real, working when the host has ffmpeg** — bytes decoded in the suite   | `FFMPEG_PATH`/`PATH` + a font file; **no binary is vendored**, and capability is probed and reported per feature (ADR-0041)               |
+| Generative video (text-to-video)                                                           | **Not built, and not planned here** (ADR-0041)                            | the engine composes the workspace's own assets; no provider to configure                                                                  |
+| Speech-to-text for captions                                                                | **Not built**                                                             | captions are authored in the storyboard; nothing is transcribed                                                                           |
 | PostgreSQL / Redis / MinIO                                                                 | **Real, working**                                                         | docker-compose                                                                                                                            |
 | RSS/Atom ingestion                                                                         | **Real, working** (first-party parser)                                    | none                                                                                                                                      |
 | OAuth connect: LinkedIn, Facebook Pages, Instagram, Threads, YouTube, TikTok, X, Pinterest | **Real flow, when configured** (6C) — not yet run against a live platform | `SOCIAL_OAUTH_<PLATFORM>_CLIENT_ID/SECRET` + redirect base + `SOCIAL_TOKEN_ENCRYPTION_KEY`                                                |
@@ -499,31 +529,45 @@ platforms.
 
 | Check                | Result                                                 |
 | -------------------- | ------------------------------------------------------ |
-| `pnpm build`         | 43/43 tasks pass                                       |
-| `pnpm typecheck`     | 81/81 tasks pass                                       |
+| `pnpm build`         | 46/46 tasks pass                                       |
+| `pnpm typecheck`     | 87/87 tasks pass                                       |
 | `pnpm lint`          | pass                                                   |
 | `pnpm format`        | clean                                                  |
-| Unit tests           | **925 passing** across 38 packages/apps (incl. web 48) |
-| API integration      | **227 passing** (23 files)                             |
+| Unit tests           | **968 passing** across 41 packages/apps (incl. web 48) |
+| API integration      | **246 tests**, 24 files — see the flake note below     |
 | Pipeline integration | **95 passing** (11 files, `research-pipeline`)         |
 | Metering integration | **74 passing** (7 files)                               |
-| E2E (Playwright)     | **41 tests** (stubbed-API UI journeys)                 |
-| Prisma               | schema valid · 30 migrations · database up to date     |
+| E2E (Playwright)     | **49 tests** (stubbed-API UI journeys)                 |
+| Prisma               | schema valid · 31 migrations · database up to date     |
 
-Known flake 1 (pre-existing, not introduced by 6B–7A): `budget-hardening.spec.ts` "concurrent
+Known flake 1 (pre-existing, not introduced by 6B–7B): `budget-hardening.spec.ts` "concurrent
 research-run starts cannot all pass the last allowance" intermittently admits more than one run. It
-failed twice during the 6G gate; it passed in both 6H gate runs; during the 7A gate it failed on one
-API-only run and passed on the full run that followed. It is not fixed — the investigation is
-tracked separately.
+did not appear during the 7B gate. It is not fixed — the investigation is tracked separately.
 
-Known flake 2 (observed first in the 7A gate, harness-level): one `pnpm test:integration` run
-produced 20 failures across six unrelated API spec files (`analytics-sync`, `design-studio`,
-`linkedin`, `meta`, `remaining-platforms`, `youtube`), every one of them a foreign-key violation or
-`findFirstOrThrow` for the spec's **own** organization row — i.e. the tenant the file created was
-absent mid-run. Turbo runs the three integration suites concurrently against one dev Postgres and
-each vitest pool sizes itself to the CPU count, so the suites oversubscribe the machine. Re-running
-the API suite alone gave 226/227 (only flake 1) and re-running the full gate gave 227/227. Not
-reproduced since; the durable fix is per-suite database isolation, tracked with flake 1.
+Known flake 2 (first recorded in the 7A gate; **root-caused and partly fixed during 7B**). The
+symptom was a cluster of failures across unrelated API spec files — foreign-key violations and
+`findFirstOrThrow` misses for a spec's _own_ organization. Two distinct causes were found:
+
+1. **A stale Redis backlog.** The shared dev queue had accumulated 93 waiting and ~1300 failed jobs
+   across many phases. `ops.spec.ts` runs a real BullMQ worker and polls 20s for its own job, handing
+   foreign jobs back; with that backlog it never reached its own job, and the failure cascaded.
+   Draining `bull:spectra-system*` returned a clean `main` to **227/227**. Operationally: drain the
+   dev queue before a gate run, and do not leave test jobs behind.
+2. **Unbounded vitest parallelism.** The suites share one Postgres, Redis and MinIO and several do
+   real work (sharp, ffmpeg, a BullMQ worker). With every file in parallel on a loaded machine,
+   registration hooks partially fail and the resulting ids surface later as FK violations in other
+   specs. `apps/api/vitest.config.ts` now caps `maxWorkers: 3`, which took a representative run from
+   19–24 failures to 0–6 and costs no wall-clock worth having (~12s either way).
+
+Phase 7B also fixed a test-side contributor of its own: `video-rendering.spec.ts` stubs
+`QueueService.enqueue` for all but one dedicated test, so it never leaves jobs in the shared queue
+for `ops.spec` to trip over.
+
+What remains: on a **loaded** machine the API suite is still intermittent — across five runs during
+the 7B gate it produced 246/246 twice and 4–6 failures otherwise, always in `ops.spec.ts` (its 20s
+job-state poll) or in a tenant-isolation test whose setup lost a race. **No failure has ever
+occurred in `video-rendering.spec.ts`.** The durable fix is per-suite database and queue isolation,
+which remains tracked.
 
 -------------------- | ------------------------------------------------------ |
 | `pnpm build` | 40/40 tasks pass |

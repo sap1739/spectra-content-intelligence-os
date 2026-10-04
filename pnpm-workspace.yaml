@@ -3,6 +3,17 @@ packages:
   - packages/*
 
 allowBuilds:
+  # Dev/test only: these packages carry a prebuilt ffmpeg so the video tests can
+  # encode real video. Nothing ships them — the worker uses the host's own
+  # ffmpeg via FFMPEG_PATH (ADR-0041, OPEN_SOURCE_AND_LICENSE_POLICY.md §3).
+  '@ffmpeg-installer/darwin-arm64': true
+  '@ffmpeg-installer/darwin-x64': true
+  '@ffmpeg-installer/linux-arm64': true
+  '@ffmpeg-installer/linux-x64': true
+  '@ffprobe-installer/darwin-arm64': true
+  '@ffprobe-installer/darwin-x64': true
+  '@ffprobe-installer/linux-arm64': true
+  '@ffprobe-installer/linux-x64': true
   '@prisma/client': true
   '@prisma/engines': true
   # Scarf is analytics/telemetry — no build needed.

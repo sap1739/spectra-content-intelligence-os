@@ -4,6 +4,7 @@ import {
   BarChart3,
   Boxes,
   Calendar,
+  Clapperboard,
   FileText,
   FlaskConical,
   Home,
@@ -26,7 +27,7 @@ export interface NavItem {
   href: string;
   icon: LucideIcon;
   /** Which delivery phase makes this area functional. */
-  phase: 1 | 2 | 3 | 4 | 5 | 6;
+  phase: 1 | 2 | 3 | 4 | 5 | 6 | 7;
 }
 
 export interface NavGroup {
@@ -58,6 +59,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Calendar', href: '/calendar', icon: Calendar, phase: 3 },
       { label: 'Media', href: '/media', icon: Image, phase: 3 },
       { label: 'Design Studio', href: '/studio', icon: Palette, phase: 6 },
+      { label: 'Video', href: '/video', icon: Clapperboard, phase: 7 },
       { label: 'Templates', href: '/templates', icon: LayoutTemplate, phase: 3 },
     ],
   },
