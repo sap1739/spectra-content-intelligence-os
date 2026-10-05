@@ -23,6 +23,7 @@ export const JOB_NAMES = {
   analyticsSyncDispatch: 'analytics.sync.dispatch',
   videoRenderExecute: 'video.render.execute',
   audioRenderExecute: 'audio.render.execute',
+  campaignOrchestrate: 'campaign.orchestrate.execute',
 } as const;
 
 export interface RetryPolicy {

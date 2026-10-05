@@ -19,6 +19,7 @@ import {
   Share2,
   Sparkles,
   TrendingUp,
+  Workflow,
   Users,
   type LucideIcon,
 } from 'lucide-react';
@@ -55,6 +56,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Creation',
     items: [
       { label: 'Strategy', href: '/create', icon: Search, phase: 3 },
+      { label: 'Campaign Builder', href: '/campaign-builder', icon: Workflow, phase: 7 },
       { label: 'Campaigns', href: '/campaigns', icon: Megaphone, phase: 3 },
       { label: 'Content', href: '/content', icon: FileText, phase: 3 },
       { label: 'Calendar', href: '/calendar', icon: Calendar, phase: 3 },

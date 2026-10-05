@@ -74,6 +74,9 @@ importers:
       '@spectra/audio-pipeline':
         specifier: workspace:*
         version: link:../../packages/audio-pipeline
+      '@spectra/campaign-orchestration':
+        specifier: workspace:*
+        version: link:../../packages/campaign-orchestration
       '@spectra/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -319,6 +322,9 @@ importers:
       '@spectra/audio-pipeline':
         specifier: workspace:*
         version: link:../../packages/audio-pipeline
+      '@spectra/campaign-orchestration':
+        specifier: workspace:*
+        version: link:../../packages/campaign-orchestration
       '@spectra/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -604,6 +610,37 @@ importers:
       typescript:
         specifier: ^5.8.3
         version: 5.9.3
+
+  packages/campaign-orchestration:
+    dependencies:
+      '@spectra/claim-verification':
+        specifier: workspace:*
+        version: link:../claim-verification
+      '@spectra/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@spectra/database':
+        specifier: workspace:*
+        version: link:../database
+      '@spectra/logging':
+        specifier: workspace:*
+        version: link:../logging
+      '@spectra/metering':
+        specifier: workspace:*
+        version: link:../metering
+      '@spectra/social-core':
+        specifier: workspace:*
+        version: link:../social-core
+    devDependencies:
+      '@types/node':
+        specifier: ^22.15.0
+        version: 22.20.0
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(jsdom@25.0.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0)
 
   packages/claim-verification:
     dependencies:

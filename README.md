@@ -66,6 +66,7 @@ packages/
   video-pipeline/ Executes one render job: tenant-scoped inputs, encode, stored outputs, one honest outcome (ADR-0041)
   audio-core/     Voice consent gate, audio provider capability, podcast mix planning, FFmpeg audio arguments (ADR-0042)
   audio-pipeline/ Executes one audio render: consent re-check, mix, normalization, waveform, transcript (ADR-0042)
+  campaign-orchestration/ Evidence gate, deterministic strategy engine, plan/calendar building, run executor (ADR-0043)
   social-core/    SocialPublisher/PostPublisher ports + declared capability matrix + variant validation (ADR-0019)
   social-oauth/   Provider-neutral OAuth broker: state, PKCE, token exchange/refresh/revocation, sealed bundles (ADR-0034)
   social-linkedin/ Real LinkedIn adapter: discovery, Images API uploads, Posts API — text + one image (ADR-0035)
@@ -85,7 +86,7 @@ infrastructure/
   docker/         PostgreSQL (pgvector), Redis, MinIO via Docker Compose
   scripts/        bootstrap.sh, verify.sh
 docs/             Product, architecture, security and strategy documentation
-docs/adr/         42 Architecture Decision Records
+docs/adr/         43 Architecture Decision Records
 ```
 
 ## Quick start

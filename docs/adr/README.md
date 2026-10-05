@@ -44,6 +44,7 @@
 | [0040](0040-visual-template-and-design-studio.md)               | Visual templates and a design studio that really renders (no image generation)                 | Accepted             |
 | [0041](0041-video-rendering-pipeline.md)                        | FFmpeg as the video engine, and a renderer that admits when it cannot                          | Accepted             |
 | [0042](0042-audio-voiceover-and-podcasts.md)                    | Audio and podcasts: real mixing, no generated voices, and consent that bites                   | Accepted             |
+| [0043](0043-campaign-orchestration.md)                          | Research-backed campaign orchestration, with an evidence gate that blocks                      | Accepted             |
 
 New significant decisions require a new ADR (`NNNN-kebab-title.md`) using the
 Context / Decision / Rationale / Consequences structure.

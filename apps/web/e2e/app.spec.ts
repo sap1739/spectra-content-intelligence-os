@@ -8,6 +8,9 @@ import {
   designTemplates,
   studioCapabilities,
   audioCapabilities,
+  orchestrationCapabilities,
+  orchestrationRunDetail,
+  orchestrationRunSummary,
   audioRenderRow,
   episodeDetail,
   episodeRow,
@@ -739,6 +742,136 @@ test.describe('audio and podcasts', () => {
 
     await expect(page.getByRole('button', { name: 'Record consent' })).toHaveCount(0);
     await expect(page.getByText('voice:consent').first()).toBeVisible();
+  });
+});
+
+test.describe('campaign orchestration', () => {
+  const orchRoutes = (overrides: Record<string, unknown> = {}) => ({
+    '/campaign-orchestration/capabilities': orchestrationCapabilities(),
+    '/campaign-orchestration/runs/run1': orchestrationRunDetail(),
+    '/campaign-orchestration/runs': { runs: [orchestrationRunSummary()] },
+    '/verticals': [{ id: 'v1', name: 'Enterprise storage', slug: 'storage' }],
+    '/trends': [
+      { id: 't1', title: 'Composable storage replaces monoliths', normalizedScore: 0.82 },
+    ],
+    ...overrides,
+  });
+
+  test('the wizard says the strategy is derived, not invented', async ({ page }) => {
+    await stubApi(page, { routes: orchRoutes() });
+    await gotoAuthenticated(page, '/campaign-builder');
+
+    await expect(page.getByText(/Derived from research, not invented/)).toBeVisible();
+    await expect(page.getByTestId('engine-note')).toContainText('No model invents them');
+    // And that nothing it builds goes out on its own.
+    await expect(page.getByText(/Nothing is published automatically/)).toBeVisible();
+  });
+
+  test('an unavailable generator is stated before a run is started', async ({ page }) => {
+    await stubApi(page, { routes: orchRoutes() });
+    await gotoAuthenticated(page, '/campaign-builder');
+
+    await expect(page.getByTestId('generation-unavailable')).toContainText('ANTHROPIC_API_KEY');
+    await expect(page.getByTestId('generation-unavailable')).toContainText(
+      'drafts are left unwritten',
+    );
+  });
+
+  test('the wizard previews the plan size before anything is created', async ({ page }) => {
+    await stubApi(page, { routes: orchRoutes() });
+    await gotoAuthenticated(page, '/campaign-builder');
+
+    await expect(page.getByTestId('plan-preview')).toContainText('About 2 items');
+    await expect(page.getByTestId('plan-preview')).toContainText(
+      'Topics without usable evidence are blocked and listed, not written',
+    );
+  });
+
+  test('says plainly when there is no scored research to build on', async ({ page }) => {
+    await stubApi(page, { routes: orchRoutes({ '/trends': [] }) });
+    await gotoAuthenticated(page, '/campaign-builder');
+
+    await expect(page.getByTestId('no-trends')).toContainText('Run research and trend scoring');
+  });
+
+  test('a run shows every stage, including the one that was skipped and why', async ({ page }) => {
+    await stubApi(page, { routes: orchRoutes() });
+    await gotoAuthenticated(page, '/campaign-builder/run1');
+
+    const stages = page.getByTestId('stages');
+    await expect(stages).toContainText('resolve inputs');
+    await expect(stages).toContainText('generate drafts');
+    await expect(stages).toContainText('No text-generation provider is configured');
+    await expect(page.getByText('PARTIAL')).toBeVisible();
+  });
+
+  test('the strategy shows its warnings and names unpublishable platforms', async ({ page }) => {
+    await stubApi(page, { routes: orchRoutes() });
+    await gotoAuthenticated(page, '/campaign-builder/run1');
+
+    await expect(page.getByTestId('strategy-warnings')).toContainText(
+      'blocked by the evidence gate',
+    );
+    await expect(page.getByTestId('strategy-warnings')).toContainText('No persona is configured');
+    await expect(page.getByTestId('platform-strategy')).toContainText(
+      'No connected account can publish to X',
+    );
+  });
+
+  test('the calendar shows each slot with its evidence verdict', async ({ page }) => {
+    await stubApi(page, { routes: orchRoutes() });
+    await gotoAuthenticated(page, '/campaign-builder/run1');
+
+    const calendar = page.getByTestId('calendar');
+    await expect(calendar).toContainText('Composable storage replaces monoliths');
+    await expect(calendar).toContainText('LINKEDIN');
+    await expect(calendar.getByText('SUPPORTED')).toBeVisible();
+  });
+
+  test('a blocked topic is listed with its reason, and has no content item', async ({ page }) => {
+    await stubApi(page, { routes: orchRoutes() });
+    await gotoAuthenticated(page, '/campaign-builder/run1');
+
+    const items = page.getByTestId('items');
+    await expect(items).toContainText('Topic with no evidence');
+    await expect(items).toContainText('UNSUPPORTED');
+    await expect(items).toContainText('no draft was written for it');
+    // The written item links its evidence; the blocked one has nothing to open.
+    await expect(items).toContainText('3 finding(s), 1 citation(s), from an evidence pack');
+    await expect(items.getByRole('link', { name: 'Open content item' })).toHaveCount(1);
+  });
+
+  test('a failed run states the reason in words', async ({ page }) => {
+    await stubApi(page, {
+      routes: orchRoutes({
+        '/campaign-orchestration/runs/run1': orchestrationRunDetail({
+          run: {
+            ...orchestrationRunDetail().run,
+            status: 'FAILED',
+            campaignId: null,
+            failureReason: 'ALL_ITEMS_BLOCKED',
+          },
+          failureText:
+            'Every planned item was blocked by the evidence gate. The research does not yet support a campaign on these topics.',
+        }),
+      }),
+    });
+    await gotoAuthenticated(page, '/campaign-builder/run1');
+
+    await expect(page.getByText(/does not yet support a campaign/)).toBeVisible();
+  });
+
+  test('without campaign:orchestrate the wizard is gone and the permission is named', async ({
+    page,
+  }) => {
+    await stubApi(page, {
+      permissions: ALL_PERMISSIONS.filter((permission) => permission !== 'campaign:orchestrate'),
+      routes: orchRoutes(),
+    });
+    await gotoAuthenticated(page, '/campaign-builder');
+
+    await expect(page.getByRole('button', { name: 'Build campaign' })).toHaveCount(0);
+    await expect(page.getByText('campaign:orchestrate').first()).toBeVisible();
   });
 });
 

@@ -37,6 +37,7 @@ export const ALL_PERMISSIONS = [
   'content:approve',
   'campaign:read',
   'campaign:write',
+  'campaign:orchestrate',
   'media:read',
   'media:write',
   'design:read',
@@ -1124,4 +1125,266 @@ export function episodeDetail(overrides: Record<string, unknown> = {}) {
     voices: [],
     ...overrides,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Campaign orchestration (Phase 7D)
+// ---------------------------------------------------------------------------
+
+export function orchestrationCapabilities(overrides: Record<string, unknown> = {}) {
+  return {
+    strategyEngine: {
+      version: 'spectra-strategy@1.0.0',
+      deterministic: true,
+      note: 'Objectives, pillars, personas, topics, platform strategy and CTAs are derived from the vertical, the scored trends, the evidence packs behind them and the declared platform capability matrix. No model invents them.',
+    },
+    generation: {
+      available: false,
+      reason:
+        'No text-generation provider is configured (ANTHROPIC_API_KEY). Runs still produce the strategy, plan, calendar and evidence-linked items; the drafts are left unwritten and each item says so.',
+    },
+    evidenceVerdicts: {
+      SUPPORTED: 'Corroborated by independent sources Spectra retrieved in full.',
+      LIMITED:
+        'Supported, but thinly — too few independent sources to state this as settled. The draft must hedge.',
+      SNIPPET_ONLY:
+        'Backed only by search snippets; no source page was retrieved in full. Treated as weaker evidence and marked as such.',
+      STALE:
+        'The newest supporting source is older than this topic tolerates. The draft must date its claims.',
+      CONTRADICTED:
+        'Sources disagree on this topic. The draft must present the disagreement rather than pick a side.',
+      UNSUPPORTED: 'Nothing usable backs this topic, so no draft was written for it.',
+    },
+    failureReasons: {
+      INPUTS_UNAVAILABLE: 'The vertical or research project is unavailable.',
+      NO_TRENDS_SELECTED: 'No trend met the selection bar.',
+      NO_EVIDENCE: 'No evidence pack backs the selected trends.',
+      ALL_ITEMS_BLOCKED:
+        'Every planned item was blocked by the evidence gate. The research does not yet support a campaign on these topics.',
+      GENERATION_NOT_CONFIGURED: 'No text-generation provider is configured in this deployment.',
+      GENERATION_FAILED: 'The text-generation provider failed for every item.',
+      BUDGET_REFUSED: 'The workspace budget refused this campaign.',
+      CANCELLED: 'The run was cancelled.',
+      TIMEOUT: 'The run took longer than its time limit.',
+      WORKER_LOST: 'The worker stopped before the run finished.',
+      INTERNAL_ERROR: 'The run failed for an unexpected reason.',
+    },
+    publishesAutomatically: false,
+    ...overrides,
+  };
+}
+
+const supportedEvidence = {
+  verdict: 'SUPPORTED',
+  action: 'ALLOW',
+  reason: '3 independent sources back this topic.',
+  evidencePackId: 'pack-1',
+  findingIds: ['f1', 'f2', 'f3'],
+  citationIds: ['c1'],
+  claimIds: [],
+  independentSourceCount: 3,
+  snippetOnly: false,
+  newestSourceAgeDays: 12,
+  contradictionCount: 0,
+};
+
+const blockedEvidence = {
+  ...supportedEvidence,
+  verdict: 'UNSUPPORTED',
+  action: 'BLOCK',
+  reason: 'Nothing usable backs this topic, so no draft was written for it.',
+  evidencePackId: null,
+  findingIds: [],
+  citationIds: [],
+  independentSourceCount: 0,
+  newestSourceAgeDays: null,
+};
+
+export function orchestrationRunSummary(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'run1',
+    name: 'Q4 storage push',
+    status: 'PARTIAL',
+    campaignId: 'camp1',
+    progressPercent: 100,
+    itemsPlanned: 2,
+    itemsCreated: 2,
+    itemsDrafted: 0,
+    itemsBlocked: 1,
+    itemsFailed: 0,
+    failureReason: null,
+    createdAt: '2026-10-04T09:00:00.000Z',
+    ...overrides,
+  };
+}
+
+export function orchestrationRunDetail(overrides: Record<string, unknown> = {}) {
+  const run = {
+    ...orchestrationRunSummary(),
+    failureDetail: null,
+    strategy: {
+      schemaVersion: 1,
+      engineVersion: 'spectra-strategy@1.0.0',
+      objectives: [
+        {
+          key: 'awareness',
+          name: 'Put enterprise storage in front of a new audience.',
+          funnelStage: 'AWARENESS',
+          rationale: 'Derived from the 1 trend selected.',
+          trendCandidateIds: ['t1'],
+        },
+      ],
+      pillars: [
+        {
+          key: 'storage',
+          name: 'storage',
+          description: 'Keyword pillar.',
+          keywords: ['storage'],
+          trendCandidateIds: ['t1'],
+        },
+      ],
+      personas: [
+        {
+          key: 'derived-audience',
+          name: 'People following Enterprise storage',
+          description: 'Placeholder derived from the campaign subject.',
+          source: 'DERIVED',
+          painPoints: [],
+          preferredPlatforms: ['LINKEDIN'],
+        },
+      ],
+      funnelCoverage: [{ stage: 'AWARENESS', plannedItems: 2 }],
+      topicIdeas: [],
+      platforms: [
+        {
+          platform: 'LINKEDIN',
+          plannedItems: 2,
+          rationale: 'Planned against declared limits.',
+          publishingAvailable: true,
+          publishingNote: null,
+        },
+        {
+          platform: 'X',
+          plannedItems: 0,
+          rationale: 'Planned against declared limits.',
+          publishingAvailable: false,
+          publishingNote:
+            'No connected account can publish to X in this workspace. Items are still planned and drafted, but scheduling them will not send anything until an account is connected.',
+        },
+      ],
+      ctaSuggestions: [
+        {
+          funnelStage: 'AWARENESS',
+          text: 'Follow for more on this topic.',
+          rationale: 'Awareness posts ask for attention.',
+        },
+      ],
+      warnings: [
+        '1 topic idea was blocked by the evidence gate and is not in the plan.',
+        'No persona is configured for this workspace, so the audience is a placeholder derived from the campaign subject.',
+      ],
+    },
+    plan: {
+      schemaVersion: 1,
+      startAt: '2026-10-05T00:00:00.000Z',
+      endAt: '2026-10-19T00:00:00.000Z',
+      timezone: 'UTC',
+      items: [
+        {
+          key: 'topic-1',
+          title: 'Composable storage replaces monoliths',
+          topicKey: 'composable-storage',
+          platform: 'LINKEDIN',
+          funnelStage: 'AWARENESS',
+          pillarKey: 'storage',
+          scheduledAt: '2026-10-05T09:00:00.000Z',
+          evidence: supportedEvidence,
+          trendCandidateId: 't1',
+          cta: 'Follow for more on this topic.',
+        },
+      ],
+      blocked: [
+        {
+          title: 'Topic with no evidence',
+          topicKey: 'none',
+          evidence: blockedEvidence,
+        },
+      ],
+    },
+    stages: [
+      {
+        stage: 'RESOLVE_INPUTS',
+        status: 'SUCCEEDED',
+        note: 'Starting from vertical “Enterprise storage”.',
+        startedAt: null,
+        finishedAt: null,
+      },
+      {
+        stage: 'SELECT_TRENDS',
+        status: 'SUCCEEDED',
+        note: '1 trend(s) selected.',
+        startedAt: null,
+        finishedAt: null,
+      },
+      {
+        stage: 'BUILD_STRATEGY',
+        status: 'SUCCEEDED',
+        note: null,
+        startedAt: null,
+        finishedAt: null,
+      },
+      {
+        stage: 'BUILD_PLAN',
+        status: 'SUCCEEDED',
+        note: '1 item(s) planned, 1 blocked.',
+        startedAt: null,
+        finishedAt: null,
+      },
+      {
+        stage: 'BUILD_CALENDAR',
+        status: 'SUCCEEDED',
+        note: null,
+        startedAt: null,
+        finishedAt: null,
+      },
+      { stage: 'CREATE_ITEMS', status: 'SUCCEEDED', note: null, startedAt: null, finishedAt: null },
+      {
+        stage: 'GENERATE_DRAFTS',
+        status: 'SKIPPED',
+        note: 'No text-generation provider is configured in this deployment.',
+        startedAt: null,
+        finishedAt: null,
+      },
+      {
+        stage: 'ROUTE_FOR_REVIEW',
+        status: 'SUCCEEDED',
+        note: '0 item(s) routed for review.',
+        startedAt: null,
+        finishedAt: null,
+      },
+    ],
+    items: [
+      {
+        key: 'topic-1',
+        title: 'Composable storage replaces monoliths',
+        outcome: 'GENERATION_UNAVAILABLE',
+        contentItemId: 'ci1',
+        scheduleEntryId: null,
+        platform: 'LINKEDIN',
+        evidence: supportedEvidence,
+        note: 'No text-generation provider is configured in this deployment.',
+      },
+      {
+        key: 'blocked-1',
+        title: 'Topic with no evidence',
+        outcome: 'BLOCKED',
+        contentItemId: null,
+        scheduleEntryId: null,
+        platform: 'LINKEDIN',
+        evidence: blockedEvidence,
+        note: blockedEvidence.reason,
+      },
+    ],
+  };
+  return { run, failureText: null, ...overrides };
 }

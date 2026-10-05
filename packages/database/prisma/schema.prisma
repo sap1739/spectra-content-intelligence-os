@@ -139,6 +139,7 @@ model Organization {
   podcastEpisodes       PodcastEpisode[]
   transcripts           Transcript[]
   audioRenders          AudioRender[]
+  orchestrationRuns     CampaignOrchestrationRun[]
 
   @@map("organizations")
 }
@@ -229,7 +230,7 @@ model Workspace {
   updatedAt DateTime  @updatedAt @db.Timestamptz(6)
   deletedAt DateTime? @db.Timestamptz(6)
 
-  organization          Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization          Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   brands                Brand[]
   verticals             CustomVertical[]
   researchProjects      ResearchProject[]
@@ -269,6 +270,7 @@ model Workspace {
   podcastEpisodes       PodcastEpisode[]
   transcripts           Transcript[]
   audioRenders          AudioRender[]
+  orchestrationRuns     CampaignOrchestrationRun[]
 
   @@unique([organizationId, slug])
   @@index([organizationId, status])
@@ -319,10 +321,11 @@ model Brand {
   logoAsset    MediaAsset?  @relation("BrandLogo", fields: [logoAssetId], references: [id], onDelete: SetNull)
   designs      Design[]
 
-  researchProjects ResearchProject[]
-  campaigns        Campaign[]
-  contentItems     ContentItem[]
-  videoProjects    VideoProject[]
+  researchProjects  ResearchProject[]
+  campaigns         Campaign[]
+  contentItems      ContentItem[]
+  videoProjects     VideoProject[]
+  orchestrationRuns CampaignOrchestrationRun[]
 
   @@unique([workspaceId, slug])
   @@index([organizationId])
@@ -380,10 +383,11 @@ model CustomVertical {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  researchProjects ResearchProject[]
-  trendCandidates  TrendCandidate[]
-  campaigns        Campaign[]
-  contentItems     ContentItem[]
+  researchProjects  ResearchProject[]
+  trendCandidates   TrendCandidate[]
+  campaigns         Campaign[]
+  contentItems      ContentItem[]
+  orchestrationRuns CampaignOrchestrationRun[]
 
   @@unique([workspaceId, slug])
   @@index([organizationId])
@@ -430,13 +434,14 @@ model ResearchProject {
   brand        Brand?          @relation(fields: [brandId], references: [id], onDelete: SetNull)
   createdBy    User?           @relation("ResearchProjectCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
-  runs          ResearchRun[]
-  sources       ResearchSource[]
-  findings      ResearchFinding[]
-  trends        TrendCandidate[]
-  claims        ExtractedClaim[]
-  citations     Citation[]
-  evidencePacks EvidencePack[]
+  runs              ResearchRun[]
+  sources           ResearchSource[]
+  findings          ResearchFinding[]
+  trends            TrendCandidate[]
+  claims            ExtractedClaim[]
+  citations         Citation[]
+  evidencePacks     EvidencePack[]
+  orchestrationRuns CampaignOrchestrationRun[]
 
   @@index([workspaceId, status])
   @@index([organizationId])
@@ -1169,16 +1174,17 @@ model Campaign {
   updatedAt DateTime  @updatedAt @db.Timestamptz(6)
   deletedAt DateTime? @db.Timestamptz(6)
 
-  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  vertical           CustomVertical?     @relation(fields: [verticalId], references: [id], onDelete: SetNull)
-  brand              Brand?              @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  organization       Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace          Workspace                  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  vertical           CustomVertical?            @relation(fields: [verticalId], references: [id], onDelete: SetNull)
+  brand              Brand?                     @relation(fields: [brandId], references: [id], onDelete: SetNull)
   contentItems       ContentItem[]
   brief              CampaignBrief?
   analyticsSnapshots AnalyticsSnapshot[]
   designs            Design[]
   videoProjects      VideoProject[]
   podcastEpisodes    PodcastEpisode[]
+  orchestrationRuns  CampaignOrchestrationRun[]
 
   @@index([workspaceId, status])
   @@map("campaigns")
@@ -2061,6 +2067,95 @@ model VideoRender {
   @@index([projectId, createdAt])
   @@index([workspaceId, status, createdAt])
   @@map("video_renders")
+}
+
+// ---------------------------------------------------------------------------
+// Campaign orchestration (Phase 7D, ADR-0043)
+// ---------------------------------------------------------------------------
+
+enum OrchestrationStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  /// Some items were produced and some were not — both are listed.
+  PARTIAL
+  FAILED
+  CANCELLED
+}
+
+enum OrchestrationFailureReason {
+  INPUTS_UNAVAILABLE
+  NO_TRENDS_SELECTED
+  NO_EVIDENCE
+  ALL_ITEMS_BLOCKED
+  GENERATION_NOT_CONFIGURED
+  GENERATION_FAILED
+  BUDGET_REFUSED
+  CANCELLED
+  TIMEOUT
+  WORKER_LOST
+  INTERNAL_ERROR
+}
+
+/// One end-to-end campaign build: research → trends → strategy → plan →
+/// calendar → content. The row is the run's state machine and its audit trail:
+/// every stage, every item and every evidence verdict is kept, including the
+/// items the evidence gate refused.
+model CampaignOrchestrationRun {
+  id                String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String                      @db.Uuid
+  workspaceId       String                      @db.Uuid
+  name              String
+  status            OrchestrationStatus         @default(QUEUED)
+  /// The inputs as submitted, so a run can be explained after the fact.
+  input             Json
+  /// Deterministic hash of the inputs: a retry reuses the run.
+  runKey            String                      @unique
+  verticalId        String?                     @db.Uuid
+  researchProjectId String?                     @db.Uuid
+  brandId           String?                     @db.Uuid
+  /// The campaign this run built, once it exists.
+  campaignId        String?                     @db.Uuid
+  /// Trends actually selected, after scoring and the evidence gate.
+  trendCandidateIds String[]                    @default([]) @db.Uuid
+  /// The derived strategy document (GeneratedCampaignStrategy).
+  strategy          Json?
+  /// The plan and its calendar slots (CampaignPlan), including blocked items.
+  plan              Json?
+  /// Per-stage status, note and timings (StageResult[]).
+  stages            Json                        @default("[]")
+  /// Per-item outcome with its evidence verdict (OrchestrationItemResult[]).
+  items             Json                        @default("[]")
+  progressPercent   Int                         @default(0)
+  itemsPlanned      Int                         @default(0)
+  itemsCreated      Int                         @default(0)
+  itemsDrafted      Int                         @default(0)
+  itemsBlocked      Int                         @default(0)
+  itemsFailed       Int                         @default(0)
+  attempt           Int                         @default(0)
+  maxAttempts       Int                         @default(3)
+  queueJobId        String?
+  cancelRequestedAt DateTime?                   @db.Timestamptz(6)
+  startedAt         DateTime?                   @db.Timestamptz(6)
+  finishedAt        DateTime?                   @db.Timestamptz(6)
+  failureReason     OrchestrationFailureReason?
+  /// Bounded, scrubbed detail — never a whole log.
+  failureDetail     String?
+  createdById       String?                     @db.Uuid
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace       Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  vertical        CustomVertical?  @relation(fields: [verticalId], references: [id], onDelete: SetNull)
+  researchProject ResearchProject? @relation(fields: [researchProjectId], references: [id], onDelete: SetNull)
+  brand           Brand?           @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  campaign        Campaign?        @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status, createdAt])
+  @@index([campaignId])
+  @@map("campaign_orchestration_runs")
 }
 
 // ---------------------------------------------------------------------------

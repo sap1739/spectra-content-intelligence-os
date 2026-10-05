@@ -412,11 +412,31 @@ weakest link in the differentiator: research and evidence quality.
   Transcripts are `SCRIPT_DERIVED` at best and say so; host notes never reach the audio, proved by
   reading the finished MP3's bytes. Rendering follows the 7B job model exactly, sharing its process
   handling (ADR-0042, `docs/VOICE_CONSENT_POLICY.md`).
+- ✅ **Increment D — research-backed campaign orchestration.** The phase that connects the others:
+  one run walks research → trends → strategy → plan → calendar → content, and every artifact carries
+  the evidence it came from. The **strategy engine is deterministic and derived**, not generated —
+  objectives from the funnel stages actually covered, pillars from the vertical's keywords (a trend
+  matching none becomes its own pillar rather than being dropped), personas from what the operator
+  configured and only failing that a _labelled placeholder_, platform strategy from the declared
+  capability matrix plus whether an account can really publish there, CTAs from a fixed library.
+  Versioned `spectra-strategy@1.0.0`, so every element traces to a row. The **evidence gate** is the
+  heart: six verdicts map to three fixed actions, independence is counted by publisher rather than
+  by article, ineligible sources are excluded entirely, disagreement outranks everything, and an
+  unverified topic is `LIMITED` rather than `SUPPORTED`. `UNSUPPORTED` **blocks** — and blocked
+  topics stay visible in the plan with their reason rather than being dropped. A cautioned topic
+  carries real instruction into the prompt (hedge, date the claim, attribute to the snippet, present
+  the disagreement), not just a flag. **`PARTIAL` is a first-class outcome**: with no generation
+  provider the run still produces a real strategy, plan, calendar and evidence-linked items, and
+  each says `GENERATION_UNAVAILABLE` with the reason — never `SUCCEEDED`, never `FAILED`. One failed
+  draft never discards the campaign. Budget pre-flight before the run row exists; `runKey`
+  idempotency; cancellation checked against the database between stages. A run **never publishes and
+  never schedules** — drafted items go to `REVIEW` for a person (ADR-0043,
+  `docs/CAMPAIGN_ORCHESTRATION.md`).
 - Next: a drag-and-drop canvas editor (layout positions currently come from templates); vector PDF
   for commercial print; a speech-synthesis adapter behind the existing consent gate, once credentials
-  exist and it can be tested safely; speech-to-text so transcripts can cover uploaded audio rather
-  than only scripted segments; two-pass loudness normalization; moving design rendering to the worker
-  if page counts grow.
+  exist and it can be tested safely; speech-to-text so transcripts can cover uploaded audio; two-pass
+  loudness normalization; real persona records so the strategy engine stops emitting placeholders;
+  moving the evidence gate's thresholds into workspace policy.
 
 ## Cross-phase next steps
 

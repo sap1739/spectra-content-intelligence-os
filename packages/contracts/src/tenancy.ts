@@ -52,6 +52,9 @@ export const PERMISSIONS = [
   // Recording and revoking a person's consent to their voice being used is a
   // legal act, so it is its own permission rather than part of audio:write.
   'voice:consent',
+  // Running a campaign orchestration spends research and generation budget, so
+  // it is its own permission rather than part of campaign:write.
+  'campaign:orchestrate',
   'social:connect',
   'social:publish',
   'analytics:read',

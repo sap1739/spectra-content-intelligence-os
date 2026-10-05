@@ -36,6 +36,7 @@ import {
 } from '@spectra/media-ffmpeg';
 import { executeVideoRender } from '@spectra/video-pipeline';
 import { executeAudioRender } from '@spectra/audio-pipeline';
+import { executeOrchestration } from '@spectra/campaign-orchestration';
 import type { KeyRing } from '@spectra/security';
 import { linkedInApiOptionsFromEnv } from '@spectra/social-linkedin';
 import { metaGraphOptionsFromEnv } from '@spectra/social-meta';
@@ -601,6 +602,76 @@ async function main(): Promise<void> {
       );
     }),
     { concurrency: 2, timeoutMs: env.VIDEO_RENDER_TIMEOUT_MS + 60_000 },
+  );
+
+  // One campaign orchestration: research → trends → strategy → plan → calendar
+  // → content. Long-running and partially fallible by design — a failed draft
+  // is recorded and the run continues (ADR-0043).
+  runtime.register<{ renderId?: string; runId: string }, unknown>(
+    JOB_NAMES.campaignOrchestrate,
+    instrument('campaign.orchestrate.execute', async (envelope, context) => {
+      const jobLogger = withCorrelation(logger, context.correlationId);
+      return executeOrchestration(
+        {
+          prisma,
+          usage,
+          logger: jobLogger,
+          generation: {
+            // Env-gated exactly like the draft worker: without a key the run
+            // still builds everything else and says the prose is missing.
+            available: Boolean(env.ANTHROPIC_API_KEY),
+            reason:
+              'No text-generation provider is configured in this deployment (ANTHROPIC_API_KEY).',
+            async generateDraft({ contentItemId, evidencePackId, guidance }) {
+              const item = await prisma.contentItem.findUnique({
+                where: { id: contentItemId },
+                select: { organizationId: true, workspaceId: true, objective: true },
+              });
+              if (!item) return { status: 'FAILED' as const, note: 'The content item is gone.' };
+              const draft = await prisma.contentDraft.create({
+                data: {
+                  organizationId: item.organizationId,
+                  workspaceId: item.workspaceId,
+                  contentItemId,
+                  status: 'GENERATING',
+                  evidencePackId,
+                },
+                select: { id: true },
+              });
+              const outcome = await executeContentDraft(
+                { prisma, provider: textProvider, usage, logger: jobLogger },
+                {
+                  draftId: draft.id,
+                  // The evidence gate's caution is trusted operator-side
+                  // instruction, never mixed with retrieved content.
+                  additionalGuidance: guidance,
+                },
+              );
+              return outcome.status === 'READY'
+                ? { status: 'READY' as const }
+                : { status: 'FAILED' as const, note: 'The draft did not complete.' };
+            },
+          },
+          async publishablePlatforms(tenant) {
+            // Only platforms with a connected, undeleted account can actually
+            // receive a post; the strategy says so per platform.
+            const accounts = await prisma.socialAccount.findMany({
+              where: { ...tenant, deletedAt: null },
+              select: { platform: true },
+              distinct: ['platform'],
+            });
+            return new Set(accounts.map((account) => account.platform));
+          },
+        },
+        envelope.payload.runId,
+        {
+          signal: context.signal,
+          attempt: context.attempt,
+          reportProgress: (percent) => context.reportProgress({ percent }),
+        },
+      );
+    }),
+    { concurrency: 1, timeoutMs: 20 * 60_000 },
   );
 
   // Due analytics runs: retries whose backoff elapsed, and — only when

@@ -20,6 +20,7 @@ import { StrategyModule } from './strategy/strategy.module';
 import { StudioModule } from './studio/studio.module';
 import { VideoModule } from './video/video.module';
 import { AudioModule } from './audio/audio.module';
+import { OrchestrationModule } from './orchestration/orchestration.module';
 import { TenancyModule } from './tenancy/tenancy.module';
 import { VerticalsModule } from './verticals/verticals.module';
 
@@ -40,6 +41,7 @@ import { VerticalsModule } from './verticals/verticals.module';
     StudioModule,
     VideoModule,
     AudioModule,
+    OrchestrationModule,
     SocialModule,
     AnalyticsModule,
     UsageModule,

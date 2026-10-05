@@ -346,3 +346,35 @@ Routes under `workspaces/:workspaceId/audio`. Two permissions for the studio —
 - **No existence leaks.** A foreign or missing voice, episode, render or asset is the same `404`.
 - **Nothing is generated.** `GET capabilities` returns `generatesAudio: false` with a sentence, and
   lists all four synthesis kinds as `NOT_IMPLEMENTED`. There is no generation endpoint.
+
+## 21. Campaign orchestration (Phase 7D, ADR-0043)
+
+Routes under `workspaces/:workspaceId/campaign-orchestration`. Reading uses `campaign:read`;
+starting or cancelling a run needs **`campaign:orchestrate`**, which is separate because a run
+spends generation budget and creates a campaign's worth of content.
+
+| Method & path             | Permission             | Notes                                                                      |
+| ------------------------- | ---------------------- | -------------------------------------------------------------------------- |
+| `GET capabilities`        | `campaign:read`        | The strategy engine's version, whether drafts can be written, verdict text |
+| `GET runs`                | `campaign:read`        | Runs in this workspace, newest first, with their counts                    |
+| `GET runs/:runId`         | `campaign:read`        | Stages, strategy, plan, per-item outcomes and `failureText`                |
+| `GET runs/:runId/items`   | `campaign:read`        | The content produced, with each item's evidence lineage resolved           |
+| `POST runs`               | `campaign:orchestrate` | `202 { created, run }` — budget-checked before the run row exists          |
+| `POST runs/:runId/cancel` | `campaign:orchestrate` | Removes a queued job; flags a running one so the worker stops              |
+
+- **202, not 200.** A run takes minutes and happens in the worker; the response is a `QUEUED` row
+  with no campaign, and the client polls `GET runs/:runId`.
+- **Everything checkable is checked before the row exists.** The vertical, research project, brand
+  and every named trend must be in this workspace — a foreign id is a `404` **now**, not a failed
+  run later — and the `CONTENT_DRAFT` pre-flight must pass, sized by the drafts the run would write.
+- **Idempotent.** The same inputs return the existing run with `created: false`; trend ids and
+  platforms are compared order-independently. A `FAILED` or `CANCELLED` run does not block a retry.
+- **`PARTIAL` is a real status, not a soft failure.** A run that built a strategy, plan, calendar and
+  evidence-linked items but could not write drafts reports `PARTIAL` with every item marked
+  `GENERATION_UNAVAILABLE` and the reason — never `SUCCEEDED`, never `FAILED`.
+- **Blocked topics are returned, not omitted.** They appear in `plan.blocked` and in `items` with
+  outcome `BLOCKED`, each carrying the evidence verdict and the reason it was refused.
+- **No existence leaks.** A foreign or missing run, vertical, project, brand or trend is the same
+  `404`.
+- **Nothing is published.** `GET capabilities` returns `publishesAutomatically: false`; drafted items
+  are routed to `REVIEW` and scheduled only by a person, through the calendar.

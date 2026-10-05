@@ -1,7 +1,7 @@
 # SpectraContent Intelligence OS — Project Status
 
 **Snapshot date:** 2026-10-04 · **Branch:** `main`
-**Status:** Phases 1–5 complete · Phase 6 complete (6A–6H shipped) · Phase 7 in progress (7A–7C shipped)
+**Status:** Phases 1–5 complete · Phase 6 complete (6A–6H shipped) · Phase 7 in progress (7A–7D shipped)
 
 > This document is a factual, audited snapshot intended as context for planning further work.
 > Every number below was measured from the repository, not estimated.
@@ -133,6 +133,7 @@ media-ffmpeg/     FFmpeg VideoRenderer: capability probing, progress, cancel   [
 video-pipeline/   Executes one render job: inputs, encode, storage, outcome     [Phase 7B]
 audio-core/       Voice consent gate, provider capability, mix planning, FFmpeg args [Phase 7C]
 audio-pipeline/   Executes one audio render: consent, mix, waveform, transcript  [Phase 7C]
+campaign-orchestration/ Evidence gate, deterministic strategy engine, plan/calendar, run executor [Phase 7D]
 social-core/      SocialPublisher + PostPublisher + account-discovery ports, capability matrix
 social-oauth/     Provider-neutral OAuth broker: state, PKCE, tokens, sealed bundles [Phase 6C]
 social-linkedin/  Real LinkedIn adapter: discovery, Images API, Posts API (text + 1 image) [Phase 6D]
@@ -449,6 +450,31 @@ standards, health/readiness endpoints, OpenAPI at `/docs`.
   its process handling (`runFfmpeg`). Proven by decoding stored bytes: MPEG frames, duration
   matching the script within a frame, a real PNG waveform, and a measured LUFS figure (ADR-0042,
   `docs/VOICE_CONSENT_POLICY.md`).
+- **7D:** **Research-backed campaign orchestration — the phase that connects the others.** One
+  `CampaignOrchestrationRun` walks research → trends → strategy → plan → calendar → content in eight
+  recorded stages, and every artifact carries the evidence it came from. The **strategy engine is
+  deterministic and derived**, not generated: objectives from the funnel stages actually covered,
+  pillars from the vertical's own keywords (a trend matching none becomes its own pillar rather than
+  being silently dropped), personas from workspace records → the vertical's named audiences → a
+  **labelled placeholder** that says it is one, platform strategy from the declared capability matrix
+  plus whether a connected account can actually publish there, CTAs from a fixed library keyed by
+  funnel stage. Versioned `spectra-strategy@1.0.0` so every element traces to a row. The **evidence
+  gate** (`assessEvidence`) is the centre: six verdicts map to three fixed actions; independence is
+  counted by **publisher**, not by article, so six pieces from one outlet are one source; ineligible
+  sources (blocked domains, injection-quarantined pages — ADR-0030) are excluded before anything is
+  judged; disagreement outranks everything; and a topic whose claims were never verified is
+  `LIMITED`, never `SUPPORTED`, with the reason distinguishing "too few sources" from "no claim has
+  been verified". `UNSUPPORTED` **blocks** — and blocked topics stay in the plan with their reason
+  rather than disappearing. A cautioned topic carries real instruction into the prompt via
+  `additionalGuidance` (hedge, date the claim, attribute to the snippet, present the disagreement),
+  so the caution lands in the writing rather than only in metadata. **`PARTIAL` is a first-class
+  outcome**: with no text-generation provider the run still produces a real strategy, plan, calendar
+  and evidence-linked content items, each marked `GENERATION_UNAVAILABLE` with the reason — never
+  `SUCCEEDED`, never `FAILED`; and one failed draft never discards the campaign. `CONTENT_DRAFT`
+  budget pre-flight runs before the run row exists, sized by the drafts the run would write;
+  `runKey` makes a retry adopt the existing run; cancellation is checked against the database between
+  stages. A run **never publishes and never schedules** — drafted items go to `REVIEW` for a person
+  (ADR-0043, `docs/CAMPAIGN_ORCHESTRATION.md`).
 
 ---
 
@@ -469,6 +495,8 @@ standards, health/readiness endpoints, OpenAPI at `/docs`.
 | Audio mixing, EBU R128 normalization, waveforms, audiograms (ffmpeg)                       | **Real, working when the host has ffmpeg** — bytes decoded in the suite   | `FFMPEG_PATH`/`PATH`; loudness is measured back with `ebur128`, not assumed (ADR-0042)                                                    |
 | Text-to-speech / voice cloning                                                             | **Not implemented** (ADR-0042) — reported with a reason                   | no adapter exists; a script needing one is refused before a job is queued. Consent gate is already in place for when one is added         |
 | Audio and music generation                                                                 | **Not implemented** (ADR-0042) — reported with a reason                   | beds and effects must be uploaded, and must be licensed by the operator                                                                   |
+| Campaign orchestration (research → trends → strategy → plan → calendar → content)          | **Real, working** — the strategy engine is deterministic, not generated   | none; runs without an AI key still build everything but the prose, reporting PARTIAL (ADR-0043)                                           |
+| AI-generated marketing strategy (personas, pillars invented by a model)                    | **Not built, and not planned here** (ADR-0043)                            | everything is derived from the vertical, the scored trends and the evidence; a persona with nothing behind it is a labelled placeholder   |
 | PostgreSQL / Redis / MinIO                                                                 | **Real, working**                                                         | docker-compose                                                                                                                            |
 | RSS/Atom ingestion                                                                         | **Real, working** (first-party parser)                                    | none                                                                                                                                      |
 | OAuth connect: LinkedIn, Facebook Pages, Instagram, Threads, YouTube, TikTok, X, Pinterest | **Real flow, when configured** (6C) — not yet run against a live platform | `SOCIAL_OAUTH_<PLATFORM>_CLIENT_ID/SECRET` + redirect base + `SOCIAL_TOKEN_ENCRYPTION_KEY`                                                |
@@ -557,48 +585,47 @@ platforms.
 
 | Check                | Result                                                  |
 | -------------------- | ------------------------------------------------------- |
-| `pnpm build`         | 48/48 tasks pass                                        |
-| `pnpm typecheck`     | 91/91 tasks pass                                        |
+| `pnpm build`         | 49/49 tasks pass                                        |
+| `pnpm typecheck`     | 93/93 tasks pass                                        |
 | `pnpm lint`          | pass                                                    |
 | `pnpm format`        | clean                                                   |
-| Unit tests           | **1013 passing** across 43 packages/apps (incl. web 48) |
-| API integration      | **266 tests**, 25 files — see the flake note below      |
+| Unit tests           | **1036 passing** across 44 packages/apps (incl. web 48) |
+| API integration      | **283 tests**, 26 files — see the flake note below      |
 | Pipeline integration | **95 passing** (11 files, `research-pipeline`)          |
 | Metering integration | **74 passing** (7 files)                                |
-| E2E (Playwright)     | **59 tests** (stubbed-API UI journeys)                  |
-| Prisma               | schema valid · 32 migrations · database up to date      |
+| E2E (Playwright)     | **69 tests** (stubbed-API UI journeys)                  |
+| Prisma               | schema valid · 33 migrations · database up to date      |
 
-Known flake 1 (pre-existing, not introduced by 6B–7C): `budget-hardening.spec.ts` "concurrent
+Known flake 1 (pre-existing, not introduced by 6B–7D): `budget-hardening.spec.ts` "concurrent
 research-run starts cannot all pass the last allowance" intermittently admits more than one run. It
-did not appear during the 7B or 7C gates. It is not fixed — the investigation is tracked separately.
+did not appear during the 7B, 7C or 7D gates. It is not fixed — tracked separately.
 
-Known flake 2 (first recorded in the 7A gate; root-caused in 7B, narrowed further in 7C). The
-symptom is a cluster of failures across unrelated API spec files. Three causes have been found and
-addressed:
+Known flake 2 (first recorded in the 7A gate; narrowed in 7B, 7C and 7D). The symptom is a cluster
+of failures across unrelated API spec files. Four causes have been found and addressed:
 
 1. **A stale Redis backlog.** The shared dev queue had accumulated 93 waiting and ~1300 failed jobs
-   across many phases. `ops.spec.ts` runs a real BullMQ worker and polls for its own job, handing
-   foreign jobs back; with that backlog it never reached its own, and the failure cascaded. Draining
-   `bull:spectra-system*` returned a clean `main` to 227/227. **Operationally: drain the dev queue
-   before a gate run, and leave no test jobs behind.**
+   across many phases, starving `ops.spec.ts`'s poll for its own job and cascading from there.
+   Draining `bull:spectra-system*` returned a clean `main` to 227/227. **Operationally: drain the
+   dev queue before a gate run, and leave no test jobs behind.**
 2. **Unbounded vitest parallelism.** The suites share one Postgres, Redis and MinIO and several do
-   real work (sharp, ffmpeg video, ffmpeg audio, a BullMQ worker). `apps/api/vitest.config.ts` caps
-   `maxWorkers: 3`, which took a representative run from 19–24 failures to 0–6 at no wall-clock cost
-   worth having.
-3. **Timeouts tuned for a smaller suite** (7C). `ops.spec.ts` polled 20s for its seeded job and the
-   suite-wide `testTimeout` was 30s — both comfortable when the suite was smaller, and the gate's
-   most frequent failure once three media pipelines started doing real work. The poll is now 45s and
-   the ceilings 60s/90s: a timeout should mean "stuck", not "busy".
+   real work. `apps/api/vitest.config.ts` caps `maxWorkers`.
+3. **Timeouts tuned for a smaller suite** (7C). `ops.spec.ts`'s job poll went 20s → 45s and the
+   suite ceilings 30s → 60s/90s: a timeout should mean "stuck", not "busy".
+4. **The cap itself going stale** (7D). At 26 spec files, 3 workers began failing under load.
+   Measured: **2 workers run green in ~21s**, 3 workers failed, and 1 worker is both slower (~220s,
+   since nothing overlaps) and still fails on timeouts. The cap is now 2, and the comment in the
+   config says to revisit it as the suite grows.
 
-Each media phase also fixed a contributor of its own: `video-rendering.spec.ts` and
-`audio-podcast.spec.ts` both stub `QueueService.enqueue` for all but one dedicated test, so neither
-leaves jobs in the shared queue for `ops.spec` to trip over.
+Each media phase also fixed a contributor of its own: `video-rendering.spec.ts`,
+`audio-podcast.spec.ts` and `campaign-orchestration.spec.ts` all stub `QueueService.enqueue` for all
+but one dedicated test, so none leaves jobs in the shared queue for `ops.spec` to trip over.
 
-What remains: on a **loaded** machine the API suite is still intermittent. The 7C gate produced
-**266/266** on one run and 5 failures on another (four in `ops.spec.ts`, one in
-`analytics-sync.spec.ts`), on a host carrying a load average near 8 from unrelated work. **No
-failure has ever occurred in `video-rendering.spec.ts` or `audio-podcast.spec.ts`.** The durable fix
-is per-suite database and queue isolation, which remains tracked.
+What remains: on a **loaded** machine the API suite is still intermittent. The 7D gate produced
+**283/283 twice** (once standalone, once through the full turbo run) and 6 failures on another run,
+all in `ops.spec.ts`, on a host carrying a load average near 8.5 from unrelated work. **No failure
+has ever occurred in `video-rendering.spec.ts`, `audio-podcast.spec.ts` or
+`campaign-orchestration.spec.ts`.** `ops.spec.ts` is now the single remaining offender; the durable
+fix is per-suite database and queue isolation, which remains tracked.
 
 -------------------- | ------------------------------------------------------ |
 | `pnpm build` | 40/40 tasks pass |

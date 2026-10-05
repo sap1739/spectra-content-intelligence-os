@@ -13,3 +13,4 @@ export * from './analytics';
 export * from './api';
 export * from './video';
 export * from './audio';
+export * from './orchestration';

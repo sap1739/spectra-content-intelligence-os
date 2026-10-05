@@ -11,9 +11,14 @@ export default defineConfig({
      * interactive transactions time out, tenants end up half-created, and the
      * failures surface far from the cause — as foreign-key violations in
      * unrelated specs. Capping workers keeps the suite deterministic and costs
-     * no wall-clock worth having (the whole run is ~12s either way).
+     * no wall-clock worth having.
+     *
+     * Retuned in 7D as the suite reached 26 files: 3 workers began failing
+     * under load, 2 runs green in ~21s, and 1 is both slower (~220s, because
+     * nothing overlaps) and still fails on timeouts. Revisit when the suite
+     * grows again.
      */
-    maxWorkers: 3,
+    maxWorkers: 2,
     minWorkers: 1,
     setupFiles: ['test/setup-env.ts'],
     environment: 'node',

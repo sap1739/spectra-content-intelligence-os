@@ -56,6 +56,8 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'PodcastEpisode',
   'Transcript',
   'AudioRender',
+  // Campaign orchestration (ADR-0043).
+  'CampaignOrchestrationRun',
 ]);
 
 const GUARDED_OPERATIONS: ReadonlySet<string> = new Set([

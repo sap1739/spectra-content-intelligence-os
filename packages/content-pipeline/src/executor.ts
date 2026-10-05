@@ -17,6 +17,12 @@ export interface ContentDraftDeps {
 
 export interface ExecuteContentDraftInput {
   draftId: string;
+  /**
+   * Trusted operator-side instruction for this draft — e.g. the caution the
+   * evidence gate requires when a topic rests on limited, snippet-only, stale
+   * or contradicted sources (ADR-0043). Never mixed with retrieved content.
+   */
+  additionalGuidance?: string | null;
 }
 
 export interface ContentDraftOutcome {
@@ -232,6 +238,7 @@ export async function executeContentDraft(
       title: item.title,
       objective: item.objective,
       funnelStage: item.funnelStage,
+      ...(input.additionalGuidance ? { additionalGuidance: input.additionalGuidance } : {}),
       evidence,
     });
 
