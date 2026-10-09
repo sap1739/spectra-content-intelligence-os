@@ -74,6 +74,12 @@ importers:
       '@spectra/audio-pipeline':
         specifier: workspace:*
         version: link:../../packages/audio-pipeline
+      '@spectra/billing-core':
+        specifier: workspace:*
+        version: link:../../packages/billing-core
+      '@spectra/billing-stripe':
+        specifier: workspace:*
+        version: link:../../packages/billing-stripe
       '@spectra/campaign-orchestration':
         specifier: workspace:*
         version: link:../../packages/campaign-orchestration
@@ -611,6 +617,41 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
+  packages/billing-core:
+    dependencies:
+      '@spectra/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+    devDependencies:
+      '@types/node':
+        specifier: ^22.15.0
+        version: 22.20.0
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(jsdom@25.0.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0)
+
+  packages/billing-stripe:
+    dependencies:
+      '@spectra/billing-core':
+        specifier: workspace:*
+        version: link:../billing-core
+      '@spectra/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+    devDependencies:
+      '@types/node':
+        specifier: ^22.15.0
+        version: 22.20.0
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.6(@types/node@22.20.0)(jiti@2.7.0)(jsdom@25.0.1)(lightningcss@1.32.0)(tsx@4.22.4)(yaml@2.9.0)
+
   packages/campaign-orchestration:
     dependencies:
       '@spectra/claim-verification':
@@ -726,6 +767,9 @@ importers:
       '@prisma/client':
         specifier: ^6.9.0
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
+      '@spectra/billing-core':
+        specifier: workspace:*
+        version: link:../billing-core
       '@spectra/contracts':
         specifier: workspace:*
         version: link:../contracts

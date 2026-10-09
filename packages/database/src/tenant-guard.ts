@@ -31,6 +31,11 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'UsageEvent',
   'WorkspaceBudget',
   'OrganizationBudget',
+  // Billing (ADR-0044). Organization-scoped, like budgets.
+  'BillingCustomer',
+  'Subscription',
+  'CreditGrant',
+  'CreditLedgerEntry',
   'BudgetOperationLimit',
   'BudgetReservation',
   // Publishing credentials (ADR-0019, ADR-0034). These rows hold sealed tokens,

@@ -517,3 +517,40 @@ controls are correspondingly strict.
   missing voice, episode, render or asset is the same `404`.
 - **Resource bounds.** 100 segments per script, 20 000 characters per spoken segment, 30s per
   silence, and a `MEDIA_RENDER` budget pre-flight before a job is queued.
+
+## 23. Billing **[P1]** (Phase 8A, ADR-0044)
+
+Billing is the first surface where being wrong costs money in both directions, so the controls are
+about authentication of machine callers and the integrity of money-shaped numbers.
+
+- **The webhook's signature is its authentication.** Stripe has no session, so
+  `/v1/billing/webhook/stripe` is outside session auth and its signature is verified before a
+  single field is read: HMAC-SHA256 over `{timestamp}.{raw body}`, **constant-time** comparison, a
+  **timestamp tolerance** checked in both directions, and **every** `v1` signature tried so secret
+  rotation works. Each property has its own test, including one proving a re-serialized body fails.
+- **Raw bytes, by construction.** Nest's JSON parser is declined (`bodyParser: false`) and a parser
+  that keeps the buffer is registered **for the webhook path only**. The provider port takes a
+  `Buffer`, not a parsed object, so "parse then verify" is not an easy mistake to introduce.
+- **A rejected signature is terse.** `400` with no detail: a descriptive rejection is a forgery
+  oracle. The reason is logged, never returned.
+- **No webhook secret means webhooks are refused**, not trusted. An unconfigured verifier is an
+  open door, so it fails closed and `capabilities()` warns that status will never update.
+- **Replay is contained twice**: the timestamp tolerance rejects an old capture, and
+  `BillingWebhookEvent` unique on `(mode, providerEventId)` makes a redelivery a no-op. A replayed
+  event cannot grant a second month of credits.
+- **No payment instrument is ever stored or handled.** Card entry happens on Stripe's own pages;
+  only `cus_…`, `sub_…` and `price_…` identifiers and statuses are persisted, and a test asserts a
+  parsed subscription carries no `pm_…`. No secret key or webhook secret appears in any response.
+- **Browser subscription status is never trusted.** A completed checkout marks nothing active; only
+  a verified webhook — or a direct read from the provider — moves `Subscription.status`. Every
+  subscription event re-reads the subscription from Stripe rather than trusting the event body.
+- **Open redirect is closed.** Checkout return URLs are built from `BILLING_RETURN_ORIGIN` and a
+  path, never from a caller-supplied absolute URL, so nobody can send a paying customer elsewhere.
+- **Test and live cannot cross.** The mode is derived from the key prefix rather than a separate
+  setting that could disagree; customers, prices and subscriptions are unique per mode; and an event
+  whose `livemode` does not match the deployment is stored and **ignored**.
+- **Spending money needs `org:billing:manage`**; `billing:read` only looks. Credit grants carry a
+  mandatory reason and are audit-logged with the actor and amount.
+- **Failing closed on the unknown.** An unrecognised Stripe subscription status throws rather than
+  defaulting to entitled, and an unconfigured billing system applies the free plan rather than
+  unlimited use.

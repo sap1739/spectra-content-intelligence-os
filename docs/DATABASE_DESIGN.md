@@ -482,7 +482,51 @@ and transcripts. Deleting an output media asset nulls the reference rather than 
 render's history survives. Every output is an ordinary `MediaAsset` under the tenant's `renders/`
 prefix.
 
-## 16. Future entities
+## 16. Phase 8A billing, plans, credits and entitlements (ADR-0044)
+
+Migration `20261008235821_phase8a_billing_plans_credits`. Seven tables and six enums. Billing is
+**organization-scoped**, like budgets — `BillingCustomer`, `Subscription`, `CreditGrant` and
+`CreditLedgerEntry` are in `TENANT_SCOPED_MODELS`; `Plan`, `ProductPrice` and
+`BillingWebhookEvent` are deployment-wide by nature.
+
+- **`plans`** — `key` (unique), `tier`, `monthlyCredits`, and `entitlements` (Json:
+  `{EntitlementKey: number | null}`, where `null` is unlimited and an **absent** key means the plan
+  does not grant it at all — a distinction the engine preserves as `NOT_IN_PLAN`). Seeded from the
+  built-in catalog in every environment, because the free plan is the fallback that applies when no
+  subscription entitles one.
+- **`product_prices`** — a provider price for a plan **in one mode**: `providerPriceId`,
+  `currency`, `unitAmount` (minor units), `interval`. Unique on `(mode, providerPriceId)`. Not
+  seeded: prices carry provider ids and are per-deployment.
+- **`billing_customers`** — `providerCustomerId` (`cus_…`) per organization **per mode**, unique
+  both ways. An identifier, never an instrument.
+- **`subscriptions`** — mirrors the provider: `status` (`SubscriptionStatus`, 8 values),
+  `currentPeriodStart`/`End`, `cancelAtPeriodEnd`, `trialEndsAt`, plus `lastPaymentFailedAt` and
+  `lastPaymentFailureMessage` driving the dunning banner, and `lastEventId` so a disputed state can
+  be traced to the event that set it. Unique on `(mode, providerSubscriptionId)`.
+- **`credit_grants`** — one batch of credits: `source` (`CreditSource`), `amount`, **`remaining`**
+  (this grant's unspent portion), and `expiresAt` (null = never). Expiry is **per grant**, so a
+  monthly allowance lapses while purchased credits persist. `grantKey` is unique and makes the
+  automatic monthly allowance idempotent — one per organization per period.
+- **`credit_ledger_entries`** — every movement, positive for `GRANT`/`REVERSAL` and negative for
+  `CONSUMPTION`/`EXPIRY`, with a unique `idempotencyKey` so a retried operation never charges
+  twice. **There is deliberately no stored balance**: it is derived from grants, because a cached
+  balance that drifts from its ledger is a billing dispute waiting to happen. `CreditBalance` is a
+  computed contract type, not a table.
+- **`billing_webhook_events`** — every verified webhook, unique on **`(mode, providerEventId)`**.
+  That constraint _is_ the idempotency: providers retry, and a replay must not grant a second month
+  of credits. `status` distinguishes `PROCESSED` from `IGNORED` (verified but no handler, or wrong
+  mode) from `FAILED`, whose `error` is bounded and scrubbed — never the raw payload, which can
+  carry PII.
+
+**What is not stored.** No card number, token, or bank detail — only opaque provider ids and
+statuses. Invoices are not mirrored either: status changes are, because they drive the banner, but
+amounts stay in Stripe so there is one fewer place for a number to be wrong.
+
+**Deletion.** Organization deletion cascades to customers, subscriptions, grants and ledger
+entries. `Subscription.planId` is a plain relation (no cascade): a plan still referenced by a live
+subscription cannot be deleted, which is correct — the subscription's entitlements come from it.
+
+## 17. Future entities
 
 Remaining contract-only entities (angles, publications, workspace budgets, knowledge
 documents) are documented in [DOMAIN_MODEL.md](DOMAIN_MODEL.md) §6 and materialize in later

@@ -1,0 +1,23 @@
+{
+  "name": "@spectra/billing-stripe",
+  "version": "0.1.0",
+  "description": "Stripe Billing adapter: checkout sessions, customer portal, subscription sync and webhook signature verification. Env-gated; no payment instrument ever crosses this boundary.",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run src",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@spectra/billing-core": "workspace:*",
+    "@spectra/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.0"
+  }
+}

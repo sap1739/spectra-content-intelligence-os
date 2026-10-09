@@ -15,6 +15,11 @@ export interface ProblemDetails {
    * show what limit was hit and how much of it was estimated.
    */
   budget?: unknown;
+  /**
+   * Entitlement decision attached to an `entitlement-exceeded` refusal, so the
+   * client can name the limit that was hit and offer the right upgrade.
+   */
+  entitlement?: unknown;
 }
 
 export const PROBLEM_CONTENT_TYPE = 'application/problem+json';

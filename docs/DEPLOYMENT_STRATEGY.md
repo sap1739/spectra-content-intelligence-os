@@ -220,3 +220,47 @@ the largest expected output plus its inputs.
 No GPU, no Chromium, no font server, and no network access from the encoder — inputs are read from
 object storage by the job and handed to ffmpeg as local files, so the engine itself never fetches a
 URL.
+
+## 10. Billing configuration (Phase 8A, ADR-0044)
+
+Billing is the first dependency that handles money, and the first whose _absence_ is a supported
+state rather than a degradation.
+
+### Environment
+
+| Variable                           | Unset behaviour                                                                                                                                                       |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `STRIPE_SECRET_KEY`                | Billing off. Plans and entitlements **still apply** — every org is on the free plan.                                                                                  |
+| `STRIPE_WEBHOOK_SECRET`            | Webhooks are **refused**, so status never updates. Checkout still works, which is the dangerous half-configured state — `GET capabilities` warns about it explicitly. |
+| `STRIPE_API_BASE_URL`              | Stripe's API.                                                                                                                                                         |
+| `STRIPE_WEBHOOK_TOLERANCE_SECONDS` | 300.                                                                                                                                                                  |
+| `BILLING_RETURN_ORIGIN`            | `http://localhost:3000`. **Set this in production** — it is the origin checkout returns to.                                                                           |
+
+### Webhook endpoint
+
+Point Stripe at `POST https://<api-host>/v1/billing/webhook/stripe`. It is deliberately outside
+session auth: its signature is its authentication.
+
+Two deployment details matter:
+
+1. **Nothing may rewrite the body.** A proxy that re-serializes JSON breaks every signature. The
+   API keeps the raw bytes for this path only; anything in front of it must pass them through
+   unmodified.
+2. **The endpoint must answer within Stripe's timeout.** It records the event, applies it, and
+   returns `200` — including for events it ignores, since any other status triggers a retry.
+
+### Prices are per-deployment
+
+Plans are seeded from the built-in catalog in every environment (the free plan is the entitlement
+fallback, so it must always exist). **Prices are not**: they carry provider ids. Create them in
+Stripe, then insert one `ProductPrice` row per plan per mode. A plan with no price in the active
+mode is shown as not purchasable rather than offering a checkout that would fail.
+
+### Going live
+
+Switching `sk_test_` → `sk_live_` changes the mode, and the mode partitions everything: customers,
+prices and subscriptions are unique per mode, and a live event arriving at a test deployment is
+stored and ignored. So a live cutover needs **live prices inserted** as well as the key swapped —
+otherwise live subscriptions resolve to no plan and the webhook fails loudly (by design).
+
+Run `docs/BILLING_LIVE_VERIFICATION.md` before trusting any of this against a real account.

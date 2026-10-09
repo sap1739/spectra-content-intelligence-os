@@ -5,6 +5,7 @@
  *
  * Run with: pnpm db:seed (idempotent — safe to re-run).
  */
+import { BUILT_IN_PLANS } from '@spectra/billing-core';
 import { hashPassword } from '@spectra/security';
 import { PrismaClient } from '@prisma/client';
 
@@ -173,11 +174,50 @@ export async function seed(prisma: PrismaClient): Promise<void> {
   });
 }
 
+/**
+ * The plan catalog (ADR-0044). Seeded in every environment, including
+ * production, because the free plan is the fallback that applies when no
+ * subscription entitles one — without it, "no subscription" would have no
+ * limits to fall back to. Prices are NOT seeded: those are per-deployment and
+ * carry provider ids, so an operator adds them once Stripe is configured.
+ */
+async function seedPlans(prisma: PrismaClient): Promise<void> {
+  for (const plan of BUILT_IN_PLANS) {
+    await prisma.plan.upsert({
+      where: { key: plan.key },
+      // Entitlements are refreshed on every seed so a catalog change reaches
+      // existing deployments; an operator's own edits to `name` survive.
+      update: {
+        tier: plan.tier,
+        monthlyCredits: plan.monthlyCredits,
+        entitlements: plan.entitlements as object,
+        selfServe: plan.selfServe,
+        active: plan.active,
+        sortOrder: plan.sortOrder,
+      },
+      create: {
+        key: plan.key,
+        tier: plan.tier,
+        name: plan.name,
+        description: plan.description ?? null,
+        monthlyCredits: plan.monthlyCredits,
+        entitlements: plan.entitlements as object,
+        selfServe: plan.selfServe,
+        active: plan.active,
+        sortOrder: plan.sortOrder,
+      },
+    });
+  }
+}
+
 async function main(): Promise<void> {
   const prisma = new PrismaClient();
   try {
     await seed(prisma);
-    console.log('Seed completed: demo user, organization, workspace, brand, vertical, project.');
+    await seedPlans(prisma);
+    console.log(
+      'Seed completed: demo user, organization, workspace, brand, vertical, project, plan catalog.',
+    );
   } finally {
     await prisma.$disconnect();
   }

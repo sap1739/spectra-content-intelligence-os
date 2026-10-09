@@ -17,6 +17,8 @@ export const WORKSPACE_ID = '00000000-0000-4000-8000-000000000002';
 /** Every permission the UI gates on, for the "full access" default. */
 export const ALL_PERMISSIONS = [
   'org:manage',
+  'org:billing:manage',
+  'billing:read',
   'org:members:manage',
   'workspace:manage',
   'brand:read',
@@ -1387,4 +1389,264 @@ export function orchestrationRunDetail(overrides: Record<string, unknown> = {}) 
     ],
   };
   return { run, failureText: null, ...overrides };
+}
+
+// ---------------------------------------------------------------------------
+// Billing, plans, credits and entitlements (Phase 8A)
+// ---------------------------------------------------------------------------
+
+const ENTITLEMENT_DEFS = {
+  WORKSPACE_COUNT: {
+    key: 'WORKSPACE_COUNT',
+    kind: 'COUNT',
+    label: 'Workspaces',
+    description: 'How many workspaces this organization may have at once.',
+    higherIsMorePermissive: true,
+  },
+  RESEARCH_RUNS_PER_PERIOD: {
+    key: 'RESEARCH_RUNS_PER_PERIOD',
+    kind: 'PERIOD',
+    label: 'Research runs',
+    description: 'Research runs that may be started in one billing period.',
+    higherIsMorePermissive: true,
+  },
+  STORAGE_BYTES: {
+    key: 'STORAGE_BYTES',
+    kind: 'BYTES',
+    label: 'Storage',
+    description: 'Total bytes of stored media and documents.',
+    higherIsMorePermissive: true,
+  },
+  ANALYTICS_SYNC_MIN_INTERVAL_MINUTES: {
+    key: 'ANALYTICS_SYNC_MIN_INTERVAL_MINUTES',
+    kind: 'INTERVAL',
+    label: 'Analytics sync frequency',
+    description: 'The shortest gap allowed between scheduled analytics syncs.',
+    higherIsMorePermissive: false,
+  },
+};
+
+export function billingCapabilities(overrides: Record<string, unknown> = {}) {
+  return {
+    provider: {
+      available: true,
+      reason: 'Stripe is configured in TEST mode.',
+      providerId: 'stripe',
+      mode: 'TEST',
+      requiredEnv: [],
+      webhooksVerifiable: true,
+    },
+    estimatesAreNotInvoices:
+      'Usage figures in Spectra are ESTIMATES of provider spend, computed from Spectra’s own rate table. They are not invoices and will not match what you are charged. Stripe is the only authority on amounts billed.',
+    fallbackPlanKey: 'free',
+    entitlementDefinitions: ENTITLEMENT_DEFS,
+    ...overrides,
+  };
+}
+
+export function billingPlans(overrides: Record<string, unknown> = {}) {
+  return {
+    mode: 'TEST',
+    plans: [
+      {
+        id: 'p-free',
+        key: 'free',
+        tier: 'FREE',
+        name: 'Free',
+        description: 'What an organization gets with no subscription.',
+        monthlyCredits: 100,
+        entitlements: { WORKSPACE_COUNT: 1 },
+        selfServe: true,
+        purchasable: false,
+        prices: [],
+      },
+      {
+        id: 'p-growth',
+        key: 'growth',
+        tier: 'GROWTH',
+        name: 'Growth',
+        description: 'Multiple workspaces, several brands, hourly analytics.',
+        monthlyCredits: 15000,
+        entitlements: { WORKSPACE_COUNT: 10 },
+        selfServe: true,
+        purchasable: true,
+        prices: [{ id: 'pr-1', currency: 'USD', unitAmount: 9900, interval: 'MONTH' }],
+      },
+      {
+        id: 'p-ent',
+        key: 'enterprise',
+        tier: 'ENTERPRISE',
+        name: 'Enterprise',
+        description: 'Negotiated terms.',
+        monthlyCredits: 0,
+        entitlements: {},
+        selfServe: false,
+        purchasable: false,
+        prices: [],
+      },
+    ],
+    ...overrides,
+  };
+}
+
+export function billingSubscription(overrides: Record<string, unknown> = {}) {
+  return {
+    subscription: {
+      id: 's1',
+      status: 'ACTIVE',
+      planKey: 'growth',
+      planName: 'Growth',
+      currentPeriodEnd: '2026-11-08T00:00:00.000Z',
+      cancelAtPeriodEnd: false,
+      trialEndsAt: null,
+      lastPaymentFailedAt: null,
+      lastPaymentFailureMessage: null,
+      mode: 'TEST',
+    },
+    effectivePlanKey: 'growth',
+    downgradedToFallback: false,
+    paymentFailed: false,
+    ...overrides,
+  };
+}
+
+export function billingEntitlements(overrides: Record<string, unknown> = {}) {
+  return {
+    planKey: 'growth',
+    decisions: [
+      {
+        key: 'WORKSPACE_COUNT',
+        outcome: 'ALLOWED',
+        allowed: true,
+        limit: 10,
+        used: 3,
+        remaining: 7,
+        planKey: 'growth',
+        reason: 'Workspaces: 3 of 10 used on the growth plan.',
+      },
+      {
+        key: 'RESEARCH_RUNS_PER_PERIOD',
+        outcome: 'AT_LIMIT',
+        allowed: false,
+        limit: 300,
+        used: 300,
+        remaining: 0,
+        planKey: 'growth',
+        reason: 'Research runs: the growth plan allows 300, and 300 have been used this period.',
+      },
+      {
+        key: 'STORAGE_BYTES',
+        outcome: 'ALLOWED',
+        allowed: true,
+        limit: 268435456000,
+        used: 1073741824,
+        remaining: 267361714176,
+        planKey: 'growth',
+        reason: 'Storage within limits.',
+      },
+      {
+        key: 'ANALYTICS_SYNC_MIN_INTERVAL_MINUTES',
+        outcome: 'ALLOWED',
+        allowed: true,
+        limit: 60,
+        used: 0,
+        remaining: null,
+        planKey: 'growth',
+        reason: 'Analytics sync frequency: the growth plan allows a gap of 60 minutes or more.',
+      },
+    ],
+    ...overrides,
+  };
+}
+
+export function billingCredits(overrides: Record<string, unknown> = {}) {
+  return {
+    balance: {
+      available: 12450,
+      consumedThisPeriod: 2550,
+      expiringAtPeriodEnd: 12450,
+      asOf: '2026-10-08T12:00:00.000Z',
+    },
+    grants: [
+      {
+        id: 'g1',
+        source: 'MONTHLY_ALLOWANCE',
+        remaining: 12450,
+        expiresAt: '2026-11-08T00:00:00.000Z',
+      },
+    ],
+    ...overrides,
+  };
+}
+
+/**
+ * Usage and budget routes. The billing page renders estimated spend beneath
+ * the plan and credits (ADR-0044), so a billing test needs these too.
+ */
+export function usageAndBudgetRoutes() {
+  return {
+    '/budget/operations': { periodStart: '', periodEnd: '', kinds: [], note: '' },
+    '/budget/unpriced': {
+      periodStart: '',
+      periodEnd: '',
+      byReason: [],
+      operations: [],
+      conservativelyPricedEvents: 0,
+      note: 'NO_RATE_FOR_MODEL operations are real spend the ceiling cannot see.',
+    },
+    '/organizations/': {
+      configured: false,
+      enforcement: 'OFF',
+      periodStart: '',
+      periodEnd: '',
+      limitMicros: null,
+      usedMicros: 0,
+      remainingMicros: null,
+      usedPercent: null,
+      warnAtPercent: 80,
+      totalEvents: 0,
+      unpricedEvents: 0,
+      currency: 'USD',
+      workspaces: [],
+      note: 'No organization-wide limit is configured.',
+    },
+    '/budget': {
+      status: 'NOT_CONFIGURED',
+      enforcement: 'OFF',
+      blocked: false,
+      periodStart: '',
+      periodEnd: '',
+      limitMicros: null,
+      usedMicros: 0,
+      remainingMicros: null,
+      usedPercent: null,
+      unpricedEvents: 0,
+      currency: 'USD',
+      reason: 'No monthly spend limit is configured for this workspace.',
+    },
+    '/usage/summary': {
+      windowDays: 30,
+      since: '2026-09-08T00:00:00.000Z',
+      rateVersion: 'rates-2026-09-09',
+      totals: { events: 0, requests: 0, estimatedCostMicros: 0, unpricedEvents: 0 },
+      byKind: [],
+      recent: [],
+      note: 'Costs are ESTIMATES from a local rate table, not vendor invoices.',
+      // The workspace budget travels WITH the summary response.
+      budget: {
+        status: 'NOT_CONFIGURED',
+        enforcement: 'OFF',
+        blocked: false,
+        periodStart: '2026-10-01T00:00:00.000Z',
+        periodEnd: '2026-11-01T00:00:00.000Z',
+        limitMicros: null,
+        usedMicros: 0,
+        remainingMicros: null,
+        usedPercent: null,
+        unpricedEvents: 0,
+        currency: 'USD',
+        reason: 'No monthly spend limit is configured for this workspace.',
+      },
+    },
+  };
 }

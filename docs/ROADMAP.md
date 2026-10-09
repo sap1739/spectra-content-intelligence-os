@@ -438,6 +438,33 @@ weakest link in the differentiator: research and evidence quality.
   loudness normalization; real persona records so the strategy engine stops emitting placeholders;
   moving the evidence gate's thresholds into workspace policy.
 
+## Phase 8 — Commercial
+
+- ✅ **Increment A — billing, plans, credits and entitlements.** Stripe Billing, wired so that the
+  product's existing _estimates_ can never be mistaken for _invoices_. Three numbers with three
+  authorities, never merged: estimated provider spend (Spectra's rate table, refused by budgets at
+  `403`), entitlements (the plan, refused at **`402`** because a plan limit is resolved by paying),
+  and invoices (Stripe's, and only Stripe's — no endpoint returns an amount owed, asserted
+  structurally by a test). Ten entitlement keys in four kinds, including the inverted
+  analytics-sync interval where a _lower_ number is the better plan. **Unconfigured billing is the
+  free plan, never unlimited** — the fallback has no "allow" branch, the free plan is seeded in
+  every environment so the fallback always exists, and `PAST_DUE` deliberately keeps its plan
+  because dunning is the provider's job. Webhook signature verification is written out rather than
+  imported — raw bytes, constant-time comparison, a two-directional timestamp tolerance, and every
+  `v1` signature tried so secret rotation works — which needed Nest's JSON parser declined and a
+  raw-body parser scoped to the webhook path alone. Idempotency is a unique
+  `(mode, providerEventId)` constraint, so a redelivery cannot grant a second month of credits.
+  Credits spend **soonest-expiring first** (an allowance before anything purchased), expiry is per
+  grant, the balance is derived rather than cached, deduction reports a shortfall instead of going
+  negative, and a reversal refuses to revive a lapsed grant. Test and live are partitioned by the
+  key's own prefix, and a live event arriving at a test deployment is stored and ignored. No
+  payment instrument ever reaches Spectra. Tested against a local Stripe stand-in; **nothing has
+  run against Stripe itself** (ADR-0044, `docs/BILLING.md`,
+  `docs/BILLING_LIVE_VERIFICATION.md`).
+- Next: enforce the remaining nine entitlement keys at their call sites (research runs are wired
+  today); a scheduled grant of the free plan's allowance for organizations with no subscription;
+  run the live-verification checklist against a real test-mode account.
+
 ## Cross-phase next steps
 
 - Run the live-verification checklists against real apps (LinkedIn, Meta, YouTube, the 6G

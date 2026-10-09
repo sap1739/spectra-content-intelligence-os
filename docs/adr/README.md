@@ -45,6 +45,7 @@
 | [0041](0041-video-rendering-pipeline.md)                        | FFmpeg as the video engine, and a renderer that admits when it cannot                          | Accepted             |
 | [0042](0042-audio-voiceover-and-podcasts.md)                    | Audio and podcasts: real mixing, no generated voices, and consent that bites                   | Accepted             |
 | [0043](0043-campaign-orchestration.md)                          | Research-backed campaign orchestration, with an evidence gate that blocks                      | Accepted             |
+| [0044](0044-billing-plans-credits-entitlements.md)              | Stripe Billing, and keeping an estimate from ever becoming an invoice                          | Accepted             |
 
 New significant decisions require a new ADR (`NNNN-kebab-title.md`) using the
 Context / Decision / Rationale / Consequences structure.

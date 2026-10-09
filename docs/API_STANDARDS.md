@@ -378,3 +378,36 @@ spends generation budget and creates a campaign's worth of content.
   `404`.
 - **Nothing is published.** `GET capabilities` returns `publishesAutomatically: false`; drafted items
   are routed to `REVIEW` and scheduled only by a person, through the calendar.
+
+## 22. Billing, plans, credits and entitlements (Phase 8A, ADR-0044)
+
+Routes under `organizations/:organizationId/billing` — organization-scoped, like budgets. Reading
+uses `billing:read`; anything that spends money or grants credits needs `org:billing:manage`.
+
+| Method & path                     | Permission           | Notes                                                                |
+| --------------------------------- | -------------------- | -------------------------------------------------------------------- |
+| `GET capabilities`                | `billing:read`       | Provider state **and** the sentence that estimates are not invoices  |
+| `GET plans`                       | `billing:read`       | Plans with entitlements, prices, and whether each is purchasable     |
+| `GET subscription`                | `billing:read`       | Mirrored from the provider; the effective plan and any dunning state |
+| `GET entitlements`                | `billing:read`       | Every plan limit with current usage                                  |
+| `GET credits`                     | `billing:read`       | Balance, what expires at period end, and the grants behind it        |
+| `POST checkout`                   | `org:billing:manage` | `201 { url }` — card entry happens on the provider, never here       |
+| `POST portal`                     | `org:billing:manage` | `201 { url }` for plan changes, cancellation and payment methods     |
+| `POST credits/grant`              | `org:billing:manage` | `201`; reason mandatory, audit-logged                                |
+| `POST /v1/billing/webhook/stripe` | _signature_          | Unauthenticated by session; the signature **is** the authentication  |
+
+- **`402`, not `403`, for a plan limit.** A budget refusal stays `403` — it is an operator's own
+  cost ceiling and nobody is billed. An entitlement refusal is `402 entitlement-exceeded` and
+  carries the decision (`key`, `limit`, `used`, `planKey`, `reason`), because it is resolved by
+  paying.
+- **No endpoint returns an amount owed.** Usage figures elsewhere are estimates; only the provider
+  knows what is billed, and the API never returns a field that could be mistaken for an invoice.
+- **Nothing is trusted from the browser.** Subscription status comes only from a verified webhook
+  or a direct provider read. A completed checkout marks nothing active.
+- **The webhook always answers `200`** once verified — including for events it ignores — because
+  any other status makes the provider retry. Verification failure is a terse `400`.
+- **Webhook processing is idempotent** on `(mode, providerEventId)`; a redelivery returns the first
+  outcome with `duplicate: true`.
+- **Unconfigured billing is a working state.** With no Stripe key, plans and entitlements still
+  apply and every organization is on the free plan; `GET capabilities` says so and names the env
+  vars that would change it.

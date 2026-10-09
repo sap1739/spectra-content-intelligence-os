@@ -8,6 +8,12 @@ import {
   designTemplates,
   studioCapabilities,
   audioCapabilities,
+  billingCapabilities,
+  billingCredits,
+  billingEntitlements,
+  billingPlans,
+  billingSubscription,
+  usageAndBudgetRoutes,
   orchestrationCapabilities,
   orchestrationRunDetail,
   orchestrationRunSummary,
@@ -170,6 +176,14 @@ test.describe('usage and budgets', () => {
   test('labels spend as an estimate and reports unpriced operations', async ({ page }) => {
     await stubApi(page, {
       routes: {
+        // The billing page now carries the plan and credits above estimated
+        // spend (ADR-0044); these come first because `/organizations/` below
+        // would otherwise match the billing paths too.
+        '/billing/capabilities': billingCapabilities(),
+        '/billing/plans': billingPlans(),
+        '/billing/subscription': billingSubscription(),
+        '/billing/entitlements': billingEntitlements(),
+        '/billing/credits': billingCredits(),
         '/budget/operations': { periodStart: '', periodEnd: '', kinds: [], note: '' },
         '/budget/unpriced': {
           periodStart: '',
@@ -872,6 +886,177 @@ test.describe('campaign orchestration', () => {
 
     await expect(page.getByRole('button', { name: 'Build campaign' })).toHaveCount(0);
     await expect(page.getByText('campaign:orchestrate').first()).toBeVisible();
+  });
+});
+
+test.describe('billing', () => {
+  // Order matters: stubApi takes the FIRST key whose fragment the path
+  // contains, and the billing routes live under `/organizations/<id>/billing`,
+  // which the generic `/organizations/` usage stub would otherwise swallow.
+  const billingRoutes = (overrides: Record<string, unknown> = {}) => ({
+    '/billing/capabilities': billingCapabilities(),
+    '/billing/plans': billingPlans(),
+    '/billing/subscription': billingSubscription(),
+    '/billing/entitlements': billingEntitlements(),
+    '/billing/credits': billingCredits(),
+    ...overrides,
+    // The page shows estimated spend beneath the plan, so it needs these too.
+    ...usageAndBudgetRoutes(),
+  });
+
+  test('says estimates are not invoices, before anything else', async ({ page }) => {
+    await stubApi(page, { routes: billingRoutes() });
+    await gotoAuthenticated(page, '/billing');
+
+    await expect(page.getByText('Usage estimates are not invoices')).toBeVisible();
+    await expect(page.getByTestId('estimate-disclaimer')).toContainText('ESTIMATES');
+    await expect(page.getByTestId('estimate-disclaimer')).toContainText(
+      'Stripe is the only authority on amounts billed',
+    );
+  });
+
+  test('shows the current subscription and its mode', async ({ page }) => {
+    await stubApi(page, { routes: billingRoutes() });
+    await gotoAuthenticated(page, '/billing');
+
+    await expect(page.getByText('ACTIVE').first()).toBeVisible();
+    // A test-mode subscription is labelled, so nobody mistakes it for live.
+    await expect(page.getByText('TEST MODE').first()).toBeVisible();
+    await expect(page.getByText(/Renews/)).toBeVisible();
+  });
+
+  test('says the free plan applies when there is no subscription — not unlimited', async ({
+    page,
+  }) => {
+    await stubApi(page, {
+      routes: billingRoutes({
+        '/billing/subscription': billingSubscription({
+          subscription: null,
+          effectivePlanKey: 'free',
+        }),
+      }),
+    });
+    await gotoAuthenticated(page, '/billing');
+
+    await expect(page.getByTestId('no-subscription')).toContainText('not unlimited use');
+  });
+
+  test('warns when a lapsed subscription has dropped the org to the fallback', async ({ page }) => {
+    await stubApi(page, {
+      routes: billingRoutes({
+        '/billing/subscription': billingSubscription({
+          subscription: { ...billingSubscription().subscription, status: 'CANCELED' },
+          effectivePlanKey: 'free',
+          downgradedToFallback: true,
+        }),
+      }),
+    });
+    await gotoAuthenticated(page, '/billing');
+
+    await expect(page.getByTestId('downgraded')).toContainText('free');
+    await expect(page.getByTestId('downgraded')).toContainText('currently apply');
+  });
+
+  test('surfaces a payment failure with the provider’s own reason', async ({ page }) => {
+    await stubApi(page, {
+      routes: billingRoutes({
+        '/billing/subscription': billingSubscription({
+          subscription: {
+            ...billingSubscription().subscription,
+            status: 'PAST_DUE',
+            lastPaymentFailedAt: '2026-10-07T00:00:00.000Z',
+            lastPaymentFailureMessage: 'Your card was declined.',
+          },
+          paymentFailed: true,
+        }),
+      }),
+    });
+    await gotoAuthenticated(page, '/billing');
+
+    const banner = page.getByTestId('payment-failed');
+    await expect(banner).toContainText('Your card was declined.');
+    // Dunning is the provider's job: the plan keeps working meanwhile.
+    await expect(banner).toContainText('keeps working while the provider retries');
+  });
+
+  test('offers checkout only for a plan that can actually be purchased', async ({ page }) => {
+    await stubApi(page, {
+      routes: billingRoutes({
+        '/billing/subscription': billingSubscription({
+          subscription: null,
+          effectivePlanKey: 'free',
+        }),
+      }),
+    });
+    await gotoAuthenticated(page, '/billing');
+
+    const plans = page.getByTestId('plans');
+    await expect(plans.getByRole('button', { name: /Choose Growth/ })).toBeVisible();
+    // Enterprise is not self-serve, and free has no price.
+    await expect(plans.getByRole('button', { name: /Choose Enterprise/ })).toHaveCount(0);
+    await expect(plans).toContainText('Contact sales to move to this plan');
+  });
+
+  test('shows plan limits, flagging the one that is exhausted', async ({ page }) => {
+    await stubApi(page, { routes: billingRoutes() });
+    await gotoAuthenticated(page, '/billing');
+
+    const limits = page.getByTestId('entitlements');
+    await expect(limits).toContainText('Workspaces 3 of 10');
+    await expect(limits).toContainText('At limit');
+    // Bytes render as bytes, and the inverted interval key renders as a gap.
+    await expect(limits).toContainText('250 GB');
+    await expect(limits).toContainText('every 1h');
+  });
+
+  test('shows the credit balance and explains the spend order', async ({ page }) => {
+    await stubApi(page, { routes: billingRoutes() });
+    await gotoAuthenticated(page, '/billing');
+
+    const balance = page.getByTestId('credit-balance');
+    await expect(balance).toContainText('12,450');
+    await expect(balance).toContainText('2,550');
+    await expect(
+      page.getByText(/spent soonest-expiring first, so a monthly allowance is used before/),
+    ).toBeVisible();
+  });
+
+  test('states plainly when billing is not configured at all', async ({ page }) => {
+    await stubApi(page, {
+      routes: billingRoutes({
+        '/billing/capabilities': billingCapabilities({
+          provider: {
+            available: false,
+            reason:
+              'No Stripe secret key is configured, so no plan can be purchased and no subscription is synced. Plans and entitlements still apply — every organization is on the free plan.',
+            providerId: 'stripe',
+            mode: null,
+            requiredEnv: ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'],
+            webhooksVerifiable: false,
+          },
+        }),
+      }),
+    });
+    await gotoAuthenticated(page, '/billing');
+
+    const notice = page.getByTestId('billing-unconfigured');
+    await expect(notice).toContainText('No Stripe secret key is configured');
+    // Crucially: unconfigured billing is not unlimited use.
+    await expect(notice).toContainText('every organization is on the free plan');
+  });
+
+  test('without org:billing:manage nothing can be bought and the permission is named', async ({
+    page,
+  }) => {
+    await stubApi(page, {
+      permissions: ALL_PERMISSIONS.filter((permission) => permission !== 'org:billing:manage'),
+      routes: billingRoutes(),
+    });
+    await gotoAuthenticated(page, '/billing');
+
+    await expect(page.getByRole('button', { name: /Choose Growth/ })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /customer portal/ })).toHaveCount(0);
+    await expect(page.getByText('org:billing:manage').first()).toBeVisible();
   });
 });
 

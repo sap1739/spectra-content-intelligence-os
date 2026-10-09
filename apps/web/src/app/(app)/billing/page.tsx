@@ -1,512 +1,369 @@
 'use client';
 
-import { Badge, Card, CardContent, CardHeader, CardTitle, EmptyState, Skeleton } from '@spectra/ui';
-import { BadgeIndianRupee, Info } from 'lucide-react';
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Input,
+  Label,
+  Skeleton,
+} from '@spectra/ui';
+import { AlertTriangle, CreditCard, ExternalLink, Info, Lock } from 'lucide-react';
 import * as React from 'react';
 
 import { PageHeader } from '@/components/page-header';
-import { useWorkspace } from '@/lib/auth';
+import { UsageAndBudgets } from '@/components/usage-and-budgets';
+import { usePermissions, useWorkspace } from '@/lib/auth';
 import {
-  formatMicros,
-  useOperationLimits,
-  useOrganizationBudget,
-  useUnpricedReport,
-  useUpdateBudget,
-  useUsageSummary,
-  type BudgetDecision,
-  type UsageSummary,
-} from '@/lib/usage';
-import { Button, Input, Label } from '@spectra/ui';
+  SUBSCRIPTION_VARIANT,
+  formatLimit,
+  formatMoney,
+  useBillingCapabilities,
+  useCheckout,
+  useCredits,
+  useEntitlements,
+  useGrantCredits,
+  usePlans,
+  usePortal,
+  useSubscription,
+} from '@/lib/billing';
+import type { EntitlementKey } from '@spectra/contracts';
 
-const KIND_LABEL: Record<string, string> = {
-  AI_GENERATION: 'AI generation',
-  AI_EMBEDDING: 'Embeddings',
-  WEB_SEARCH: 'Web search',
-  NEWS_SEARCH: 'News search',
-  PAGE_FETCH: 'Page fetches',
-};
-
-function Tile({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <Card>
-      <CardContent className="py-4">
-        <p className="text-2xl font-semibold tabular-nums">{value}</p>
-        <p className="text-xs text-muted-foreground">{label}</p>
-        {hint ? <p className="mt-1 text-xs text-muted-foreground">{hint}</p> : null}
-      </CardContent>
-    </Card>
-  );
-}
-
-const BUDGET_VARIANT: Record<string, 'success' | 'warning' | 'destructive' | 'muted'> = {
-  OK: 'success',
-  WARN: 'warning',
-  EXCEEDED: 'destructive',
-  NOT_CONFIGURED: 'muted',
-};
-
-function BudgetCard({ budget, workspaceId }: { budget: BudgetDecision; workspaceId: string }) {
-  const update = useUpdateBudget(workspaceId);
-  const [limit, setLimit] = React.useState(
-    budget.limitMicros === null ? '' : String(budget.limitMicros / 1_000_000),
-  );
-  const [enforcement, setEnforcement] = React.useState<string>(budget.enforcement);
-  const parsed = limit.trim() === '' ? null : Number(limit);
-  const valid = parsed === null || (Number.isFinite(parsed) && parsed >= 0);
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          Monthly budget
-          <Badge variant={BUDGET_VARIANT[budget.status] ?? 'secondary'}>{budget.status}</Badge>
-        </CardTitle>
-        <p className="text-xs text-muted-foreground">{budget.reason}</p>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {budget.limitMicros !== null ? (
-          <div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-              <div
-                className={
-                  budget.status === 'EXCEEDED'
-                    ? 'h-full bg-destructive'
-                    : budget.status === 'WARN'
-                      ? 'h-full bg-amber-500'
-                      : 'h-full bg-primary/80'
-                }
-                style={{ width: `${Math.min(100, budget.usedPercent ?? 0)}%` }}
-              />
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {formatMicros(budget.usedMicros)} of {formatMicros(budget.limitMicros)} used
-              {budget.usedPercent !== null ? ` (${budget.usedPercent}%)` : ''}
-            </p>
-          </div>
-        ) : null}
-
-        {budget.unpricedEvents > 0 ? (
-          <p className="text-xs text-muted-foreground">
-            {budget.unpricedEvents} metered event(s) this period had no known rate and contributed
-            nothing to this total — real spend is higher than shown.
-          </p>
-        ) : null}
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="budget-limit">Monthly limit ({budget.currency})</Label>
-            <Input
-              id="budget-limit"
-              inputMode="decimal"
-              value={limit}
-              onChange={(e) => setLimit(e.target.value)}
-              placeholder="Leave empty for no limit"
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="budget-enforcement">When the limit is reached</Label>
-            <select
-              id="budget-enforcement"
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm"
-              value={enforcement}
-              onChange={(e) => setEnforcement(e.target.value)}
-            >
-              <option value="OFF">OFF — record only</option>
-              <option value="WARN">WARN — surface it, keep working</option>
-              <option value="ENFORCE">ENFORCE — refuse new paid work</option>
-            </select>
-          </div>
-        </div>
-
-        {update.isError ? (
-          <p role="alert" className="text-xs text-destructive">
-            {update.error.message}
-          </p>
-        ) : null}
-
-        <div>
-          <Button
-            disabled={!valid || update.isPending}
-            onClick={() =>
-              update.mutate({
-                monthlyLimitMicros: parsed === null ? null : Math.round(parsed * 1_000_000),
-                enforcement: enforcement as BudgetDecision['enforcement'],
-                warnAtPercent: 80,
-              })
-            }
-          >
-            {update.isPending ? 'Saving…' : 'Save budget'}
-          </Button>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Budgets are checked against estimated cost, so they are approximate. ENFORCE refuses new
-          research runs and draft generation with a clear reason; it never silently drops work.
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
-
-/** Kinds that are free/local or otherwise never vendor-billed. */
-const NON_PAID_KINDS = new Set([
-  'PAGE_FETCH',
-  'MEDIA_RENDER',
-  'PUBLISH_ATTEMPT',
-  'ANALYTICS_SYNC',
-  'RESEARCH_RUN',
-  'CONTENT_DRAFT',
-  'DOCUMENT_EXTRACTION',
-]);
-
-function OperationLimitsCard({ workspaceId }: { workspaceId: string }) {
-  const limits = useOperationLimits(workspaceId);
-  if (limits.isPending) return <Skeleton className="h-48 w-full" />;
-  if (limits.isError) return null;
-  const rows = limits.data.kinds.filter(
-    (k) => k.requests > 0 || k.workspaceMaxRequests !== null || k.organizationMaxRequests !== null,
-  );
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Per-operation limits</CardTitle>
-        <p className="text-xs text-muted-foreground">{limits.data.note}</p>
-      </CardHeader>
-      <CardContent>
-        {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No per-operation activity or limits this period.
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                  <th className="py-2 pr-4 font-medium">Operation</th>
-                  <th className="py-2 pr-4 text-right font-medium">Used</th>
-                  <th className="py-2 pr-4 text-right font-medium">Limit</th>
-                  <th className="py-2 pr-4 text-right font-medium">Remaining</th>
-                  <th className="py-2 pr-4 text-right font-medium">Tokens</th>
-                  <th className="py-2 text-right font-medium">Unmeasured</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((k) => (
-                  <tr key={k.kind} className="border-b border-border/50">
-                    <td className="py-2 pr-4">
-                      {KIND_LABEL[k.kind] ?? k.kind}
-                      {NON_PAID_KINDS.has(k.kind) ? (
-                        <Badge variant="muted" className="ml-2">
-                          not vendor-billed
-                        </Badge>
-                      ) : null}
-                    </td>
-                    <td className="py-2 pr-4 text-right tabular-nums">{k.requests}</td>
-                    <td className="py-2 pr-4 text-right tabular-nums">
-                      {k.workspaceMaxRequests ?? k.organizationMaxRequests ?? '—'}
-                    </td>
-                    <td className="py-2 pr-4 text-right tabular-nums">
-                      {k.remainingRequests ?? '—'}
-                    </td>
-                    <td className="py-2 pr-4 text-right tabular-nums">
-                      {k.measuredTokens > 0 ? k.measuredTokens : '—'}
-                    </td>
-                    <td className="py-2 text-right tabular-nums">
-                      {k.unknownQuantityEvents > 0 ? k.unknownQuantityEvents : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="mt-2 text-xs text-muted-foreground">
-              “Unmeasured” counts calls where the provider reported no token count. They are counted
-              as operations but deliberately not as zero tokens.
-            </p>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function UnpricedCard({ workspaceId }: { workspaceId: string }) {
-  const report = useUnpricedReport(workspaceId);
-  if (report.isPending) return <Skeleton className="h-40 w-full" />;
-  if (report.isError) return null;
-  const gaps = report.data.operations.filter((o) => o.reason === 'NO_RATE_FOR_MODEL');
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>What the cost estimate cannot see</CardTitle>
-        <p className="text-xs text-muted-foreground">{report.data.note}</p>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        {report.data.byReason.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Every metered operation this period carried a cost estimate.
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-2 text-sm">
-            {report.data.byReason.map((r) => (
-              <li key={r.reason ?? 'unknown'} className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <Badge variant={r.reason === 'NO_RATE_FOR_MODEL' ? 'destructive' : 'muted'}>
-                    {r.reason ?? 'UNRECORDED'}
-                  </Badge>
-                  <p className="mt-1 text-xs text-muted-foreground">{r.explanation}</p>
-                </div>
-                <span className="shrink-0 tabular-nums">{r.events}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-        {gaps.length > 0 ? (
-          <p className="text-xs text-destructive">
-            {gaps.length} provider/model combination(s) have no configured rate — that spend is real
-            but missing from every cost ceiling.
-          </p>
-        ) : null}
-        {report.data.conservativelyPricedEvents > 0 ? (
-          <p className="text-xs text-muted-foreground">
-            {report.data.conservativelyPricedEvents} event(s) were priced with a conservative
-            fallback rate, so their cost is over-stated rather than invisible.
-          </p>
-        ) : null}
-      </CardContent>
-    </Card>
-  );
-}
-
-function OrganizationBudgetCard({ organizationId }: { organizationId: string }) {
-  const org = useOrganizationBudget(organizationId);
-  // Absent or forbidden (non-admin): show nothing rather than a broken card.
-  if (org.isPending || org.isError) return null;
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          Organization budget
-          <Badge variant={org.data.configured ? 'secondary' : 'muted'}>
-            {org.data.configured ? org.data.enforcement : 'NOT CONFIGURED'}
-          </Badge>
-        </CardTitle>
-        <p className="text-xs text-muted-foreground">{org.data.note}</p>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div>
-            <p className="text-xl font-semibold tabular-nums">
-              {formatMicros(org.data.usedMicros)}
-            </p>
-            <p className="text-xs text-muted-foreground">Aggregate estimated spend</p>
-          </div>
-          <div>
-            <p className="text-xl font-semibold tabular-nums">
-              {org.data.limitMicros === null ? '—' : formatMicros(org.data.limitMicros)}
-            </p>
-            <p className="text-xs text-muted-foreground">Organization limit</p>
-          </div>
-          <div>
-            <p className="text-xl font-semibold tabular-nums">{org.data.unpricedEvents}</p>
-            <p className="text-xs text-muted-foreground">Unpriced events (excluded)</p>
-          </div>
-        </div>
-        {org.data.workspaces.length > 0 ? (
-          <div>
-            <p className="mb-1 text-xs font-medium">By workspace</p>
-            <ul className="flex flex-col gap-1 text-xs">
-              {org.data.workspaces.map((w) => (
-                <li key={w.workspaceId ?? 'org'} className="flex justify-between gap-3">
-                  <span className="truncate text-muted-foreground">
-                    {w.workspaceId ?? 'organization-level'}
-                  </span>
-                  <span className="tabular-nums">{formatMicros(w.estimatedCostMicros)}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-      </CardContent>
-    </Card>
-  );
-}
-
-function Report({
-  data,
-  workspaceId,
-  organizationId,
-}: {
-  data: UsageSummary;
-  workspaceId: string;
-  organizationId: string;
-}) {
-  return (
-    <div className="flex flex-col gap-6">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Tile
-          label={`Estimated spend (${data.windowDays}d)`}
-          value={formatMicros(data.totals.estimatedCostMicros)}
-        />
-        <Tile label="Metered events" value={String(data.totals.events)} />
-        <Tile label="Provider requests" value={String(data.totals.requests)} />
-        <Tile
-          label="Events with no known rate"
-          value={String(data.totals.unpricedEvents)}
-          hint={data.totals.unpricedEvents > 0 ? 'Excluded from the estimate' : undefined}
-        />
-      </div>
-
-      <BudgetCard budget={data.budget} workspaceId={workspaceId} />
-
-      <OrganizationBudgetCard organizationId={organizationId} />
-
-      <OperationLimitsCard workspaceId={workspaceId} />
-
-      <UnpricedCard workspaceId={workspaceId} />
-
-      <Card className="border-amber-500/40 bg-amber-500/5">
-        <CardContent className="flex items-start gap-3 py-4">
-          <Info aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-amber-600" />
-          <div className="text-sm">
-            <p className="font-medium">These are estimates, not invoices</p>
-            <p className="text-muted-foreground">{data.note}</p>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>By operation</CardTitle>
-          <p className="text-xs text-muted-foreground">
-            Measured from what each provider actually reported. A dash means the provider did not
-            report that figure — not that it was zero.
-          </p>
-        </CardHeader>
-        <CardContent>
-          {data.byKind.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No metered activity in this window. Usage appears here once research runs, generation
-              or search actually call a provider.
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                    <th className="py-2 pr-4 font-medium">Operation</th>
-                    <th className="py-2 pr-4 text-right font-medium">Events</th>
-                    <th className="py-2 pr-4 text-right font-medium">Requests</th>
-                    <th className="py-2 pr-4 text-right font-medium">In tokens</th>
-                    <th className="py-2 pr-4 text-right font-medium">Out tokens</th>
-                    <th className="py-2 text-right font-medium">Est. cost</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.byKind.map((row) => (
-                    <tr key={row.kind} className="border-b border-border/50">
-                      <td className="py-2 pr-4">{KIND_LABEL[row.kind] ?? row.kind}</td>
-                      <td className="py-2 pr-4 text-right tabular-nums">{row.events}</td>
-                      <td className="py-2 pr-4 text-right tabular-nums">{row.requests}</td>
-                      <td className="py-2 pr-4 text-right tabular-nums">
-                        {row.inputTokens ?? row.totalTokens ?? '—'}
-                      </td>
-                      <td className="py-2 pr-4 text-right tabular-nums">
-                        {row.outputTokens ?? '—'}
-                      </td>
-                      <td className="py-2 text-right tabular-nums">
-                        {formatMicros(row.estimatedCostMicros)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent activity</CardTitle>
-          <p className="text-xs text-muted-foreground">
-            The 25 most recent metered calls, rate table {data.rateVersion}.
-          </p>
-        </CardHeader>
-        <CardContent>
-          {data.recent.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nothing metered yet.</p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {data.recent.map((event) => (
-                <li key={event.id} className="flex items-center justify-between gap-3 text-sm">
-                  <div className="min-w-0">
-                    <span className="font-medium">{KIND_LABEL[event.kind] ?? event.kind}</span>
-                    <span className="text-muted-foreground">
-                      {' '}
-                      · {event.provider}
-                      {event.model ? `/${event.model}` : ''}
-                    </span>
-                    {event.resourceType ? (
-                      <Badge variant="secondary" className="ml-2">
-                        {event.resourceType}
-                      </Badge>
-                    ) : null}
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <span className="tabular-nums">{formatMicros(event.estimatedCostMicros)}</span>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(event.occurredAt).toISOString().replace('T', ' ').slice(0, 16)} UTC
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Plans and invoicing</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            No payment provider is connected, so there are no plans, invoices or charges. This page
-            reports measured provider usage only — it does not bill anyone.
-          </p>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
+/**
+ * Billing (Phase 8A, ADR-0044).
+ *
+ * The page's first duty is the distinction that the rest of the product
+ * depends on: the usage figures elsewhere in Spectra are ESTIMATES, and the
+ * only authority on what a customer is charged is the provider's invoice.
+ * That sentence is shown, not implied.
+ */
 export default function BillingPage() {
   const { activeWorkspace } = useWorkspace();
-  const usage = useUsageSummary(activeWorkspace.id);
+  const organizationId = activeWorkspace.organizationId;
+  const { can } = usePermissions();
+  const canManage = can('org:billing:manage');
+
+  const capabilities = useBillingCapabilities(organizationId);
+  const plans = usePlans(organizationId);
+  const subscription = useSubscription(organizationId);
+  const entitlements = useEntitlements(organizationId);
+  const credits = useCredits(organizationId);
+  const checkout = useCheckout(organizationId);
+  const portal = usePortal(organizationId);
+  const grant = useGrantCredits(organizationId);
+
+  const [grantAmount, setGrantAmount] = React.useState('');
+  const [grantReason, setGrantReason] = React.useState('');
+
+  const state = subscription.data;
+  const provider = capabilities.data?.provider;
+
+  async function startCheckout(planKey: string) {
+    const session = await checkout.mutateAsync({
+      planKey,
+      interval: 'MONTH',
+      successPath: '/billing?checkout=success',
+      cancelPath: '/billing?checkout=cancelled',
+    });
+    // The provider owns the card form; Spectra only ever sends the browser.
+    window.location.href = session.url;
+  }
+
+  async function openPortal() {
+    const session = await portal.mutateAsync();
+    window.location.href = session.url;
+  }
 
   return (
-    <>
+    <div className="space-y-6">
       <PageHeader
-        title="Usage"
-        description="What this workspace actually spent with external providers — measured from their own reported figures, priced with a local rate table. Estimates, never invoices."
+        title="Billing"
+        description="Your plan, what it includes, and the credits behind it."
       />
-      {usage.isPending ? (
-        <Skeleton className="h-64 w-full" />
-      ) : usage.isError ? (
-        <EmptyState
-          icon={<BadgeIndianRupee />}
-          title="Could not load usage"
-          description={usage.error.message}
-        />
-      ) : (
-        <Report
-          data={usage.data}
-          workspaceId={activeWorkspace.id}
-          organizationId={activeWorkspace.organizationId}
-        />
-      )}
-    </>
+
+      {/* The distinction the whole phase exists to protect. */}
+      <Card>
+        <CardContent className="flex items-start gap-3 pt-6 text-sm">
+          <Info aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <div className="space-y-2">
+            <p className="font-medium">Usage estimates are not invoices</p>
+            <p className="text-muted-foreground" data-testid="estimate-disclaimer">
+              {capabilities.data?.estimatesAreNotInvoices ??
+                'Usage figures in Spectra are estimates of provider spend. They are not invoices and will not match what you are charged.'}
+            </p>
+            {capabilities.isLoading ? (
+              <Skeleton className="h-4 w-80" />
+            ) : provider?.available ? (
+              <p className="text-muted-foreground" data-testid="billing-configured">
+                Billing is configured in <strong>{provider.mode}</strong> mode.
+                {provider.webhooksVerifiable
+                  ? ''
+                  : ' No webhook secret is set, so subscription changes will not be received.'}
+              </p>
+            ) : (
+              <p className="text-amber-700 dark:text-amber-400" data-testid="billing-unconfigured">
+                {provider?.reason}
+              </p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {state?.paymentFailed ? (
+        <Card className="border-destructive">
+          <CardContent className="flex items-start gap-3 pt-6 text-sm" data-testid="payment-failed">
+            <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
+            <div className="space-y-2">
+              <p className="font-medium text-destructive">The last payment failed</p>
+              <p className="text-muted-foreground">
+                {state.subscription?.lastPaymentFailureMessage ??
+                  'The provider reported a failed payment.'}{' '}
+                Your plan keeps working while the provider retries. Update the payment method in the
+                customer portal.
+              </p>
+              {canManage ? (
+                <Button size="sm" variant="outline" onClick={() => void openPortal()}>
+                  <ExternalLink aria-hidden className="size-4" /> Open customer portal
+                </Button>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Current subscription</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          {subscription.isLoading ? (
+            <Skeleton className="h-16 w-full" />
+          ) : state?.subscription ? (
+            <>
+              <div className="flex flex-wrap items-center gap-3">
+                <Badge variant={SUBSCRIPTION_VARIANT[state.subscription.status]}>
+                  {state.subscription.status}
+                </Badge>
+                <span className="font-medium">{state.subscription.planName}</span>
+                {state.subscription.mode === 'TEST' ? (
+                  <Badge variant="muted">TEST MODE</Badge>
+                ) : null}
+              </div>
+              {state.subscription.currentPeriodEnd ? (
+                <p className="text-muted-foreground">
+                  {state.subscription.cancelAtPeriodEnd ? 'Ends' : 'Renews'}{' '}
+                  {new Date(state.subscription.currentPeriodEnd).toLocaleDateString()}.
+                </p>
+              ) : null}
+              {state.downgradedToFallback ? (
+                <p className="text-amber-700 dark:text-amber-400" data-testid="downgraded">
+                  This subscription is {state.subscription.status.toLowerCase()}, so the{' '}
+                  <strong>{state.effectivePlanKey}</strong> plan&rsquo;s limits currently apply.
+                </p>
+              ) : null}
+              {canManage ? (
+                <Button size="sm" variant="outline" onClick={() => void openPortal()}>
+                  <ExternalLink aria-hidden className="size-4" /> Manage in customer portal
+                </Button>
+              ) : null}
+            </>
+          ) : (
+            <p className="text-muted-foreground" data-testid="no-subscription">
+              No subscription. The <strong>{state?.effectivePlanKey ?? 'free'}</strong> plan&rsquo;s
+              limits apply — not unlimited use.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Plans</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {plans.isLoading ? (
+            <Skeleton className="h-32 w-full" />
+          ) : (
+            <ul className="grid gap-4 sm:grid-cols-2" data-testid="plans">
+              {plans.data?.plans.map((plan) => {
+                const price = plan.prices[0];
+                const current = state?.effectivePlanKey === plan.key;
+                return (
+                  <li key={plan.id} className="rounded-md border border-border p-4 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium">{plan.name}</span>
+                      {current ? <Badge variant="success">Current</Badge> : null}
+                    </div>
+                    <p className="mt-1 text-muted-foreground">{plan.description}</p>
+                    <p className="mt-2 font-medium">
+                      {price
+                        ? `${formatMoney(price.unitAmount, price.currency)} / ${price.interval.toLowerCase()}`
+                        : 'Price not configured'}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {plan.monthlyCredits.toLocaleString()} credits each period
+                    </p>
+                    {canManage && plan.purchasable && !current ? (
+                      <Button
+                        size="sm"
+                        className="mt-3"
+                        disabled={checkout.isPending}
+                        onClick={() => void startCheckout(plan.key)}
+                      >
+                        <CreditCard aria-hidden className="size-4" /> Choose {plan.name}
+                      </Button>
+                    ) : !plan.purchasable && !current ? (
+                      <p className="mt-3 text-xs text-muted-foreground">
+                        {plan.selfServe
+                          ? 'No price is configured for this plan yet.'
+                          : 'Contact sales to move to this plan.'}
+                      </p>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {checkout.isError ? (
+            <p role="alert" className="mt-3 text-sm text-destructive">
+              {checkout.error.message}
+            </p>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Plan limits</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {entitlements.isLoading ? (
+            <Skeleton className="h-32 w-full" />
+          ) : (
+            <ul className="space-y-2 text-sm" data-testid="entitlements">
+              {entitlements.data?.decisions.map((decision) => {
+                const definition =
+                  capabilities.data?.entitlementDefinitions[decision.key as EntitlementKey];
+                const atLimit = !decision.allowed;
+                return (
+                  <li
+                    key={decision.key}
+                    className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2"
+                  >
+                    <span>
+                      <span className="font-medium">{definition?.label ?? decision.key}</span>{' '}
+                      <span className="text-muted-foreground">
+                        {decision.key === 'ANALYTICS_SYNC_MIN_INTERVAL_MINUTES'
+                          ? formatLimit(decision.key as EntitlementKey, decision.limit)
+                          : `${decision.used.toLocaleString()} of ${formatLimit(decision.key as EntitlementKey, decision.limit)}`}
+                      </span>
+                    </span>
+                    {atLimit ? <Badge variant="destructive">At limit</Badge> : null}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Credits</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          {credits.isLoading ? (
+            <Skeleton className="h-20 w-full" />
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-6" data-testid="credit-balance">
+                <span>
+                  <span className="block text-2xl font-semibold tabular-nums">
+                    {credits.data?.balance.available.toLocaleString()}
+                  </span>
+                  <span className="text-xs text-muted-foreground">Available</span>
+                </span>
+                <span>
+                  <span className="block text-2xl font-semibold tabular-nums">
+                    {credits.data?.balance.consumedThisPeriod.toLocaleString()}
+                  </span>
+                  <span className="text-xs text-muted-foreground">Used this period</span>
+                </span>
+                <span>
+                  <span className="block text-2xl font-semibold tabular-nums">
+                    {credits.data?.balance.expiringAtPeriodEnd.toLocaleString()}
+                  </span>
+                  <span className="text-xs text-muted-foreground">Expiring at period end</span>
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Credits are spent soonest-expiring first, so a monthly allowance is used before
+                anything you bought.
+              </p>
+            </>
+          )}
+
+          {canManage ? (
+            <form
+              className="flex flex-wrap items-end gap-3 border-t border-border pt-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const amount = Number(grantAmount);
+                if (!Number.isFinite(amount) || amount <= 0 || !grantReason.trim()) return;
+                grant.mutate({ amount, reason: grantReason.trim(), expiresAt: null });
+                setGrantAmount('');
+                setGrantReason('');
+              }}
+            >
+              <div className="space-y-1.5">
+                <Label htmlFor="grant-amount">Grant credits</Label>
+                <Input
+                  id="grant-amount"
+                  type="number"
+                  min={1}
+                  value={grantAmount}
+                  onChange={(event) => setGrantAmount(event.target.value)}
+                  className="w-32"
+                />
+              </div>
+              <div className="min-w-48 flex-1 space-y-1.5">
+                <Label htmlFor="grant-reason">Reason</Label>
+                <Input
+                  id="grant-reason"
+                  value={grantReason}
+                  onChange={(event) => setGrantReason(event.target.value)}
+                  placeholder="Goodwill after an outage"
+                />
+              </div>
+              <Button type="submit" variant="outline" disabled={grant.isPending}>
+                Grant
+              </Button>
+            </form>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      {/*
+        Estimated spend sits below the plan and credits deliberately: a
+        customer should see both, with the distinction stated above, rather
+        than finding them on separate pages where they are easy to conflate.
+      */}
+      <UsageAndBudgets />
+
+      {!canManage ? (
+        <Card>
+          <CardContent className="flex items-start gap-3 pt-6 text-sm text-muted-foreground">
+            <Lock aria-hidden className="mt-0.5 size-4 shrink-0" />
+            <p>
+              Changing the plan or granting credits needs the{' '}
+              <code className="rounded bg-muted px-1">org:billing:manage</code> permission.
+            </p>
+          </CardContent>
+        </Card>
+      ) : null}
+    </div>
   );
 }

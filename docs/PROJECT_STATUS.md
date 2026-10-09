@@ -1,7 +1,7 @@
 # SpectraContent Intelligence OS — Project Status
 
 **Snapshot date:** 2026-10-04 · **Branch:** `main`
-**Status:** Phases 1–5 complete · Phase 6 complete (6A–6H shipped) · Phase 7 in progress (7A–7D shipped)
+**Status:** Phases 1–5 complete · Phase 6 complete (6A–6H shipped) · Phase 7 complete (7A–7D shipped) · Phase 8 in progress (8A shipped)
 
 > This document is a factual, audited snapshot intended as context for planning further work.
 > Every number below was measured from the repository, not estimated.
@@ -134,6 +134,8 @@ video-pipeline/   Executes one render job: inputs, encode, storage, outcome     
 audio-core/       Voice consent gate, provider capability, mix planning, FFmpeg args [Phase 7C]
 audio-pipeline/   Executes one audio render: consent, mix, waveform, transcript  [Phase 7C]
 campaign-orchestration/ Evidence gate, deterministic strategy engine, plan/calendar, run executor [Phase 7D]
+billing-core/     Plan catalog, entitlement engine, credit ledger, BillingProvider port [Phase 8A]
+billing-stripe/   Stripe adapter: checkout, portal, sync, webhook signature verification [Phase 8A]
 social-core/      SocialPublisher + PostPublisher + account-discovery ports, capability matrix
 social-oauth/     Provider-neutral OAuth broker: state, PKCE, tokens, sealed bundles [Phase 6C]
 social-linkedin/  Real LinkedIn adapter: discovery, Images API, Posts API (text + 1 image) [Phase 6D]
@@ -475,6 +477,32 @@ standards, health/readiness endpoints, OpenAPI at `/docs`.
   `runKey` makes a retry adopt the existing run; cancellation is checked against the database between
   stages. A run **never publishes and never schedules** — drafted items go to `REVIEW` for a person
   (ADR-0043, `docs/CAMPAIGN_ORCHESTRATION.md`).
+- **8A:** **Billing, plans, credits and entitlements — and keeping an estimate from ever becoming
+  an invoice.** The product has tracked _estimated_ provider spend since 5D; 8A puts real money
+  beside it, so the whole phase is arranged around three numbers with three authorities that are
+  never merged: **estimated spend** (Spectra's rate table, refused by a budget at `403`),
+  **entitlements** (the plan, refused at **`402`** — a budget is an operator's own ceiling where
+  nobody is billed, while a plan limit is resolved by paying), and **invoices** (Stripe's alone; no
+  billing endpoint returns a field that could read as money owed, asserted structurally by a test).
+  Ten entitlement keys in four kinds — `COUNT`, `PERIOD`, `BYTES` and the inverted `INTERVAL`,
+  where a _lower_ analytics-sync gap is the better plan, declared on the definition rather than
+  left to each call site. **Unconfigured billing is the free plan, never unlimited**: the engine
+  has no "allow" fallback, the free plan ships in the catalog and is seeded everywhere so the
+  fallback always exists, and `PAST_DUE` keeps its plan on purpose because dunning belongs to the
+  provider. Webhook signature verification is **written out rather than imported** — HMAC over the
+  **raw bytes**, constant-time comparison, a timestamp tolerance checked in both directions, and
+  **every** `v1` signature tried so a secret rotation does not break — which required declining
+  Nest's own JSON parser and registering a raw-body parser scoped to the webhook path alone.
+  Idempotency is a unique `(mode, providerEventId)` constraint, so a provider redelivery cannot
+  grant a second month of credits. Credits spend **soonest-expiring first** (the monthly allowance
+  before anything purchased, because the reverse is unfair), expiry is per grant, the balance is
+  **derived rather than cached**, deduction reports a shortfall instead of going negative, and a
+  reversal refuses to revive a lapsed grant. Test and live are partitioned by the key's own prefix
+  — a live event at a test deployment is stored and ignored. **No payment instrument ever reaches
+  Spectra**: card entry is on Stripe's pages and only `cus_…`/`sub_…`/`price_…` are stored.
+  Exercised against a local Stripe stand-in that enforces documented request shapes; **nothing has
+  been run against Stripe itself** (ADR-0044, `docs/BILLING.md`,
+  `docs/BILLING_LIVE_VERIFICATION.md`).
 
 ---
 
@@ -497,6 +525,8 @@ standards, health/readiness endpoints, OpenAPI at `/docs`.
 | Audio and music generation                                                                 | **Not implemented** (ADR-0042) — reported with a reason                   | beds and effects must be uploaded, and must be licensed by the operator                                                                   |
 | Campaign orchestration (research → trends → strategy → plan → calendar → content)          | **Real, working** — the strategy engine is deterministic, not generated   | none; runs without an AI key still build everything but the prose, reporting PARTIAL (ADR-0043)                                           |
 | AI-generated marketing strategy (personas, pillars invented by a model)                    | **Not built, and not planned here** (ADR-0043)                            | everything is derived from the vertical, the scored trends and the evidence; a persona with nothing behind it is a labelled placeholder   |
+| Stripe Billing (checkout, portal, subscription sync, webhooks)                             | **Real — tested against a Stripe stand-in, not yet Stripe itself**        | `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET`; unset = billing off and every org on the free plan, limits still enforced (ADR-0044)       |
+| Invoices, proration, tax                                                                   | **Not mirrored, by design** (ADR-0044)                                    | Stripe is the only authority on amounts; Spectra mirrors status only, so there is one fewer place for a number to be wrong                |
 | PostgreSQL / Redis / MinIO                                                                 | **Real, working**                                                         | docker-compose                                                                                                                            |
 | RSS/Atom ingestion                                                                         | **Real, working** (first-party parser)                                    | none                                                                                                                                      |
 | OAuth connect: LinkedIn, Facebook Pages, Instagram, Threads, YouTube, TikTok, X, Pinterest | **Real flow, when configured** (6C) — not yet run against a live platform | `SOCIAL_OAUTH_<PLATFORM>_CLIENT_ID/SECRET` + redirect base + `SOCIAL_TOKEN_ENCRYPTION_KEY`                                                |
@@ -585,47 +615,44 @@ platforms.
 
 | Check                | Result                                                  |
 | -------------------- | ------------------------------------------------------- |
-| `pnpm build`         | 49/49 tasks pass                                        |
-| `pnpm typecheck`     | 93/93 tasks pass                                        |
+| `pnpm build`         | 51/51 tasks pass                                        |
+| `pnpm typecheck`     | 97/97 tasks pass                                        |
 | `pnpm lint`          | pass                                                    |
 | `pnpm format`        | clean                                                   |
-| Unit tests           | **1036 passing** across 44 packages/apps (incl. web 48) |
-| API integration      | **283 tests**, 26 files — see the flake note below      |
+| Unit tests           | **1092 passing** across 46 packages/apps (incl. web 48) |
+| API integration      | **312 tests**, 27 files — see the flake note below      |
 | Pipeline integration | **95 passing** (11 files, `research-pipeline`)          |
 | Metering integration | **74 passing** (7 files)                                |
-| E2E (Playwright)     | **69 tests** (stubbed-API UI journeys)                  |
-| Prisma               | schema valid · 33 migrations · database up to date      |
+| E2E (Playwright)     | **79 tests** (stubbed-API UI journeys)                  |
+| Prisma               | schema valid · 34 migrations · database up to date      |
 
-Known flake 1 (pre-existing, not introduced by 6B–7D): `budget-hardening.spec.ts` "concurrent
+Known flake 1 (pre-existing, not introduced by 6B–8A): `budget-hardening.spec.ts` "concurrent
 research-run starts cannot all pass the last allowance" intermittently admits more than one run. It
-did not appear during the 7B, 7C or 7D gates. It is not fixed — tracked separately.
+appeared in both 8A gate runs. It is not fixed — tracked separately.
 
 Known flake 2 (first recorded in the 7A gate; narrowed in 7B, 7C and 7D). The symptom is a cluster
 of failures across unrelated API spec files. Four causes have been found and addressed:
 
-1. **A stale Redis backlog.** The shared dev queue had accumulated 93 waiting and ~1300 failed jobs
-   across many phases, starving `ops.spec.ts`'s poll for its own job and cascading from there.
-   Draining `bull:spectra-system*` returned a clean `main` to 227/227. **Operationally: drain the
-   dev queue before a gate run, and leave no test jobs behind.**
-2. **Unbounded vitest parallelism.** The suites share one Postgres, Redis and MinIO and several do
-   real work. `apps/api/vitest.config.ts` caps `maxWorkers`.
-3. **Timeouts tuned for a smaller suite** (7C). `ops.spec.ts`'s job poll went 20s → 45s and the
-   suite ceilings 30s → 60s/90s: a timeout should mean "stuck", not "busy".
-4. **The cap itself going stale** (7D). At 26 spec files, 3 workers began failing under load.
-   Measured: **2 workers run green in ~21s**, 3 workers failed, and 1 worker is both slower (~220s,
-   since nothing overlaps) and still fails on timeouts. The cap is now 2, and the comment in the
-   config says to revisit it as the suite grows.
+1. **A stale Redis backlog** starving `ops.spec.ts`'s poll and cascading. **Drain
+   `bull:spectra-system*` before a gate run, and leave no test jobs behind.**
+2. **Unbounded vitest parallelism.** `apps/api/vitest.config.ts` caps `maxWorkers`.
+3. **Timeouts tuned for a smaller suite** (7C): `ops.spec.ts`'s job poll 20s → 45s, suite ceilings
+   30s → 60s/90s.
+4. **The cap itself going stale** (7D): measured at 26 files, 2 workers ran green in ~21s while 3
+   failed and 1 was slower still.
 
-Each media phase also fixed a contributor of its own: `video-rendering.spec.ts`,
-`audio-podcast.spec.ts` and `campaign-orchestration.spec.ts` all stub `QueueService.enqueue` for all
-but one dedicated test, so none leaves jobs in the shared queue for `ops.spec` to trip over.
+Every media and billing phase also fixed a contributor of its own: `video-rendering.spec.ts`,
+`audio-podcast.spec.ts` and `campaign-orchestration.spec.ts` stub `QueueService.enqueue` so none
+leaves jobs in the shared queue, and `billing.spec.ts` sets its provider env in `setup-env.ts`
+rather than a `beforeAll`, because `getApiEnv()` memoizes and vitest reuses a worker across files —
+a spec mutating `process.env` later got an unconfigured provider whenever another spec had already
+read the env.
 
-What remains: on a **loaded** machine the API suite is still intermittent. The 7D gate produced
-**283/283 twice** (once standalone, once through the full turbo run) and 6 failures on another run,
-all in `ops.spec.ts`, on a host carrying a load average near 8.5 from unrelated work. **No failure
-has ever occurred in `video-rendering.spec.ts`, `audio-podcast.spec.ts` or
-`campaign-orchestration.spec.ts`.** `ops.spec.ts` is now the single remaining offender; the durable
-fix is per-suite database and queue isolation, which remains tracked.
+What remains: on a loaded machine the API suite is still intermittent. The 8A gate produced
+**310/312 and 309/312** across two runs, failing only in `budget-hardening.spec.ts` (flake 1) and
+one tenant-isolation test whose setup lost a race. **No failure has occurred in `billing.spec.ts`,
+`campaign-orchestration.spec.ts`, `audio-podcast.spec.ts` or `video-rendering.spec.ts`.** The
+durable fix is per-suite database and queue isolation, which remains tracked.
 
 -------------------- | ------------------------------------------------------ |
 | `pnpm build` | 40/40 tasks pass |

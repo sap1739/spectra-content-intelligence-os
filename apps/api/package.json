@@ -28,6 +28,8 @@
     "@spectra/analytics-pipeline": "workspace:*",
     "@spectra/audio-core": "workspace:*",
     "@spectra/audio-pipeline": "workspace:*",
+    "@spectra/billing-core": "workspace:*",
+    "@spectra/billing-stripe": "workspace:*",
     "@spectra/campaign-orchestration": "workspace:*",
     "@spectra/config": "workspace:*",
     "@spectra/content-pipeline": "workspace:*",

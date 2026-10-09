@@ -140,6 +140,10 @@ model Organization {
   transcripts           Transcript[]
   audioRenders          AudioRender[]
   orchestrationRuns     CampaignOrchestrationRun[]
+  billingCustomers      BillingCustomer[]
+  subscriptions         Subscription[]
+  creditGrants          CreditGrant[]
+  creditLedger          CreditLedgerEntry[]
 
   @@map("organizations")
 }
@@ -2067,6 +2071,248 @@ model VideoRender {
   @@index([projectId, createdAt])
   @@index([workspaceId, status, createdAt])
   @@map("video_renders")
+}
+
+// ---------------------------------------------------------------------------
+// Billing, plans, credits and entitlements (Phase 8A, ADR-0044)
+// ---------------------------------------------------------------------------
+//
+// One rule governs this whole block: an ESTIMATE IS NOT AN INVOICE.
+// `UsageEvent.estimatedCostMicros` (ADR-0026) is Spectra's own guess at
+// provider spend. Stripe is the authority on what a customer is actually
+// billed. The two are never summed, substituted or relabelled, and no payment
+// instrument is stored here — only opaque provider ids and statuses.
+
+enum BillingMode {
+  TEST
+  LIVE
+}
+
+enum PlanTier {
+  FREE
+  STARTER
+  GROWTH
+  SCALE
+  ENTERPRISE
+}
+
+enum BillingInterval {
+  MONTH
+  YEAR
+}
+
+/// Mirrors the provider's own subscription states. Spectra never invents one.
+enum SubscriptionStatus {
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  UNPAID
+  PAUSED
+}
+
+enum CreditSource {
+  MONTHLY_ALLOWANCE
+  PURCHASED
+  MANUAL
+  REVERSAL
+}
+
+enum CreditEntryKind {
+  GRANT
+  CONSUMPTION
+  REVERSAL
+  EXPIRY
+}
+
+enum WebhookProcessingStatus {
+  RECEIVED
+  PROCESSED
+  /// Verified and stored, but Spectra has no handler — recorded, not dropped.
+  IGNORED
+  FAILED
+}
+
+/// A commercial plan and the entitlements it grants. Seeded from the built-in
+/// catalog in @spectra/billing-core; a deployment may edit or add rows.
+model Plan {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key            String   @unique
+  tier           PlanTier
+  name           String
+  description    String?
+  /// Credits granted at the start of each billing period.
+  monthlyCredits Int      @default(0)
+  /// { EntitlementKey: number | null }. null = unlimited; absent = not granted.
+  entitlements   Json
+  selfServe      Boolean  @default(true)
+  active         Boolean  @default(true)
+  sortOrder      Int      @default(0)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  prices        ProductPrice[]
+  subscriptions Subscription[]
+
+  @@index([active, sortOrder])
+  @@map("plans")
+}
+
+/// A provider price for a plan, in one mode. Test and live prices coexist and
+/// are never mixed: a TEST price can only ever back a TEST subscription.
+model ProductPrice {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  planId          String          @db.Uuid
+  mode            BillingMode
+  /// `price_…` — an identifier, never payment data.
+  providerPriceId String
+  currency        String          @db.Char(3)
+  /// Minor units, as the provider reports them.
+  unitAmount      Int
+  interval        BillingInterval
+  active          Boolean         @default(true)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([mode, providerPriceId])
+  @@index([planId, mode, active])
+  @@map("product_prices")
+}
+
+/// The provider's customer record for one organization, per mode.
+model BillingCustomer {
+  id                 String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String      @db.Uuid
+  mode               BillingMode
+  /// `cus_…`. Safe to store: an identifier, not an instrument.
+  providerCustomerId String
+  email              String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  /// One customer per organization per mode — test and live are separate.
+  @@unique([organizationId, mode])
+  @@unique([mode, providerCustomerId])
+  @@map("billing_customers")
+}
+
+/// A subscription as the provider reports it. Only a verified webhook or a
+/// direct read from the provider moves `status` — never a browser.
+model Subscription {
+  id                        String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId            String             @db.Uuid
+  planId                    String             @db.Uuid
+  mode                      BillingMode
+  providerSubscriptionId    String
+  status                    SubscriptionStatus
+  currentPeriodStart        DateTime?          @db.Timestamptz(6)
+  currentPeriodEnd          DateTime?          @db.Timestamptz(6)
+  cancelAtPeriodEnd         Boolean            @default(false)
+  canceledAt                DateTime?          @db.Timestamptz(6)
+  trialEndsAt               DateTime?          @db.Timestamptz(6)
+  /// Set when the provider reports a failed payment. Drives the dunning banner.
+  lastPaymentFailedAt       DateTime?          @db.Timestamptz(6)
+  /// The provider's own message, passed through. Describes the charge, never
+  /// the instrument.
+  lastPaymentFailureMessage String?
+  /// The provider event that last moved this row, for auditing a disputed state.
+  lastEventId               String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan         Plan         @relation(fields: [planId], references: [id])
+
+  @@unique([mode, providerSubscriptionId])
+  @@index([organizationId, mode, status])
+  @@map("subscriptions")
+}
+
+/// One batch of credits. Expiry is per grant, not per balance, so a monthly
+/// allowance can lapse while purchased credits persist.
+model CreditGrant {
+  id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String       @db.Uuid
+  source            CreditSource
+  amount            Int
+  /// Unspent portion of THIS grant. Deduction drains soonest-expiring first.
+  remaining         Int
+  /// Null = never expires.
+  expiresAt         DateTime?    @db.Timestamptz(6)
+  grantedAt         DateTime     @default(now()) @db.Timestamptz(6)
+  grantedByUserId   String?      @db.Uuid
+  /// Required for MANUAL grants: why an operator issued it.
+  reason            String?
+  /// The provider invoice or payment this grant was bought with, if any.
+  providerReference String?
+  /// Idempotency for automatic grants: one allowance per period per org.
+  grantKey          String?      @unique
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  entries      CreditLedgerEntry[]
+
+  @@index([organizationId, expiresAt])
+  @@map("credit_grants")
+}
+
+/// Every movement against the credit ledger. The balance is DERIVED from
+/// grants rather than stored: a cached balance that drifts from its ledger is
+/// a billing dispute waiting to happen.
+model CreditLedgerEntry {
+  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String          @db.Uuid
+  grantId        String?         @db.Uuid
+  kind           CreditEntryKind
+  /// Positive for GRANT and REVERSAL, negative for CONSUMPTION and EXPIRY.
+  amount         Int
+  /// What consumed the credits (a research run, a render, a draft).
+  resourceType   String?
+  resourceId     String?         @db.Uuid
+  /// Idempotency: the same operation never deducts twice.
+  idempotencyKey String?         @unique
+  note           String?
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  grant        CreditGrant? @relation(fields: [grantId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@map("credit_ledger_entries")
+}
+
+/// Every webhook the provider sent, verified before it was stored. The unique
+/// `providerEventId` is what makes processing idempotent: providers retry, and
+/// a replayed event must not grant a second month of credits.
+model BillingWebhookEvent {
+  id              String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  mode            BillingMode
+  providerEventId String
+  type            String
+  status          WebhookProcessingStatus @default(RECEIVED)
+  organizationId  String?                 @db.Uuid
+  receivedAt      DateTime                @default(now()) @db.Timestamptz(6)
+  processedAt     DateTime?               @db.Timestamptz(6)
+  /// Bounded and scrubbed. Never the raw payload, which can carry PII.
+  error           String?
+  attempts        Int                     @default(0)
+
+  @@unique([mode, providerEventId])
+  @@index([status, receivedAt])
+  @@map("billing_webhook_events")
 }
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { BillingModule } from '../billing/billing.module';
 import { ClaimsService } from '../claims/claims.service';
 
 import { AlertsController } from './alerts.controller';
@@ -12,6 +13,8 @@ import { TrendsController } from './trends.controller';
 import { WatchlistsController } from './watchlists.controller';
 
 @Module({
+  // Research runs are entitlement-gated (ADR-0044).
+  imports: [BillingModule],
   controllers: [
     ResearchRunsController,
     FindingsController,

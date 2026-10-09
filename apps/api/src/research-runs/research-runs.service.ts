@@ -5,6 +5,8 @@ import type { ScheduleResearchInput, StartResearchRunInput } from '@spectra/cont
 import { Prisma, type ResearchProject, type ResearchRun } from '@spectra/database';
 import { TenantIsolationError } from '@spectra/security';
 import { release, reserve } from '@spectra/metering';
+
+import { BillingService } from '../billing/billing.service';
 import { JOB_NAMES } from '@spectra/workflow-core';
 
 import { AuditService } from '../infra/audit.service';
@@ -18,6 +20,7 @@ export class ResearchRunsService {
     private readonly prisma: PrismaService,
     private readonly queue: QueueService,
     private readonly audit: AuditService,
+    private readonly billing: BillingService,
   ) {}
 
   private async assertProject(tenant: TenantContext, projectId: string) {
@@ -79,6 +82,12 @@ export class ResearchRunsService {
     // step (ADR-0029), rather than a check followed by a separate write that a
     // concurrent request could slip between. A BudgetBlockedError propagates as
     // 403, so an over-budget workspace never creates or queues the run.
+    // Entitlement BEFORE budget, because they answer different questions and
+    // the plan limit is the one a customer can fix by upgrading. A budget says
+    // "this would cost too much"; an entitlement says "your plan does not
+    // include this" (ADR-0044).
+    await this.billing.assertEntitlement(tenant.organizationId, 'RESEARCH_RUNS_PER_PERIOD');
+
     const runId = randomUUID();
     await reserve(this.prisma.client, {
       ...scope,

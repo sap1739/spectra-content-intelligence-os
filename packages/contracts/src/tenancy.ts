@@ -17,6 +17,9 @@ import {
 export const PERMISSIONS = [
   'org:manage',
   'org:billing:manage',
+  // Reading plan, subscription, entitlement and credit state. Separate from
+  // org:billing:manage, which can spend money and change the plan.
+  'billing:read',
   'org:members:manage',
   'workspace:manage',
   'workspace:members:manage',

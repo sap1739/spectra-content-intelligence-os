@@ -21,6 +21,7 @@ import { StudioModule } from './studio/studio.module';
 import { VideoModule } from './video/video.module';
 import { AudioModule } from './audio/audio.module';
 import { OrchestrationModule } from './orchestration/orchestration.module';
+import { BillingModule } from './billing/billing.module';
 import { TenancyModule } from './tenancy/tenancy.module';
 import { VerticalsModule } from './verticals/verticals.module';
 
@@ -42,6 +43,7 @@ import { VerticalsModule } from './verticals/verticals.module';
     VideoModule,
     AudioModule,
     OrchestrationModule,
+    BillingModule,
     SocialModule,
     AnalyticsModule,
     UsageModule,

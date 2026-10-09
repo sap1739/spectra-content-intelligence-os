@@ -22,7 +22,14 @@ export async function createApp(env: ApiEnv): Promise<NestFastifyApplication> {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({ logger: false, trustProxy: true }),
-    { logger: ['error', 'warn', 'log'] },
+    {
+      logger: ['error', 'warn', 'log'],
+      // Nest's own JSON parser is declined so the parser registered below can
+      // own `application/json` — it keeps the raw bytes for the billing
+      // webhook, whose signature is computed over them (ADR-0044). It parses
+      // JSON identically for every other route.
+      bodyParser: false,
+    },
   );
 
   const fastify = app.getHttpAdapter().getInstance();
@@ -53,6 +60,37 @@ export async function createApp(env: ApiEnv): Promise<NestFastifyApplication> {
     request.headers[CORRELATION_HEADER] = correlationId;
     reply.header(CORRELATION_HEADER, correlationId);
   });
+
+  /**
+   * Raw body capture for the billing webhook ONLY (ADR-0044).
+   *
+   * Stripe signs the exact bytes it sent. Parsing to an object and
+   * re-serializing changes whitespace and key order, so the signature would
+   * never match — which is why the raw buffer is kept here and the signature
+   * is verified against it rather than against a parsed body.
+   *
+   * Scoped to the one path: every other route keeps Fastify's normal JSON
+   * parsing, and no other handler ever sees an unparsed body.
+   */
+  const WEBHOOK_PATHS = new Set(['/v1/billing/webhook/stripe']);
+  fastify.addContentTypeParser(
+    'application/json',
+    { parseAs: 'buffer' },
+    (request, body: Buffer, done) => {
+      if (WEBHOOK_PATHS.has(request.url.split('?')[0] ?? '')) {
+        (request as typeof request & { rawBody?: Buffer }).rawBody = body;
+      }
+      if (body.length === 0) {
+        done(null, undefined);
+        return;
+      }
+      try {
+        done(null, JSON.parse(body.toString('utf8')));
+      } catch (error) {
+        done(error as Error, undefined);
+      }
+    },
+  );
 
   await fastify.register(helmet, {
     contentSecurityPolicy: false, // API serves JSON; CSP applies to the web app.

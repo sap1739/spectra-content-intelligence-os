@@ -27,3 +27,12 @@ try {
   // Left unset: the API then reports the engine as unavailable, which is the
   // honest state and what the capability tests assert against.
 }
+
+// Billing (Phase 8A). Set here rather than in a spec's beforeAll because
+// `getApiEnv()` memoizes on first call, and vitest reuses a worker across
+// spec files — a spec that mutated process.env later would get an
+// unconfigured provider whenever another spec had already read the env.
+// The base URL is overridden per-spec to point at the local Stripe stand-in.
+process.env['STRIPE_SECRET_KEY'] ??= 'sk_test_integration';
+process.env['STRIPE_WEBHOOK_SECRET'] ??= 'whsec_integration_secret';
+process.env['BILLING_RETURN_ORIGIN'] ??= 'http://localhost:3000';

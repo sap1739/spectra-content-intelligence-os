@@ -6,6 +6,7 @@ import {
   type ArgumentsHost,
   type ExceptionFilter,
 } from '@nestjs/common';
+import { BillingProviderError, EntitlementExceededError } from '@spectra/billing-core';
 import { BudgetBlockedError, BudgetExceededError } from '@spectra/metering';
 import { METRICS, metrics } from '@spectra/telemetry';
 import { ForbiddenError, TenantIsolationError } from '@spectra/security';
@@ -68,6 +69,37 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         title: 'Insufficient permissions',
         status: HttpStatus.FORBIDDEN,
         detail: exception.message,
+        ...(correlationId ? { correlationId } : {}),
+      };
+    }
+
+    if (exception instanceof EntitlementExceededError) {
+      // 402, not 403 — and the contrast with a budget refusal below is the
+      // point. A budget is the operator's own cost ceiling: nobody is billed,
+      // so "Payment Required" would imply a bill that does not exist. An
+      // entitlement is a PLAN limit, which a customer resolves by paying for a
+      // bigger plan. Different cause, different remedy, different status.
+      return {
+        type: 'https://spectra.dev/problems/entitlement-exceeded',
+        title: 'Plan limit reached',
+        status: HttpStatus.PAYMENT_REQUIRED,
+        detail: exception.message,
+        entitlement: exception.decision,
+        ...(correlationId ? { correlationId } : {}),
+      };
+    }
+
+    if (exception instanceof BillingProviderError) {
+      // A failed signature is deliberately terse: a descriptive rejection is a
+      // forgery oracle. The detail is logged, never returned.
+      const invalidSignature = exception.code === 'INVALID_SIGNATURE';
+      return {
+        type: 'https://spectra.dev/problems/billing-provider',
+        title: invalidSignature ? 'Webhook signature rejected' : 'Billing provider error',
+        status: invalidSignature ? HttpStatus.BAD_REQUEST : HttpStatus.BAD_GATEWAY,
+        detail: invalidSignature
+          ? 'The webhook signature could not be verified.'
+          : exception.message,
         ...(correlationId ? { correlationId } : {}),
       };
     }

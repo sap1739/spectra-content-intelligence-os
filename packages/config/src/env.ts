@@ -527,6 +527,33 @@ function refineSocialPlatforms(
  * on PATH and, finding nothing, reports itself unavailable with a reason rather
  * than failing a render halfway.
  */
+/**
+ * Billing (Phase 8A, ADR-0044).
+ *
+ * Unset means billing is simply off: no plan can be purchased, no subscription
+ * syncs, and every organization sits on the free plan's entitlements. That is a
+ * supported state, not a broken one — Spectra never falls back to "unlimited"
+ * because billing is unconfigured.
+ */
+export const billingEnvSchema = z.object({
+  /** `sk_test_…` or `sk_live_…`. The key's prefix decides the mode. */
+  STRIPE_SECRET_KEY: z.string().min(1).optional(),
+  /**
+   * `whsec_…`. Without it webhook signatures cannot be verified, so webhooks
+   * are REFUSED rather than trusted, and subscription status never updates.
+   */
+  STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
+  /** Overridable for tests against a Stripe stand-in. */
+  STRIPE_API_BASE_URL: z.string().url().default('https://api.stripe.com'),
+  /** Seconds a webhook signature stays acceptable, guarding against replay. */
+  STRIPE_WEBHOOK_TOLERANCE_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
+  /**
+   * The public origin checkout returns the browser to. Validated against this
+   * so a caller cannot redirect a paying customer to an arbitrary host.
+   */
+  BILLING_RETURN_ORIGIN: z.string().url().default('http://localhost:3000'),
+});
+
 export const videoEnvSchema = z.object({
   /** Absolute path to ffmpeg. Defaults to whatever is on PATH. */
   FFMPEG_PATH: z.string().min(1).optional(),
@@ -625,6 +652,8 @@ export const apiEnvSchema = z
   .merge(analyticsEnvSchema)
   // Video rendering (Phase 7B): the API reports engine capability honestly.
   .merge(videoEnvSchema)
+  // Billing (Phase 8A): the API creates checkout sessions and verifies webhooks.
+  .merge(billingEnvSchema)
   .superRefine((env, ctx) => {
     refineSocialKeyRing(env, ctx);
     refineSocialOAuth(env, ctx);

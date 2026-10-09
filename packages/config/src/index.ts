@@ -13,6 +13,7 @@ export {
   socialPlatformsEnvSchema,
   analyticsEnvSchema,
   videoEnvSchema,
+  billingEnvSchema,
   logLevelSchema,
   nodeEnvSchema,
   redisEnvSchema,

@@ -47,6 +47,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'video:write',
     'audio:write',
     'voice:consent',
+    'billing:read',
   ],
   RESEARCHER: [
     'vertical:read',
